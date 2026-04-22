@@ -121,14 +121,12 @@ export function App(props: AppProps) {
             active={activeSpeaker === 'claude'}
             live={live.claude}
             lastTurn={last(claudeTurns)}
-            flex={activeSpeaker === 'claude' ? 2 : 1}
           />
           <SpeakerPane
             title="Codex"
             active={activeSpeaker === 'codex'}
             live={live.codex}
             lastTurn={last(codexTurns)}
-            flex={activeSpeaker === 'codex' ? 2 : 1}
           />
           <DebateStrip transcript={state.transcript} />
         </Box>
@@ -162,13 +160,11 @@ function SpeakerPane({
   active,
   live,
   lastTurn,
-  flex,
 }: {
   title: string;
   active: boolean;
   live: string;
   lastTurn: TurnRecord | undefined;
-  flex: number;
 }) {
   const body = active ? live : lastTurn?.content ?? '(no turn yet)';
   return (
@@ -176,7 +172,7 @@ function SpeakerPane({
       flexDirection="column"
       borderStyle="single"
       paddingX={1}
-      flexGrow={flex}
+      flexGrow={1}
       flexShrink={1}
       flexBasis={0}
       overflow="hidden"
