@@ -7,6 +7,8 @@ export type CodexAgentOptions = {
   /** Override the line-stream source for testing. Default spawns `codex`. */
   streamLines?: (prompt: string, signal: AbortSignal) => AsyncIterable<string>;
   systemInstructions?: string;
+  /** Pinned model id. Default uses the CLI default from ~/.codex/config.toml. */
+  model?: string;
 };
 
 const DEFAULT_PROTOCOL = `You are one of two collaborators in a spec-writing debate. Respond in two parts:
@@ -16,11 +18,15 @@ const DEFAULT_PROTOCOL = `You are one of two collaborators in a spec-writing deb
 Emit <patch>...</patch> only if you have a concrete proposal or a verdict. No <patch> block means commentary-only.
 Do not wrap the JSON in code fences. The block must be literally <patch>...</patch>.`;
 
-function defaultSpawn(prompt: string, signal: AbortSignal): AsyncIterable<string> {
-  return streamProcessLines(
-    { cmd: 'codex', args: ['exec', '--json', prompt] },
-    signal,
-  );
+function defaultSpawn(
+  prompt: string,
+  signal: AbortSignal,
+  model: string | undefined,
+): AsyncIterable<string> {
+  const args = ['exec', '--json'];
+  if (model) args.push('-m', model);
+  args.push(prompt);
+  return streamProcessLines({ cmd: 'codex', args }, signal);
 }
 
 export class CodexAgent implements Agent {
@@ -32,7 +38,8 @@ export class CodexAgent implements Agent {
   private readonly systemInstructions: string;
 
   constructor(opts: CodexAgentOptions = {}) {
-    this.streamLines = opts.streamLines ?? ((p, s) => defaultSpawn(p, s));
+    this.streamLines =
+      opts.streamLines ?? ((p, s) => defaultSpawn(p, s, opts.model));
     this.systemInstructions = opts.systemInstructions ?? DEFAULT_PROTOCOL;
   }
 

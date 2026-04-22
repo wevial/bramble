@@ -218,7 +218,7 @@ function ChatLog({
       lastProposalIdxBySpeaker[pt.turn.speaker] !== i,
   }));
   if (activeSpeaker === 'claude' || activeSpeaker === 'codex') {
-    const secs = (elapsedMs / 1000).toFixed(1);
+    const secs = Math.floor(elapsedMs / 1000);
     items.push({
       speaker: activeSpeaker,
       content: `thinking… ${secs}s`,
@@ -294,9 +294,13 @@ function tailChatLines(
     const firstCap = Math.max(4, width - label.length);
     const contCap = Math.max(4, width - 2);
 
-    const nl = item.content.indexOf('\n');
-    const firstPara = nl >= 0 ? item.content.slice(0, nl) : item.content;
-    const firstBody = firstPara.slice(0, firstCap);
+    const paragraphs = item.content.split('\n');
+    const firstPara = paragraphs[0] ?? '';
+    const restParas = paragraphs.slice(1);
+
+    // First paragraph wraps at firstCap (shared with label); continuations at contCap.
+    const firstWrapped = wrapLines(firstPara, firstCap);
+    const firstBody = firstWrapped[0] ?? '';
     all.push({
       kind: 'label',
       speaker: item.speaker,
@@ -304,12 +308,16 @@ function tailChatLines(
       labelText: label,
       bodyText: firstBody,
     });
-
-    const remainder =
-      firstPara.slice(firstCap) + (nl >= 0 ? item.content.slice(nl) : '');
-    if (remainder.length > 0) {
-      for (const w of wrapLines(remainder, contCap)) {
-        all.push({ kind: 'cont', text: '  ' + w });
+    for (const l of firstWrapped.slice(1)) {
+      all.push({ kind: 'cont', text: '  ' + l });
+    }
+    for (const p of restParas) {
+      if (p.length === 0) {
+        all.push({ kind: 'cont', text: '' });
+        continue;
+      }
+      for (const l of wrapLines(p, contCap)) {
+        all.push({ kind: 'cont', text: '  ' + l });
       }
     }
 
@@ -390,9 +398,35 @@ function wrapLines(text: string, width: number): string[] {
       out.push('');
       continue;
     }
-    for (let i = 0; i < raw.length; i += width) {
-      out.push(raw.slice(i, i + width));
+    // Word-aware wrap: pack whitespace-separated tokens into lines of
+    // <= width. A single token longer than width is hard-sliced so it
+    // still fits (prefer clipping one word over emitting an overflow).
+    const words = raw.split(/(\s+)/); // keep separators so spacing is preserved
+    let line = '';
+    for (const w of words) {
+      if (w.length === 0) continue;
+      if (line.length + w.length <= width) {
+        line += w;
+        continue;
+      }
+      // word doesn't fit; flush current line (if any)
+      if (line.length > 0) {
+        out.push(line.trimEnd());
+        line = '';
+      }
+      if (w.length > width) {
+        // oversized single token — hard-slice into width-sized chunks
+        for (let i = 0; i < w.length; i += width) {
+          const chunk = w.slice(i, i + width);
+          if (chunk.length === width) out.push(chunk);
+          else line = chunk;
+        }
+      } else if (/\S/.test(w)) {
+        line = w;
+      }
+      // if it's pure whitespace and doesn't fit on the flushed line, drop it
     }
+    if (line.length > 0) out.push(line.trimEnd());
   }
   return out;
 }

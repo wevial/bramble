@@ -8,6 +8,8 @@ export type ClaudeAgentOptions = {
   streamLines?: (prompt: string, signal: AbortSignal) => AsyncIterable<string>;
   /** Appended to the user prompt. Defaults to the patch-protocol instructions. */
   systemInstructions?: string;
+  /** Pinned model id (e.g. "claude-sonnet-4-6"). Default uses the CLI default. */
+  model?: string;
 };
 
 const DEFAULT_PROTOCOL = `You are one of two collaborators in a spec-writing debate. Respond in two parts:
@@ -17,21 +19,21 @@ const DEFAULT_PROTOCOL = `You are one of two collaborators in a spec-writing deb
 Emit <patch>...</patch> only if you have a concrete proposal or a verdict. No <patch> block means commentary-only.
 Do not wrap the JSON in code fences. The block must be literally <patch>...</patch>.`;
 
-function defaultSpawn(prompt: string, signal: AbortSignal): AsyncIterable<string> {
-  return streamProcessLines(
-    {
-      cmd: 'claude',
-      args: [
-        '-p',
-        prompt,
-        '--output-format',
-        'stream-json',
-        '--verbose',
-        '--include-partial-messages',
-      ],
-    },
-    signal,
-  );
+function defaultSpawn(
+  prompt: string,
+  signal: AbortSignal,
+  model: string | undefined,
+): AsyncIterable<string> {
+  const args = [
+    '-p',
+    prompt,
+    '--output-format',
+    'stream-json',
+    '--verbose',
+    '--include-partial-messages',
+  ];
+  if (model) args.push('--model', model);
+  return streamProcessLines({ cmd: 'claude', args }, signal);
 }
 
 export class ClaudeAgent implements Agent {
@@ -44,7 +46,7 @@ export class ClaudeAgent implements Agent {
 
   constructor(opts: ClaudeAgentOptions = {}) {
     this.streamLines =
-      opts.streamLines ?? ((p, s) => defaultSpawn(p, s));
+      opts.streamLines ?? ((p, s) => defaultSpawn(p, s, opts.model));
     this.systemInstructions = opts.systemInstructions ?? DEFAULT_PROTOCOL;
   }
 

@@ -11,6 +11,8 @@ import { App } from './ui/App.js';
 const argv = process.argv.slice(2);
 let rounds = 3;
 let real = false;
+let claudeModel: string | undefined;
+let codexModel: string | undefined;
 const positional: string[] = [];
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
@@ -20,6 +22,12 @@ for (let i = 0; i < argv.length; i++) {
     i++;
   } else if (a === '--real') {
     real = true;
+  } else if (a === '--claude-model' && argv[i + 1]) {
+    claudeModel = argv[i + 1];
+    i++;
+  } else if (a === '--codex-model' && argv[i + 1]) {
+    codexModel = argv[i + 1];
+    i++;
   } else {
     positional.push(a!);
   }
@@ -31,8 +39,8 @@ const cwd = process.cwd();
 let claude: Agent;
 let codex: Agent;
 if (real) {
-  claude = new ClaudeAgent();
-  codex = new CodexAgent();
+  claude = new ClaudeAgent({ model: claudeModel });
+  codex = new CodexAgent({ model: codexModel });
 } else {
   const fClaude = new FakeAgent('claude');
   const fCodex = new FakeAgent('codex');
