@@ -22,11 +22,16 @@ export type DebateHandle = {
   interject(content: string): void;
   /** Abort the whole debate. */
   abort(): void;
+  /** Update the round cap at runtime; takes effect on the next loop iteration. */
+  setRounds(n: number): void;
+  /** Current round cap. */
+  getRounds(): number;
 };
 
 export function startDebate(opts: RunDebateOptions): DebateHandle {
   let state: State = { ...initialState };
   let turnController: AbortController | null = null;
+  let rounds = Math.max(1, Math.floor(opts.rounds));
   const outer = new AbortController();
   opts.signal?.addEventListener('abort', () => outer.abort(), { once: true });
 
@@ -39,8 +44,8 @@ export function startDebate(opts: RunDebateOptions): DebateHandle {
   };
 
   const done = (async () => {
-    const totalTurns = opts.rounds * 2;
-    for (let i = 0; i < totalTurns; i++) {
+    let i = 0;
+    while (i < rounds * 2) {
       if (outer.signal.aborted) break;
       const speaker = nextSpeaker(state);
       const agent = opts.agents[speaker];
@@ -97,6 +102,7 @@ export function startDebate(opts: RunDebateOptions): DebateHandle {
           if (state.accepted) break;
         }
       }
+      i++;
     }
     return state;
   })();
@@ -105,6 +111,10 @@ export function startDebate(opts: RunDebateOptions): DebateHandle {
     done,
     interject,
     abort: () => outer.abort(),
+    setRounds: (n: number) => {
+      rounds = Math.max(1, Math.floor(n));
+    },
+    getRounds: () => rounds,
   };
 }
 

@@ -190,6 +190,45 @@ describe('runDebate (Phase 0 walking skeleton)', () => {
     expect(final.transcript.length).toBe(2);
   });
 
+  it('setRounds can extend the cap mid-run', async () => {
+    const claude = new FakeAgent('claude');
+    const codex = new FakeAgent('codex');
+    claude.setResponse('c');
+    codex.setResponse('d');
+
+    const dir = mkdtempSync(join(tmpdir(), 'bramble-run-'));
+    const handle = startDebate({
+      agents: { claude, codex },
+      prompt: 'x',
+      rounds: 1, // would stop after 2 turns
+      transcriptPath: join(dir, 'transcript.jsonl'),
+    });
+
+    handle.setRounds(3); // extend to 6 turns before any turn completes
+    const final = await handle.done;
+    expect(final.transcript.filter(t => t.speaker !== 'user').length).toBe(6);
+  });
+
+  it('setRounds can shrink the cap mid-run', async () => {
+    const claude = new FakeAgent('claude');
+    const codex = new FakeAgent('codex');
+    claude.setResponse('c');
+    codex.setResponse('d');
+
+    const dir = mkdtempSync(join(tmpdir(), 'bramble-run-'));
+    const handle = startDebate({
+      agents: { claude, codex },
+      prompt: 'x',
+      rounds: 5,
+      transcriptPath: join(dir, 'transcript.jsonl'),
+    });
+
+    // shrink immediately so only 2 turns fire
+    handle.setRounds(1);
+    const final = await handle.done;
+    expect(final.transcript.filter(t => t.speaker !== 'user').length).toBe(2);
+  });
+
   it('invokes onToken for live streaming updates', async () => {
     const { claude, codex } = makeAgents();
     const dir = mkdtempSync(join(tmpdir(), 'bramble-run-'));
