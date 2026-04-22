@@ -13,6 +13,7 @@ let rounds = 3;
 let real = false;
 let claudeModel: string | undefined;
 let codexModel: string | undefined;
+let codexEffort: string | undefined;
 const positional: string[] = [];
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
@@ -22,11 +23,20 @@ for (let i = 0; i < argv.length; i++) {
     i++;
   } else if (a === '--real') {
     real = true;
+  } else if (a === '--test') {
+    // Fast-path: real agents pinned to cheap/fast models, low reasoning effort.
+    real = true;
+    claudeModel = claudeModel ?? 'claude-haiku-4-5';
+    codexModel = codexModel ?? 'gpt-5.4-mini';
+    codexEffort = codexEffort ?? 'low';
   } else if (a === '--claude-model' && argv[i + 1]) {
     claudeModel = argv[i + 1];
     i++;
   } else if (a === '--codex-model' && argv[i + 1]) {
     codexModel = argv[i + 1];
+    i++;
+  } else if (a === '--codex-effort' && argv[i + 1]) {
+    codexEffort = argv[i + 1];
     i++;
   } else {
     positional.push(a!);
@@ -40,7 +50,7 @@ let claude: Agent;
 let codex: Agent;
 if (real) {
   claude = new ClaudeAgent({ model: claudeModel });
-  codex = new CodexAgent({ model: codexModel });
+  codex = new CodexAgent({ model: codexModel, reasoningEffort: codexEffort });
 } else {
   const fClaude = new FakeAgent('claude');
   const fCodex = new FakeAgent('codex');
@@ -76,6 +86,7 @@ const { waitUntilExit } = render(
     specPath={join(cwd, 'spec.md')}
     debatePath={join(cwd, 'debate.md')}
     draftPath={join(cwd, 'draft.md')}
+    draftsPath={join(cwd, 'drafts.md')}
     onQuit={() => process.exit(0)}
   />,
 );

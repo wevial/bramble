@@ -1,6 +1,8 @@
 export type SlashCommand =
   | { kind: 'quit' }
   | { kind: 'rounds'; value: number | null }
+  | { kind: 'drafts' }
+  | { kind: 'expand'; id: string }
   | { kind: 'unknown'; raw: string; hint: string };
 
 export function parseSlashCommand(input: string): SlashCommand | null {
@@ -32,6 +34,18 @@ export function parseSlashCommand(input: string): SlashCommand | null {
         };
       }
       return { kind: 'rounds', value: n };
+    }
+    case 'drafts':
+      return { kind: 'drafts' };
+    case 'expand': {
+      if (!/^(claude|codex)-\d+$/.test(arg)) {
+        return {
+          kind: 'unknown',
+          raw: trimmed,
+          hint: '/expand expects <claude|codex>-<n>, e.g. /expand claude-1',
+        };
+      }
+      return { kind: 'expand', id: arg };
     }
     default:
       return {

@@ -9,6 +9,8 @@ export type CodexAgentOptions = {
   systemInstructions?: string;
   /** Pinned model id. Default uses the CLI default from ~/.codex/config.toml. */
   model?: string;
+  /** Reasoning effort override, e.g. "low" | "medium" | "high". */
+  reasoningEffort?: string;
 };
 
 const DEFAULT_PROTOCOL = `You are one of two collaborators in a spec-writing debate. Respond in two parts:
@@ -22,9 +24,13 @@ function defaultSpawn(
   prompt: string,
   signal: AbortSignal,
   model: string | undefined,
+  reasoningEffort: string | undefined,
 ): AsyncIterable<string> {
   const args = ['exec', '--json'];
   if (model) args.push('-m', model);
+  if (reasoningEffort) {
+    args.push('-c', `model_reasoning_effort=${reasoningEffort}`);
+  }
   args.push(prompt);
   return streamProcessLines({ cmd: 'codex', args }, signal);
 }
@@ -39,7 +45,8 @@ export class CodexAgent implements Agent {
 
   constructor(opts: CodexAgentOptions = {}) {
     this.streamLines =
-      opts.streamLines ?? ((p, s) => defaultSpawn(p, s, opts.model));
+      opts.streamLines ??
+      ((p, s) => defaultSpawn(p, s, opts.model, opts.reasoningEffort));
     this.systemInstructions = opts.systemInstructions ?? DEFAULT_PROTOCOL;
   }
 

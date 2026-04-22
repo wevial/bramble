@@ -5,6 +5,7 @@ import { startDebate, type DebateHandle } from '../orchestrator/runner.js';
 import { writeAcceptedSpec, clearSpec } from '../docs/spec.js';
 import { writeDebate } from '../docs/debate.js';
 import { writeDraft, clearDraft } from '../docs/draft.js';
+import { writeDraftsHistory, type ProposalRecord } from '../docs/drafts.js';
 import type { State, TurnRecord } from '../orchestrator/types.js';
 import { parseAgentOutput, type AgentOutput } from '../protocol/patch.js';
 import { InputBox } from './InputBox.js';
@@ -18,6 +19,7 @@ export type AppProps = {
   specPath: string;
   debatePath: string;
   draftPath: string;
+  draftsPath: string;
   onDone?: () => void;
   onQuit?: () => void;
 };
@@ -32,6 +34,7 @@ export function App(props: AppProps) {
   const [done, setDone] = useState(false);
   const [status, setStatus] = useState<string>('starting…');
   const [rounds, setRounds] = useState(props.rounds);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [now, setNow] = useState(Date.now());
   const activeStartRef = useRef<number | null>(null);
   const handleRef = useRef<DebateHandle | null>(null);
@@ -110,6 +113,8 @@ export function App(props: AppProps) {
       ? now - activeStartRef.current
       : 0;
 
+  const proposals = collectProposals(state);
+
   return (
     <Box flexDirection="column" width={dims.columns} height={dims.rows}>
       <Box flexGrow={1} height={chatBodyRows + 2}>
@@ -118,6 +123,7 @@ export function App(props: AppProps) {
           transcript={state.transcript}
           activeSpeaker={activeSpeaker}
           elapsedMs={elapsedMs}
+          expanded={expanded}
           width={chatWidth}
           innerWidth={chatInnerWidth}
           bodyRows={chatBodyRows}
@@ -154,6 +160,27 @@ export function App(props: AppProps) {
               }
               return;
             }
+            if (cmd.kind === 'drafts') {
+              void writeDraftsHistory(props.draftsPath, proposals);
+              setStatus(`drafts → drafts.md (${proposals.length} proposal${
+                proposals.length === 1 ? '' : 's'
+              })`);
+              return;
+            }
+            if (cmd.kind === 'expand') {
+              if (!proposals.some(p => p.id === cmd.id)) {
+                setStatus(`no proposal ${cmd.id}`);
+                return;
+              }
+              setExpanded(prev => {
+                const next = new Set(prev);
+                if (next.has(cmd.id)) next.delete(cmd.id);
+                else next.add(cmd.id);
+                return next;
+              });
+              setStatus(`toggled ${cmd.id}`);
+              return;
+            }
             setStatus(cmd.hint);
           }}
           onQuit={() => {
@@ -179,6 +206,10 @@ type ChatItem = {
   parsed?: AgentOutput;
   /** True when a later turn from the same speaker has a proposal of its own. */
   proposalSuperseded?: boolean;
+  /** Stable id for a proposal-bearing turn, e.g. "claude-1". */
+  proposalId?: string;
+  /** True if the user has toggled this proposal open via /expand. */
+  proposalExpanded?: boolean;
 };
 
 function ChatLog({
@@ -186,6 +217,7 @@ function ChatLog({
   transcript,
   activeSpeaker,
   elapsedMs,
+  expanded,
   width,
   innerWidth,
   bodyRows,
@@ -194,6 +226,7 @@ function ChatLog({
   transcript: TurnRecord[];
   activeSpeaker: State['speaker'];
   elapsedMs: number;
+  expanded: Set<string>;
   width: number;
   innerWidth: number;
   bodyRows: number;
@@ -203,20 +236,29 @@ function ChatLog({
     return { turn: t, parsed: res.ok ? res.value : undefined };
   });
   const lastProposalIdxBySpeaker: Record<string, number> = {};
+  const proposalCounter: Record<string, number> = { claude: 0, codex: 0 };
+  const proposalIds: Record<number, string> = {};
   parsedTurns.forEach((pt, i) => {
     if (pt.parsed?.proposal && (pt.turn.speaker === 'claude' || pt.turn.speaker === 'codex')) {
       lastProposalIdxBySpeaker[pt.turn.speaker] = i;
+      proposalCounter[pt.turn.speaker]! += 1;
+      proposalIds[i] = `${pt.turn.speaker}-${proposalCounter[pt.turn.speaker]}`;
     }
   });
 
-  const items: ChatItem[] = parsedTurns.map((pt, i) => ({
-    speaker: pt.turn.speaker,
-    content: pt.parsed?.commentary ?? pt.turn.content,
-    parsed: pt.parsed,
-    proposalSuperseded:
-      pt.parsed?.proposal != null &&
-      lastProposalIdxBySpeaker[pt.turn.speaker] !== i,
-  }));
+  const items: ChatItem[] = parsedTurns.map((pt, i) => {
+    const id = proposalIds[i];
+    const superseded =
+      pt.parsed?.proposal != null && lastProposalIdxBySpeaker[pt.turn.speaker] !== i;
+    return {
+      speaker: pt.turn.speaker,
+      content: pt.parsed?.commentary ?? pt.turn.content,
+      parsed: pt.parsed,
+      proposalSuperseded: superseded,
+      proposalId: id,
+      proposalExpanded: id ? expanded.has(id) : false,
+    };
+  });
   if (activeSpeaker === 'claude' || activeSpeaker === 'codex') {
     const secs = Math.floor(elapsedMs / 1000);
     items.push({
@@ -276,6 +318,7 @@ type RenderLine =
       kind: 'proposalCollapsed';
       speaker: 'claude' | 'codex';
       lines: number;
+      id: string;
     }
   | { kind: 'verdict'; speaker: 'claude' | 'codex'; verdict: 'LGTM' | 'counter' };
 
@@ -328,20 +371,25 @@ function tailChatLines(
     ) {
       const body = item.parsed.proposal.body;
       const totalLines = body.split('\n').length;
-      const collapsed = item.proposalSuperseded === true;
+      const collapsed =
+        item.proposalSuperseded === true && item.proposalExpanded !== true;
 
       if (collapsed) {
         all.push({
           kind: 'proposalCollapsed',
           speaker: item.speaker,
           lines: totalLines,
+          id: item.proposalId ?? `${item.speaker}-?`,
         });
       } else {
+        const expandedFull = item.proposalExpanded === true;
         const boxWidth = Math.max(20, width);
         const innerCap = Math.max(4, boxWidth - 4);
 
-        // ┌── <speaker> proposal ───...───┐
-        const label = ` ${item.speaker} proposal `;
+        // ┌── <speaker> proposal [id] ───...───┐
+        const label = item.proposalId
+          ? ` ${item.speaker} proposal ${item.proposalId} `
+          : ` ${item.speaker} proposal `;
         const topLead = `──${label}`;
         const topFill = '─'.repeat(Math.max(0, boxWidth - 2 - topLead.length));
         all.push({
@@ -350,7 +398,8 @@ function tailChatLines(
           text: `┌${topLead}${topFill}┐`,
         });
 
-        const rawLines = body.split('\n').slice(0, PROPOSAL_SUMMARY_LINES);
+        const previewCount = expandedFull ? totalLines : PROPOSAL_SUMMARY_LINES;
+        const rawLines = body.split('\n').slice(0, previewCount);
         const wrapped: string[] = [];
         for (const bodyLine of rawLines) {
           if (bodyLine.length === 0) {
@@ -359,9 +408,13 @@ function tailChatLines(
             wrapped.push(...wrapLines(bodyLine, innerCap));
           }
         }
-        if (totalLines > PROPOSAL_SUMMARY_LINES) {
+        if (!expandedFull && totalLines > PROPOSAL_SUMMARY_LINES) {
+          const id = item.proposalId ?? '';
+          const hint = id
+            ? ` (/expand ${id} or see draft.md)`
+            : ' (see draft.md)';
           wrapped.push(
-            `… +${totalLines - PROPOSAL_SUMMARY_LINES} more (see draft.md)`,
+            `… +${totalLines - PROPOSAL_SUMMARY_LINES} more${hint}`,
           );
         }
         for (const w of wrapped) {
@@ -466,8 +519,8 @@ function ChatLine({ line }: { line: RenderLine }) {
   if (line.kind === 'proposalCollapsed') {
     return (
       <Text dimColor>
-        <Text color={colorFor(line.speaker)}>▸ {line.speaker}</Text> proposal —{' '}
-        {line.lines} lines (superseded)
+        <Text color={colorFor(line.speaker)}>▸ {line.id}</Text> — {line.lines}{' '}
+        lines (superseded, /expand {line.id})
       </Text>
     );
   }
@@ -541,6 +594,29 @@ function SpecSidebar({
       </Text>
     </Box>
   );
+}
+
+function collectProposals(state: State): ProposalRecord[] {
+  const out: ProposalRecord[] = [];
+  const counter: Record<string, number> = { claude: 0, codex: 0 };
+  for (const turn of state.transcript) {
+    if (turn.speaker !== 'claude' && turn.speaker !== 'codex') continue;
+    const res = parseAgentOutput(turn.content, { fallbackToCommentary: true });
+    if (!res.ok || !res.value.proposal) continue;
+    counter[turn.speaker]! += 1;
+    out.push({
+      id: `${turn.speaker}-${counter[turn.speaker]}`,
+      speaker: turn.speaker,
+      body: res.value.proposal.body,
+      accepted: false,
+    });
+  }
+  // Mark the latest proposal as accepted if state.accepted and matches the draft.
+  if (state.accepted && state.currentDraft && out.length > 0) {
+    const last = out[out.length - 1]!;
+    if (last.body === state.currentDraft.body) last.accepted = true;
+  }
+  return out;
 }
 
 function commentaryOf(raw: string): string {
