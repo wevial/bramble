@@ -152,6 +152,7 @@ export function App(props: AppProps) {
         />
         <SpecSidebar
           state={state}
+          sessionName={props.sessionName}
           width={sidebarWidth}
           bodyRows={chatBodyRows}
         />
@@ -564,10 +565,12 @@ function ChatLine({ line }: { line: RenderLine }) {
 
 function SpecSidebar({
   state,
+  sessionName,
   width,
   bodyRows,
 }: {
   state: State;
+  sessionName: string;
   width: number;
   bodyRows: number;
 }) {
@@ -594,7 +597,7 @@ function SpecSidebar({
       flexShrink={0}
       overflow="hidden"
     >
-      <Text bold>spec.md</Text>
+      <Text bold>spec-{sessionName}.md</Text>
       {hasAccepted ? (
         <>
           <Text color="green">✓ accepted</Text>

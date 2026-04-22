@@ -53,7 +53,7 @@ describe('App smoke', () => {
     expect(frame).toContain('codex:');
     expect(frame).toContain('CLAUDE_SAYS_HI');
     expect(frame).toContain('CODEX_REPLIES');
-    expect(frame).toContain('spec.md');
+    expect(frame).toContain('spec-test-session.md');
     expect(frame).toContain('2 turns');
 
     // Free-form (non-JSON) content shows up in debate.md as the live debate,
