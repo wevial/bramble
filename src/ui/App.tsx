@@ -2,10 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import type { Agent } from '../agents/agent.js';
 import { startDebate, type DebateHandle } from '../orchestrator/runner.js';
-import { writeAcceptedSpec } from '../docs/spec.js';
+import { writeAcceptedSpec, clearSpec } from '../docs/spec.js';
 import { writeDebate } from '../docs/debate.js';
+import { writeDraft, clearDraft } from '../docs/draft.js';
 import type { State, TurnRecord } from '../orchestrator/types.js';
-import { parseAgentOutput } from '../protocol/patch.js';
+import { parseAgentOutput, type AgentOutput } from '../protocol/patch.js';
 import { InputBox } from './InputBox.js';
 import { parseSlashCommand } from './commands.js';
 
@@ -16,6 +17,7 @@ export type AppProps = {
   transcriptPath: string;
   specPath: string;
   debatePath: string;
+  draftPath: string;
   onDone?: () => void;
   onQuit?: () => void;
 };
@@ -82,8 +84,13 @@ export function App(props: AppProps) {
           props.debatePath,
           next.transcript.map(t => ({ speaker: t.speaker, content: t.content })),
         );
-        if (next.currentDraft) {
+        // draft.md = whatever is in-debate; spec.md = accepted only.
+        if (next.accepted && next.currentDraft) {
           void writeAcceptedSpec(props.specPath, next.currentDraft.body);
+          void clearDraft(props.draftPath);
+        } else if (next.currentDraft) {
+          void writeDraft(props.draftPath, next.currentDraft.body);
+          void clearSpec(props.specPath);
         }
       },
     });
@@ -176,6 +183,10 @@ type ChatItem = {
   speaker: 'claude' | 'codex' | 'user';
   content: string;
   streaming?: boolean;
+  /** Parsed structured output (completed turns only). */
+  parsed?: AgentOutput;
+  /** True when a later turn from the same speaker has a proposal of its own. */
+  proposalSuperseded?: boolean;
 };
 
 function ChatLog({
@@ -195,9 +206,26 @@ function ChatLog({
   innerWidth: number;
   bodyRows: number;
 }) {
-  const items: ChatItem[] = transcript.map(t => ({
-    speaker: t.speaker,
-    content: commentaryOf(t.content),
+  // Build parsed items + supersession info: a proposal is superseded when a
+  // later turn from the same speaker also carries a proposal.
+  const parsedTurns = transcript.map(t => {
+    const res = parseAgentOutput(t.content, { fallbackToCommentary: true });
+    return { turn: t, parsed: res.ok ? res.value : undefined };
+  });
+  const lastProposalIdxBySpeaker: Record<string, number> = {};
+  parsedTurns.forEach((pt, i) => {
+    if (pt.parsed?.proposal && (pt.turn.speaker === 'claude' || pt.turn.speaker === 'codex')) {
+      lastProposalIdxBySpeaker[pt.turn.speaker] = i;
+    }
+  });
+
+  const items: ChatItem[] = parsedTurns.map((pt, i) => ({
+    speaker: pt.turn.speaker,
+    content: pt.parsed?.commentary ?? pt.turn.content,
+    parsed: pt.parsed,
+    proposalSuperseded:
+      pt.parsed?.proposal != null &&
+      lastProposalIdxBySpeaker[pt.turn.speaker] !== i,
   }));
   if (activeSpeaker === 'claude' && liveClaude.length > 0) {
     items.push({ speaker: 'claude', content: liveClaude, streaming: true });
@@ -233,7 +261,18 @@ type RenderLine =
       labelText: string;
       bodyText: string;
     }
-  | { kind: 'cont'; text: string };
+  | { kind: 'cont'; text: string }
+  | {
+      kind: 'proposalHeader';
+      speaker: 'claude' | 'codex';
+      collapsed: boolean;
+      lines: number;
+    }
+  | { kind: 'proposalBody'; text: string }
+  | { kind: 'proposalFooter' }
+  | { kind: 'verdict'; speaker: 'claude' | 'codex'; verdict: 'LGTM' | 'counter' };
+
+const PROPOSAL_SUMMARY_LINES = 6;
 
 function tailChatLines(
   items: ChatItem[],
@@ -244,11 +283,10 @@ function tailChatLines(
   for (let idx = 0; idx < items.length; idx++) {
     const item = items[idx]!;
     if (idx > 0) all.push({ kind: 'blank' });
-    const label = `${item.speaker}${item.streaming ? ' ●' : ''}: `;
+    const label = `${item.streaming ? '● ' : ''}${item.speaker}: `;
     const firstCap = Math.max(4, width - label.length);
     const contCap = Math.max(4, width - 2);
 
-    // Slice off the first firstCap chars of the first paragraph for the label line.
     const nl = item.content.indexOf('\n');
     const firstPara = nl >= 0 ? item.content.slice(0, nl) : item.content;
     const firstBody = firstPara.slice(0, firstCap);
@@ -266,6 +304,48 @@ function tailChatLines(
       for (const w of wrapLines(remainder, contCap)) {
         all.push({ kind: 'cont', text: '  ' + w });
       }
+    }
+
+    // Proposal block (only for agent turns).
+    if (
+      item.parsed?.proposal &&
+      (item.speaker === 'claude' || item.speaker === 'codex')
+    ) {
+      const body = item.parsed.proposal.body;
+      const totalLines = body.split('\n').length;
+      const collapsed = item.proposalSuperseded === true;
+      all.push({
+        kind: 'proposalHeader',
+        speaker: item.speaker,
+        collapsed,
+        lines: totalLines,
+      });
+      if (!collapsed) {
+        const preview = body.split('\n').slice(0, PROPOSAL_SUMMARY_LINES);
+        for (const bodyLine of preview) {
+          for (const w of wrapLines(bodyLine, Math.max(4, width - 4))) {
+            all.push({ kind: 'proposalBody', text: w });
+          }
+        }
+        if (totalLines > PROPOSAL_SUMMARY_LINES) {
+          all.push({
+            kind: 'proposalBody',
+            text: `… +${totalLines - PROPOSAL_SUMMARY_LINES} more lines (see draft.md)`,
+          });
+        }
+        all.push({ kind: 'proposalFooter' });
+      }
+    }
+
+    if (
+      item.parsed?.verdict &&
+      (item.speaker === 'claude' || item.speaker === 'codex')
+    ) {
+      all.push({
+        kind: 'verdict',
+        speaker: item.speaker,
+        verdict: item.parsed.verdict,
+      });
     }
   }
   return all.slice(-maxLines);
@@ -289,20 +369,62 @@ function wrapLines(text: string, width: number): string[] {
 function ChatLine({ line }: { line: RenderLine }) {
   if (line.kind === 'blank') return <Text> </Text>;
   if (line.kind === 'cont') return <Text>{line.text}</Text>;
+  if (line.kind === 'label') {
+    return (
+      <Text>
+        <Text color={colorFor(line.speaker)} bold>
+          {line.labelText}
+        </Text>
+        {line.bodyText}
+      </Text>
+    );
+  }
+  if (line.kind === 'proposalHeader') {
+    const c = colorFor(line.speaker);
+    if (line.collapsed) {
+      return (
+        <Text dimColor>
+          <Text color={c}>▸ {line.speaker}</Text> proposal — {line.lines} lines (superseded)
+        </Text>
+      );
+    }
+    return (
+      <Text>
+        <Text color={c}>┌── {line.speaker} proposal ──</Text>
+      </Text>
+    );
+  }
+  if (line.kind === 'proposalBody') {
+    return (
+      <Text>
+        <Text dimColor>│ </Text>
+        {line.text}
+      </Text>
+    );
+  }
+  if (line.kind === 'proposalFooter') {
+    return (
+      <Text dimColor>└──</Text>
+    );
+  }
+  // verdict
+  const color = line.verdict === 'LGTM' ? 'green' : 'yellow';
+  const tag = line.verdict === 'LGTM' ? '✓ LGTM' : '↺ counter';
   return (
     <Text>
-      <Text color={colorFor(line.speaker)} bold>
-        {line.labelText}
+      <Text color={colorFor(line.speaker)} dimColor>
+        {line.speaker}{' '}
       </Text>
-      {line.bodyText}
+      <Text color={color} bold>
+        {tag}
+      </Text>
     </Text>
   );
 }
 
 function SpecSidebar({ state, width }: { state: State; width: number }) {
   const { currentDraft, accepted, transcript } = state;
-  const status = accepted ? '✓ accepted' : currentDraft ? '◷ in debate' : '· no draft';
-  const statusColor = accepted ? 'green' : currentDraft ? 'yellow' : undefined;
+  const hasAccepted = accepted && currentDraft !== null;
   return (
     <Box
       flexDirection="column"
@@ -312,12 +434,17 @@ function SpecSidebar({ state, width }: { state: State; width: number }) {
       flexShrink={0}
     >
       <Text bold>spec.md</Text>
-      <Text color={statusColor}>{status}</Text>
-      {currentDraft && (
+      {hasAccepted ? (
         <>
-          <Text dimColor>by {currentDraft.proposer}</Text>
-          <Text wrap="wrap">{currentDraft.body}</Text>
+          <Text color="green">✓ accepted</Text>
+          <Text dimColor>by {currentDraft!.proposer}</Text>
+          <Text wrap="wrap">{currentDraft!.body}</Text>
         </>
+      ) : (
+        <Text dimColor>
+          (nothing accepted yet
+          {currentDraft ? ' — see draft.md for current proposal)' : ')'}
+        </Text>
       )}
       <Text dimColor>—</Text>
       <Text dimColor>

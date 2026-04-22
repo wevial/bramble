@@ -13,6 +13,7 @@ function paths() {
     transcriptPath: join(dir, 'transcript.jsonl'),
     specPath: join(dir, 'spec.md'),
     debatePath: join(dir, 'debate.md'),
+    draftPath: join(dir, 'draft.md'),
   };
 }
 

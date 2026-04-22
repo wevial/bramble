@@ -56,6 +56,7 @@ const { waitUntilExit } = render(
     transcriptPath={join(cwd, 'transcript.jsonl')}
     specPath={join(cwd, 'spec.md')}
     debatePath={join(cwd, 'debate.md')}
+    draftPath={join(cwd, 'draft.md')}
     onQuit={() => process.exit(0)}
   />,
 );
