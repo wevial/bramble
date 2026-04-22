@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { FakeAgent } from '../agents/fake.js';
-import { runDebate } from './runner.js';
+import { runDebate, startDebate } from './runner.js';
 
 function makeAgents() {
   const claude = new FakeAgent('claude');
@@ -54,6 +54,66 @@ describe('runDebate (Phase 0 walking skeleton)', () => {
     expect(lines).toHaveLength(2);
     expect(JSON.parse(lines[0]!).speaker).toBe('claude');
     expect(JSON.parse(lines[1]!).speaker).toBe('codex');
+  });
+
+  it('interject() aborts the in-flight turn and records a user turn', async () => {
+    const claude = new FakeAgent('claude');
+    const codex = new FakeAgent('codex');
+    // long response so we have time to interrupt it
+    claude.setResponse('a'.repeat(40));
+    claude.setTokenDelayMs(15);
+    codex.setResponse('codex-response');
+
+    const dir = mkdtempSync(join(tmpdir(), 'bramble-run-'));
+    const transcriptPath = join(dir, 'transcript.jsonl');
+
+    const handle = startDebate({
+      agents: { claude, codex },
+      prompt: 'x',
+      rounds: 2,
+      transcriptPath,
+    });
+
+    // let claude stream a bit, then interject
+    await new Promise(r => setTimeout(r, 40));
+    handle.interject('please consider security');
+
+    const final = await handle.done;
+
+    const userTurn = final.transcript.find(t => t.speaker === 'user');
+    expect(userTurn?.content).toBe('please consider security');
+
+    // claude's first turn was aborted, so its content should be short
+    const firstClaude = final.transcript.find(t => t.speaker === 'claude');
+    expect(firstClaude!.content.length).toBeLessThan(40);
+  });
+
+  it('feeds user interjections into the next agent turn context', async () => {
+    const claude = new FakeAgent('claude');
+    const codex = new FakeAgent('codex');
+    claude.setResponse('c1');
+    codex.setResponse('c2');
+
+    const receivedPrompts: string[] = [];
+    const wrappedCodex: typeof codex = Object.assign(Object.create(codex), {
+      stream(ctx: { prompt: string }, signal: AbortSignal) {
+        receivedPrompts.push(ctx.prompt);
+        return codex.stream(ctx, signal);
+      },
+    });
+
+    const dir = mkdtempSync(join(tmpdir(), 'bramble-run-'));
+    const handle = startDebate({
+      agents: { claude, codex: wrappedCodex },
+      prompt: 'base prompt',
+      rounds: 1,
+      transcriptPath: join(dir, 'transcript.jsonl'),
+    });
+
+    handle.interject('make it secure');
+    await handle.done;
+
+    expect(receivedPrompts.some(p => p.includes('make it secure'))).toBe(true);
   });
 
   it('invokes onToken for live streaming updates', async () => {

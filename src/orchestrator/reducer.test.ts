@@ -37,6 +37,36 @@ describe('reducer', () => {
     expect(s.transcript.map(t => t.speaker)).toEqual(['claude', 'codex', 'claude']);
   });
 
+  it('userInterjection appends a user turn to the transcript', () => {
+    const next = reducer(initialState, {
+      type: 'userInterjection',
+      content: 'slow down',
+      timestamp: 'tU',
+    });
+    expect(next.transcript).toEqual([
+      { speaker: 'user', content: 'slow down', timestamp: 'tU' },
+    ]);
+    // does not change the speaker (user interjections don't "take the floor"
+    // in the alternation sense; they just land in the transcript + get fed
+    // into the next agent's context).
+    expect(next.speaker).toBe('idle');
+  });
+
+  it('userInterjection preserves speaker when an agent is mid-turn', () => {
+    const mid = reducer(initialState, { type: 'turnStarted', speaker: 'claude' });
+    const next = reducer(mid, {
+      type: 'userInterjection',
+      content: 'hold on',
+      timestamp: 'tU',
+    });
+    // user interjection does not flip speaker — the caller aborts the agent
+    // separately. The reducer just records that the user said something.
+    expect(next.speaker).toBe('claude');
+    expect(next.transcript).toEqual([
+      { speaker: 'user', content: 'hold on', timestamp: 'tU' },
+    ]);
+  });
+
   it('is a pure function (does not mutate prior state)', () => {
     const before = { ...initialState, transcript: [] as any[] };
     const after = reducer(before, {
