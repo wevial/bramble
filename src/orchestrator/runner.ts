@@ -123,8 +123,32 @@ export async function runDebate(opts: RunDebateOptions): Promise<State> {
 }
 
 function buildPrompt(basePrompt: string, state: State): string {
+  const parts: string[] = [`# Goal\n\n${basePrompt}`];
+
   const userTurns = state.transcript.filter(t => t.speaker === 'user');
-  if (userTurns.length === 0) return basePrompt;
-  const userNotes = userTurns.map(t => `- ${t.content}`).join('\n');
-  return `${basePrompt}\n\nUser constraints:\n${userNotes}`;
+  if (userTurns.length > 0) {
+    parts.push(
+      `# User constraints\n\n${userTurns.map(t => `- ${t.content}`).join('\n')}`,
+    );
+  }
+
+  if (state.currentDraft) {
+    parts.push(
+      `# Current draft (by ${state.currentDraft.proposer})\n\n${state.currentDraft.body}`,
+    );
+  }
+
+  const debateTurns = state.transcript.filter(
+    t => t.speaker === 'claude' || t.speaker === 'codex',
+  );
+  if (debateTurns.length > 0) {
+    const lines = debateTurns.map(t => `## ${t.speaker}\n\n${t.content}`);
+    parts.push(`# Debate so far\n\n${lines.join('\n\n')}`);
+  }
+
+  parts.push(
+    `# Your turn\n\nRespond now. If you want to revise the current draft, emit a new <patch> with the full body. If you accept it, emit verdict "LGTM". Otherwise critique it as commentary and optionally verdict "counter".`,
+  );
+
+  return parts.join('\n\n');
 }
