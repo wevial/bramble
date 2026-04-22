@@ -19,4 +19,5 @@ debate-*.md
 draft-*.md
 drafts-*.md
 transcript-*.jsonl
+prompt-*.txt
 .bramble/

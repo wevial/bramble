@@ -8,6 +8,8 @@ import { ClaudeAgent } from './agents/claude.js';
 import { CodexAgent } from './agents/codex.js';
 import { App } from './ui/App.js';
 import { generateSessionName } from './util/name.js';
+import { readTranscript } from './docs/transcript.js';
+import { rehydrateState } from './orchestrator/replay.js';
 
 const argv = process.argv.slice(2);
 let rounds = 3;
@@ -16,6 +18,7 @@ let claudeModel: string | undefined;
 let codexModel: string | undefined;
 let codexEffort: string | undefined;
 let sessionName: string | undefined;
+let resumeName: string | undefined;
 const positional: string[] = [];
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
@@ -43,6 +46,9 @@ for (let i = 0; i < argv.length; i++) {
   } else if (a === '--name' && argv[i + 1]) {
     sessionName = argv[i + 1];
     i++;
+  } else if (a === '--resume' && argv[i + 1]) {
+    resumeName = argv[i + 1];
+    i++;
   } else {
     positional.push(a!);
   }
@@ -50,7 +56,27 @@ for (let i = 0; i < argv.length; i++) {
 
 const prompt = positional.join(' ');
 const cwd = process.cwd();
-const name = sessionName ?? generateSessionName();
+// --resume <name> takes over the session name; --name overrides otherwise.
+const name = resumeName ?? sessionName ?? generateSessionName();
+
+const transcriptPath = join(cwd, `transcript-${name}.jsonl`);
+const resumedTurns = resumeName ? await readTranscript(transcriptPath) : [];
+const resumedState =
+  resumedTurns.length > 0 ? rehydrateState(resumedTurns) : undefined;
+// If resuming, the original prompt lives in a sidecar file so we can rebuild
+// the per-turn context. If not present, fall back to a short placeholder —
+// the user can see the transcript but any new turns will have a weaker
+// "goal" context. (We start writing prompt.txt below on fresh runs.)
+const promptSidecarPath = join(cwd, `prompt-${name}.txt`);
+let resumedPrompt: string | undefined;
+if (resumeName) {
+  try {
+    const { readFile } = await import('node:fs/promises');
+    resumedPrompt = (await readFile(promptSidecarPath, 'utf8')).trim();
+  } catch {
+    resumedPrompt = undefined;
+  }
+}
 
 let claude: Agent;
 let codex: Agent;
@@ -86,10 +112,12 @@ if (real) {
 const { waitUntilExit } = render(
   <App
     agents={{ claude, codex }}
-    prompt={prompt}
+    prompt={prompt || resumedPrompt}
     sessionName={name}
     rounds={rounds}
-    transcriptPath={join(cwd, `transcript-${name}.jsonl`)}
+    initialState={resumedState}
+    promptSidecarPath={promptSidecarPath}
+    transcriptPath={transcriptPath}
     specPath={join(cwd, `spec-${name}.md`)}
     debatePath={join(cwd, `debate-${name}.md`)}
     draftPath={join(cwd, `draft-${name}.md`)}

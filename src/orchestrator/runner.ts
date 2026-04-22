@@ -10,6 +10,8 @@ export type RunDebateOptions = {
   prompt: string;
   rounds: number;
   transcriptPath: string;
+  /** Optional starting state — used for --resume. Defaults to initialState. */
+  initialState?: State;
   onToken?: (speaker: 'claude' | 'codex', text: string) => void;
   onState?: (state: State) => void;
   signal?: AbortSignal;
@@ -29,7 +31,7 @@ export type DebateHandle = {
 };
 
 export function startDebate(opts: RunDebateOptions): DebateHandle {
-  let state: State = { ...initialState };
+  let state: State = opts.initialState ?? { ...initialState };
   let turnController: AbortController | null = null;
   let rounds = Math.max(1, Math.floor(opts.rounds));
   const outer = new AbortController();
@@ -44,7 +46,14 @@ export function startDebate(opts: RunDebateOptions): DebateHandle {
   };
 
   const done = (async () => {
+    // Surface any resumed state so the UI renders the prior transcript
+    // before the first new turn begins.
+    if (state.transcript.length > 0 || state.currentDraft !== null) {
+      opts.onState?.(state);
+    }
     let i = 0;
+    // Accept short-circuit for already-accepted resumes: no more turns needed.
+    if (state.accepted) return state;
     while (i < rounds * 2) {
       if (outer.signal.aborted) break;
       const speaker = nextSpeaker(state);

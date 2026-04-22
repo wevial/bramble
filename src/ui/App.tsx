@@ -17,6 +17,10 @@ export type AppProps = {
   prompt?: string;
   sessionName: string;
   rounds: number;
+  /** Optional starting state from --resume. */
+  initialState?: State;
+  /** Where to save the prompt so future --resume runs can restore context. */
+  promptSidecarPath?: string;
   transcriptPath: string;
   specPath: string;
   debatePath: string;
@@ -32,12 +36,14 @@ export function App(props: AppProps) {
     initialPrompt.length > 0 ? 'debate' : 'prompt',
   );
   const [prompt, setPrompt] = useState(initialPrompt);
-  const [state, setState] = useState<State>({
-    speaker: 'idle',
-    transcript: [],
-    currentDraft: null,
-    accepted: false,
-  });
+  const [state, setState] = useState<State>(
+    props.initialState ?? {
+      speaker: 'idle',
+      transcript: [],
+      currentDraft: null,
+      accepted: false,
+    },
+  );
   const [done, setDone] = useState(false);
   const [status, setStatus] = useState<string>('starting…');
   const [rounds, setRounds] = useState(props.rounds);
@@ -73,11 +79,18 @@ export function App(props: AppProps) {
 
   useEffect(() => {
     if (phase !== 'debate') return;
+    if (props.promptSidecarPath && prompt) {
+      // Persist the goal so a future --resume can restore per-turn context.
+      import('node:fs/promises')
+        .then(fs => fs.writeFile(props.promptSidecarPath!, prompt, 'utf8'))
+        .catch(() => {});
+    }
     const handle = startDebate({
       agents: props.agents,
       prompt,
       rounds: props.rounds,
       transcriptPath: props.transcriptPath,
+      initialState: props.initialState,
       onState: next => {
         setState(next);
         void writeDebate(
