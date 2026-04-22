@@ -623,6 +623,15 @@ function SpecSidebar({
   );
 }
 
+const BRAMBLE_BANNER = [
+  '    ▄▄▄                            ▄▄       ',
+  '   ██▀▀█▄                     █▄    ██      ',
+  '   ██ ▄█▀ ▄          ▄        ██    ██      ',
+  '   ██▀▀█▄ ████▄▄▀▀█▄ ███▄███▄ ████▄ ██ ▄█▀█▄',
+  ' ▄ ██  ▄█ ██   ▄█▀██ ██ ██ ██ ██ ██ ██ ██▄█▀',
+  ' ▀██████▀▄█▀  ▄▀█▄██▄██ ██ ▀█▄████▀▄██▄▀█▄▄▄',
+];
+
 function PromptEntry({
   sessionName,
   onSubmit,
@@ -635,7 +644,7 @@ function PromptEntry({
   const { stdout } = useStdout();
   const cols = stdout?.columns ?? 80;
   const rows = stdout?.rows ?? 24;
-  const cardWidth = Math.max(40, Math.min(64, cols - 8));
+  const cardWidth = Math.max(52, Math.min(72, cols - 8));
 
   return (
     <Box
@@ -652,11 +661,12 @@ function PromptEntry({
         paddingY={1}
         width={cardWidth}
       >
-        <Box justifyContent="center">
-          <Text bold color="green">
-            ✦ bramble
-          </Text>
-        </Box>
+        {BRAMBLE_BANNER.map((line, i) => (
+          <Box key={i} justifyContent="center">
+            <Text color="green">{line}</Text>
+          </Box>
+        ))}
+        <Text> </Text>
         <Box justifyContent="center">
           <Text dimColor>session: {sessionName}</Text>
         </Box>
