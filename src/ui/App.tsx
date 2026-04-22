@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Box, Text } from 'ink';
+import { Box, Text, useStdout } from 'ink';
 import type { Agent } from '../agents/agent.js';
 import { startDebate, type DebateHandle } from '../orchestrator/runner.js';
 import { appendSpecTurn } from '../docs/spec.js';
@@ -28,9 +28,36 @@ export function App(props: AppProps) {
   const [status, setStatus] = useState<string>('starting…');
   const handleRef = useRef<DebateHandle | null>(null);
   const lastTurnCountRef = useRef(0);
+  const { stdout } = useStdout();
+  const [dims, setDims] = useState({
+    rows: stdout?.rows ?? 24,
+    columns: stdout?.columns ?? 80,
+  });
+
+  useEffect(() => {
+    if (!stdout) return;
+    const onResize = () => setDims({ rows: stdout.rows, columns: stdout.columns });
+    stdout.on('resize', onResize);
+    return () => {
+      stdout.off('resize', onResize);
+    };
+  }, [stdout]);
 
   useEffect(() => {
     let currentSpeaker: 'claude' | 'codex' | null = null;
+    // Token buffer: tokens accumulate here and flush to React state on a
+    // timer so the UI updates in smooth chunks instead of per-char flicker.
+    const pending = { claude: '', codex: '' };
+    const FLUSH_MS = 80;
+    const flush = setInterval(() => {
+      if (pending.claude === '' && pending.codex === '') return;
+      setLive(prev => ({
+        claude: prev.claude + pending.claude,
+        codex: prev.codex + pending.codex,
+      }));
+      pending.claude = '';
+      pending.codex = '';
+    }, FLUSH_MS);
 
     const handle = startDebate({
       agents: props.agents,
@@ -42,7 +69,7 @@ export function App(props: AppProps) {
           currentSpeaker = who;
           setLive(prev => ({ ...prev, [who]: '' }));
         }
-        setLive(prev => ({ ...prev, [who]: prev[who] + text }));
+        pending[who] += text;
       },
       onState: next => {
         setState(next);
@@ -61,37 +88,51 @@ export function App(props: AppProps) {
     handleRef.current = handle;
 
     handle.done.then(() => {
+      // final flush so any tail tokens land
+      setLive(prev => ({
+        claude: prev.claude + pending.claude,
+        codex: prev.codex + pending.codex,
+      }));
+      pending.claude = '';
+      pending.codex = '';
       setDone(true);
       setStatus('done');
       props.onDone?.();
     });
 
-    return () => handle.abort();
+    return () => {
+      clearInterval(flush);
+      handle.abort();
+    };
   }, []);
 
   const claudeTurns = state.transcript.filter(t => t.speaker === 'claude');
   const codexTurns = state.transcript.filter(t => t.speaker === 'codex');
   const activeSpeaker = state.speaker;
 
+  const sidebarWidth = Math.max(20, Math.min(36, Math.floor(dims.columns * 0.28)));
+
   return (
-    <Box flexDirection="column">
-      <Box>
+    <Box flexDirection="column" width={dims.columns} height={dims.rows}>
+      <Box flexGrow={1}>
         <Box flexDirection="column" flexGrow={1}>
           <SpeakerPane
             title="Claude"
             active={activeSpeaker === 'claude'}
             live={live.claude}
             lastTurn={last(claudeTurns)}
+            flex={activeSpeaker === 'claude' ? 2 : 1}
           />
           <SpeakerPane
             title="Codex"
             active={activeSpeaker === 'codex'}
             live={live.codex}
             lastTurn={last(codexTurns)}
+            flex={activeSpeaker === 'codex' ? 2 : 1}
           />
           <DebateStrip transcript={state.transcript} />
         </Box>
-        <SpecSidebar transcript={state.transcript} />
+        <SpecSidebar transcript={state.transcript} width={sidebarWidth} />
       </Box>
 
       <Box borderStyle="single" paddingX={1}>
@@ -121,20 +162,30 @@ function SpeakerPane({
   active,
   live,
   lastTurn,
+  flex,
 }: {
   title: string;
   active: boolean;
   live: string;
   lastTurn: TurnRecord | undefined;
+  flex: number;
 }) {
   const body = active ? live : lastTurn?.content ?? '(no turn yet)';
   return (
-    <Box flexDirection="column" borderStyle="single" paddingX={1}>
+    <Box
+      flexDirection="column"
+      borderStyle="single"
+      paddingX={1}
+      flexGrow={flex}
+      flexShrink={1}
+      flexBasis={0}
+      overflow="hidden"
+    >
       <Text bold color={active ? 'green' : undefined}>
         {title}
         {active ? ' ●' : lastTurn ? ' (last turn)' : ''}
       </Text>
-      <Text>{body}</Text>
+      <Text wrap="wrap">{body}</Text>
     </Box>
   );
 }
@@ -159,9 +210,9 @@ function DebateStrip({ transcript }: { transcript: TurnRecord[] }) {
   );
 }
 
-function SpecSidebar({ transcript }: { transcript: TurnRecord[] }) {
+function SpecSidebar({ transcript, width }: { transcript: TurnRecord[]; width: number }) {
   return (
-    <Box flexDirection="column" borderStyle="single" paddingX={1} width={28}>
+    <Box flexDirection="column" borderStyle="single" paddingX={1} width={width} flexShrink={0}>
       <Text bold>spec.md</Text>
       <Text dimColor>{transcript.length} turns recorded</Text>
       <Text dimColor>(sections land in Phase 2)</Text>
