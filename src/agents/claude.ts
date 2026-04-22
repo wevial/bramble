@@ -1,0 +1,86 @@
+import type { Agent, AgentName, StreamTail, Token, TurnContext } from './agent.js';
+import { streamProcessLines } from './subprocess.js';
+import { parseClaudeEvent } from './claude-events.js';
+import { buildAgentOutputFromModel } from '../protocol/patchBlock.js';
+
+export type ClaudeAgentOptions = {
+  /** Override the line-stream source for testing. Default spawns `claude`. */
+  streamLines?: (prompt: string, signal: AbortSignal) => AsyncIterable<string>;
+  /** Appended to the user prompt. Defaults to the patch-protocol instructions. */
+  systemInstructions?: string;
+};
+
+const DEFAULT_PROTOCOL = `You are one of two collaborators in a spec-writing debate. Respond in two parts:
+1. Free-form commentary explaining your thinking, reacting to the current draft, proposing or critiquing.
+2. Followed by a <patch> block containing a JSON object with optional fields: { "proposal": { "body": "<full spec markdown>" }, "verdict": "LGTM" | "counter" }.
+
+Emit <patch>...</patch> only if you have a concrete proposal or a verdict. No <patch> block means commentary-only.
+Do not wrap the JSON in code fences. The block must be literally <patch>...</patch>.`;
+
+function defaultSpawn(prompt: string, signal: AbortSignal): AsyncIterable<string> {
+  return streamProcessLines(
+    {
+      cmd: 'claude',
+      args: [
+        '-p',
+        prompt,
+        '--output-format',
+        'stream-json',
+        '--verbose',
+        '--include-partial-messages',
+      ],
+    },
+    signal,
+  );
+}
+
+export class ClaudeAgent implements Agent {
+  readonly name: AgentName = 'claude';
+  private readonly streamLines: (
+    prompt: string,
+    signal: AbortSignal,
+  ) => AsyncIterable<string>;
+  private readonly systemInstructions: string;
+
+  constructor(opts: ClaudeAgentOptions = {}) {
+    this.streamLines =
+      opts.streamLines ?? ((p, s) => defaultSpawn(p, s));
+    this.systemInstructions = opts.systemInstructions ?? DEFAULT_PROTOCOL;
+  }
+
+  async *stream(
+    ctx: TurnContext,
+    signal: AbortSignal,
+  ): AsyncGenerator<Token, StreamTail | void, void> {
+    const prompt = `${this.systemInstructions}\n\n---\n\n${ctx.prompt}`;
+    let accumulated = '';
+    let finalResult: string | null = null;
+
+    for await (const line of this.streamLines(prompt, signal)) {
+      if (signal.aborted) break;
+      const evt = parseClaudeEvent(line);
+      if (evt === null) continue;
+      if (evt.kind === 'text') {
+        accumulated += evt.text;
+        yield { text: evt.text };
+      } else {
+        // kind: 'result'
+        finalResult = evt.result;
+      }
+    }
+
+    const fullText = finalResult ?? accumulated;
+    const built = buildAgentOutputFromModel(fullText);
+    if (built.ok) {
+      return { raw: JSON.stringify(built.value) };
+    }
+    // Fall back to commentary-only so the runner still gets valid JSON.
+    return {
+      raw: JSON.stringify({
+        commentary: fullText,
+        proposal: null,
+        verdict: null,
+      }),
+    };
+  }
+}
