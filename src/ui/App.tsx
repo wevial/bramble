@@ -214,8 +214,9 @@ export function App(props: AppProps) {
       </Box>
       <Box paddingX={1}>
         <Text dimColor>
-          {props.sessionName} · {done ? 'done' : `speaker: ${activeSpeaker}`} ·
-          rounds {rounds} · {status} · /rounds · /drafts · /expand · /quit
+          <Text color="green">✦ bramble</Text> · {props.sessionName} ·{' '}
+          {done ? 'done' : `speaker: ${activeSpeaker}`} · rounds {rounds} ·{' '}
+          {status} · /rounds · /drafts · /expand · /quit
         </Text>
       </Box>
     </Box>

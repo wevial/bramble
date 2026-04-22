@@ -106,6 +106,17 @@ describe('reducer', () => {
     expect(next.currentDraft).toBeNull();
   });
 
+  it('verdictReceived: self-LGTM on own proposal is ignored', () => {
+    let s = initialState;
+    s = reducer(s, { type: 'proposalReceived', speaker: 'claude', body: 'mine' });
+    // Claude proposed, claude can't LGTM their own draft.
+    s = reducer(s, { type: 'verdictReceived', speaker: 'claude', verdict: 'LGTM' });
+    expect(s.accepted).toBe(false);
+    // Codex LGTM after → accepted.
+    s = reducer(s, { type: 'verdictReceived', speaker: 'codex', verdict: 'LGTM' });
+    expect(s.accepted).toBe(true);
+  });
+
   it('verdictReceived: counter clears no state (debate continues)', () => {
     let s = initialState;
     s = reducer(s, { type: 'proposalReceived', speaker: 'claude', body: 'x' });

@@ -31,7 +31,11 @@ export function reducer(state: State, action: Action): State {
         currentDraft: { body: action.body, proposer: action.speaker },
       };
     case 'verdictReceived':
-      if (action.verdict === 'LGTM' && state.currentDraft !== null) {
+      if (
+        action.verdict === 'LGTM' &&
+        state.currentDraft !== null &&
+        state.currentDraft.proposer !== action.speaker
+      ) {
         return { ...state, accepted: true };
       }
       return state;

@@ -18,7 +18,7 @@ const DEFAULT_PROTOCOL = `You are one of two collaborators in a spec-writing deb
 
 If there is no current draft yet, open with your own proposal — do NOT ask the user for one. The whole point of this turn is to move the spec forward. Emit a concrete <patch> with a proposal body.
 
-If there is a current draft, either accept it (verdict "LGTM"), counter-propose with a revised body, or critique it as commentary.
+If there is a current draft, either accept it (verdict "LGTM"), counter-propose with a revised body, or critique it as commentary. You MAY NOT "LGTM" a draft you proposed yourself — only the other agent can accept your proposal.
 
 Emit <patch>...</patch> only if you have a concrete proposal or a verdict. No <patch> block means commentary-only.
 Do not wrap the JSON in code fences. The block must be literally <patch>...</patch>.`;
