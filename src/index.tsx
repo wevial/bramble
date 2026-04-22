@@ -5,19 +5,37 @@ import { join } from 'node:path';
 import { FakeAgent } from './agents/fake.js';
 import { App } from './ui/App.js';
 
-// Phase 1 entry: uses FakeAgents so the walking skeleton runs without API keys.
-// Real Claude/Codex wiring lands in Task #4.
+// Phase 2 entry: FakeAgents speak the structured patch protocol so the flow
+// (proposal -> LGTM -> accepted draft in spec.md) is visible end-to-end.
 
 const claude = new FakeAgent('claude');
 const codex = new FakeAgent('codex');
+
 claude.setResponse(
-  'I propose we start with a simple email+password auth scheme and add OAuth later. It ships in a week.',
+  JSON.stringify({
+    commentary:
+      'Proposing a minimal auth spec to start. Email+password, add OAuth later.',
+    proposal: {
+      body:
+        '# Authentication\n\n' +
+        '- Email + password signup\n' +
+        '- bcrypt password hashing (cost 12)\n' +
+        '- 30-day session tokens, rotated on each request\n' +
+        '- Rate limit: 5 attempts / 15 min per IP',
+    },
+  }),
 );
+
 codex.setResponse(
-  'Counter: we should support OAuth from day one. Email-only locks out social users and forces a rewrite later.',
+  JSON.stringify({
+    commentary:
+      'Good starting point. I have a small OAuth quibble but the core draft is sound — LGTM.',
+    verdict: 'LGTM',
+  }),
 );
-claude.setTokenDelayMs(18);
-codex.setTokenDelayMs(18);
+
+claude.setTokenDelayMs(10);
+codex.setTokenDelayMs(10);
 
 const prompt = process.argv.slice(2).join(' ') || 'Design an authentication system';
 const cwd = process.cwd();

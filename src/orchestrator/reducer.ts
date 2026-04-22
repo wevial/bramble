@@ -25,5 +25,15 @@ export function reducer(state: State, action: Action): State {
           { speaker: 'user', content: action.content, timestamp: action.timestamp },
         ],
       };
+    case 'proposalReceived':
+      return {
+        ...state,
+        currentDraft: { body: action.body, proposer: action.speaker },
+      };
+    case 'verdictReceived':
+      if (action.verdict === 'LGTM' && state.currentDraft !== null) {
+        return { ...state, accepted: true };
+      }
+      return state;
   }
 }

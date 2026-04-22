@@ -116,6 +116,80 @@ describe('runDebate (Phase 0 walking skeleton)', () => {
     expect(receivedPrompts.some(p => p.includes('make it secure'))).toBe(true);
   });
 
+  it('parses structured JSON and dispatches proposalReceived + verdictReceived', async () => {
+    const claude = new FakeAgent('claude');
+    const codex = new FakeAgent('codex');
+    claude.setResponse(
+      JSON.stringify({
+        commentary: 'starting with email+pw',
+        proposal: { body: '# Auth\n\nemail+password' },
+      }),
+    );
+    codex.setResponse(
+      JSON.stringify({
+        commentary: 'lgtm',
+        verdict: 'LGTM',
+      }),
+    );
+
+    const dir = mkdtempSync(join(tmpdir(), 'bramble-run-'));
+    const final = await runDebate({
+      agents: { claude, codex },
+      prompt: 'design auth',
+      rounds: 1,
+      transcriptPath: join(dir, 'transcript.jsonl'),
+    });
+
+    expect(final.currentDraft?.body).toBe('# Auth\n\nemail+password');
+    expect(final.currentDraft?.proposer).toBe('claude');
+    expect(final.accepted).toBe(true);
+  });
+
+  it('treats unstructured responses as commentary-only (no draft changes)', async () => {
+    const claude = new FakeAgent('claude');
+    const codex = new FakeAgent('codex');
+    claude.setResponse('just some free-form text');
+    codex.setResponse('more free text');
+
+    const dir = mkdtempSync(join(tmpdir(), 'bramble-run-'));
+    const final = await runDebate({
+      agents: { claude, codex },
+      prompt: 'x',
+      rounds: 1,
+      transcriptPath: join(dir, 'transcript.jsonl'),
+    });
+
+    expect(final.currentDraft).toBeNull();
+    expect(final.accepted).toBe(false);
+    // transcript still records the free-form content
+    expect(final.transcript).toHaveLength(2);
+  });
+
+  it('stops early once a draft is accepted, even with rounds remaining', async () => {
+    const claude = new FakeAgent('claude');
+    const codex = new FakeAgent('codex');
+    claude.setResponse(
+      JSON.stringify({
+        commentary: 'draft',
+        proposal: { body: 'accepted body' },
+      }),
+    );
+    codex.setResponse(
+      JSON.stringify({ commentary: 'lgtm', verdict: 'LGTM' }),
+    );
+
+    const dir = mkdtempSync(join(tmpdir(), 'bramble-run-'));
+    const final = await runDebate({
+      agents: { claude, codex },
+      prompt: 'x',
+      rounds: 5, // 10 turns available but should stop after 2
+      transcriptPath: join(dir, 'transcript.jsonl'),
+    });
+
+    expect(final.accepted).toBe(true);
+    expect(final.transcript.length).toBe(2);
+  });
+
   it('invokes onToken for live streaming updates', async () => {
     const { claude, codex } = makeAgents();
     const dir = mkdtempSync(join(tmpdir(), 'bramble-run-'));

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { appendSpecTurn, clearSpec, readSpec } from './spec.js';
+import { appendSpecTurn, clearSpec, readSpec, writeAcceptedSpec } from './spec.js';
 
 let dir: string;
 let file: string;
@@ -32,6 +32,16 @@ describe('spec.md (Phase 1: append-only placeholder)', () => {
 
   it('readSpec returns empty when file does not exist', async () => {
     expect(await readSpec(file)).toBe('');
+  });
+
+  it('writeAcceptedSpec replaces the whole file with the accepted body', async () => {
+    await appendSpecTurn(file, { speaker: 'claude', content: 'draft 1' });
+    await appendSpecTurn(file, { speaker: 'codex', content: 'draft 2' });
+    await writeAcceptedSpec(file, '# Auth\n\nFinal agreed content.');
+    const contents = await readSpec(file);
+    expect(contents).toBe('# Auth\n\nFinal agreed content.');
+    expect(contents).not.toContain('draft 1');
+    expect(contents).not.toContain('draft 2');
   });
 
   it('clearSpec empties the file without deleting it', async () => {

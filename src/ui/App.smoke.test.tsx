@@ -24,7 +24,7 @@ async function waitFor(pred: () => boolean, ms = 3000): Promise<void> {
 }
 
 describe('App smoke', () => {
-  it('renders both speakers, spec sidebar, and persists spec.md + debate.md', async () => {
+  it('renders both speakers, spec sidebar, and persists debate.md', async () => {
     const claude = new FakeAgent('claude');
     const codex = new FakeAgent('codex');
     claude.setResponse('CLAUDE_SAYS_HI');
@@ -51,16 +51,51 @@ describe('App smoke', () => {
     expect(frame).toContain('Codex');
     expect(frame).toContain('spec.md');
     expect(frame).toContain('debate');
-    expect(frame).toContain('2 turns recorded');
+    expect(frame).toContain('2 turns');
 
-    expect(existsSync(p.specPath)).toBe(true);
+    // Free-form (non-JSON) content shows up in debate.md as the live debate,
+    // but not in spec.md (which only holds draft/accepted content now).
     expect(existsSync(p.debatePath)).toBe(true);
-    const spec = readFileSync(p.specPath, 'utf8');
-    expect(spec).toContain('## claude');
-    expect(spec).toContain('CLAUDE_SAYS_HI');
-    expect(spec).toContain('## codex');
-    expect(spec).toContain('CODEX_REPLIES');
+    const debate = readFileSync(p.debatePath, 'utf8');
+    expect(debate).toContain('## claude');
+    expect(debate).toContain('CLAUDE_SAYS_HI');
+    expect(debate).toContain('## codex');
+    expect(debate).toContain('CODEX_REPLIES');
 
+    unmount();
+  });
+
+  it('writes the accepted draft to spec.md on LGTM', async () => {
+    const claude = new FakeAgent('claude');
+    const codex = new FakeAgent('codex');
+    claude.setResponse(
+      JSON.stringify({
+        commentary: 'propose',
+        proposal: { body: '# Auth\n\nemail+password' },
+      }),
+    );
+    codex.setResponse(
+      JSON.stringify({ commentary: 'lgtm', verdict: 'LGTM' }),
+    );
+
+    const p = paths();
+    let done = false;
+    const { unmount } = render(
+      <App
+        agents={{ claude, codex }}
+        prompt="x"
+        rounds={1}
+        {...p}
+        onDone={() => {
+          done = true;
+        }}
+      />,
+    );
+
+    await waitFor(() => done);
+
+    const spec = readFileSync(p.specPath, 'utf8');
+    expect(spec).toBe('# Auth\n\nemail+password');
     unmount();
   });
 
@@ -95,9 +130,9 @@ describe('App smoke', () => {
 
     await waitFor(() => done);
 
-    const spec = readFileSync(p.specPath, 'utf8');
-    expect(spec).toContain('## user');
-    expect(spec).toContain('wait');
+    const debate = readFileSync(p.debatePath, 'utf8');
+    expect(debate).toContain('## user');
+    expect(debate).toContain('wait');
 
     unmount();
   });

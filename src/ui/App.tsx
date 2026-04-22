@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import type { Agent } from '../agents/agent.js';
 import { startDebate, type DebateHandle } from '../orchestrator/runner.js';
-import { appendSpecTurn } from '../docs/spec.js';
+import { appendSpecTurn, writeAcceptedSpec } from '../docs/spec.js';
 import { writeDebate } from '../docs/debate.js';
 import type { State, TurnRecord } from '../orchestrator/types.js';
 import { InputBox } from './InputBox.js';
@@ -73,16 +73,20 @@ export function App(props: AppProps) {
       },
       onState: next => {
         setState(next);
-        // persist any newly-completed turns to spec.md + debate.md
-        for (let i = lastTurnCountRef.current; i < next.transcript.length; i++) {
-          const t = next.transcript[i]!;
-          void appendSpecTurn(props.specPath, { speaker: t.speaker, content: t.content });
-        }
+        // persist any newly-completed turns to transcript + debate.md (live)
         lastTurnCountRef.current = next.transcript.length;
         void writeDebate(
           props.debatePath,
           next.transcript.map(t => ({ speaker: t.speaker, content: t.content })),
         );
+        // Once a draft is accepted, spec.md gets the accepted body (replacing
+        // anything that was appended turn-by-turn during the debate).
+        if (next.accepted && next.currentDraft) {
+          void writeAcceptedSpec(props.specPath, next.currentDraft.body);
+        } else if (next.currentDraft) {
+          // Live preview of the current draft in spec.md while debating.
+          void writeAcceptedSpec(props.specPath, next.currentDraft.body);
+        }
       },
     });
     handleRef.current = handle;
@@ -130,7 +134,7 @@ export function App(props: AppProps) {
           />
           <DebateStrip transcript={state.transcript} />
         </Box>
-        <SpecSidebar transcript={state.transcript} width={sidebarWidth} />
+        <SpecSidebar state={state} width={sidebarWidth} />
       </Box>
 
       <Box borderStyle="single" paddingX={1}>
@@ -206,14 +210,34 @@ function DebateStrip({ transcript }: { transcript: TurnRecord[] }) {
   );
 }
 
-function SpecSidebar({ transcript, width }: { transcript: TurnRecord[]; width: number }) {
+function SpecSidebar({
+  state,
+  width,
+}: {
+  state: State;
+  width: number;
+}) {
+  const { currentDraft, accepted, transcript } = state;
+  const status = accepted ? '✓ accepted' : currentDraft ? '◷ in debate' : '· no draft';
+  const statusColor = accepted ? 'green' : currentDraft ? 'yellow' : undefined;
   return (
     <Box flexDirection="column" borderStyle="single" paddingX={1} width={width} flexShrink={0}>
       <Text bold>spec.md</Text>
-      <Text dimColor>{transcript.length} turns recorded</Text>
-      <Text dimColor>(sections land in Phase 2)</Text>
+      <Text color={statusColor}>{status}</Text>
+      {currentDraft && (
+        <>
+          <Text dimColor>by {currentDraft.proposer}</Text>
+          <Text>{truncate(currentDraft.body, width * 6)}</Text>
+        </>
+      )}
+      <Text dimColor>—</Text>
+      <Text dimColor>{transcript.length} turn{transcript.length === 1 ? '' : 's'}</Text>
     </Box>
   );
+}
+
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max - 1) + '…' : s;
 }
 
 function colorFor(speaker: 'claude' | 'codex' | 'user'): string {

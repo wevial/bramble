@@ -17,3 +17,7 @@ export async function readSpec(path: string): Promise<string> {
 export async function clearSpec(path: string): Promise<void> {
   await writeFile(path, '', 'utf8');
 }
+
+export async function writeAcceptedSpec(path: string, body: string): Promise<void> {
+  await writeFile(path, body, 'utf8');
+}

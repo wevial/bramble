@@ -1,5 +1,6 @@
 import type { Agent } from '../agents/agent.js';
 import { appendTurn } from '../docs/transcript.js';
+import { parseAgentOutput } from '../protocol/patch.js';
 import { reducer } from './reducer.js';
 import { nextSpeaker } from './scheduler.js';
 import { initialState, type State } from './types.js';
@@ -64,6 +65,28 @@ export function startDebate(opts: RunDebateOptions): DebateHandle {
       state = reducer(state, { type: 'turnCompleted', speaker, content, timestamp });
       opts.onState?.(state);
       await appendTurn(opts.transcriptPath, { speaker, content, timestamp });
+
+      // Parse structured output and dispatch proposal/verdict if present.
+      const parsed = parseAgentOutput(content, { fallbackToCommentary: true });
+      if (parsed.ok) {
+        if (parsed.value.proposal) {
+          state = reducer(state, {
+            type: 'proposalReceived',
+            speaker,
+            body: parsed.value.proposal.body,
+          });
+          opts.onState?.(state);
+        }
+        if (parsed.value.verdict) {
+          state = reducer(state, {
+            type: 'verdictReceived',
+            speaker,
+            verdict: parsed.value.verdict,
+          });
+          opts.onState?.(state);
+          if (state.accepted) break;
+        }
+      }
     }
     return state;
   })();
