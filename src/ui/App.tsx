@@ -170,7 +170,11 @@ function SpeakerPane({
   live: string;
   lastTurn: TurnRecord | undefined;
 }) {
-  const body = active ? live : lastTurn?.content ?? '(no turn yet)';
+  const body = active
+    ? extractCommentary(live)
+    : lastTurn
+      ? extractCommentary(lastTurn.content)
+      : '(no turn yet)';
   return (
     <Box
       flexDirection="column"
@@ -202,7 +206,7 @@ function DebateStrip({ transcript }: { transcript: TurnRecord[] }) {
       ) : (
         tail.map((t, i) => (
           <Text key={i}>
-            <Text color={colorFor(t.speaker)}>{t.speaker}</Text>: {oneLine(t.content)}
+            <Text color={colorFor(t.speaker)}>{t.speaker}</Text>: {oneLine(extractCommentary(t.content))}
           </Text>
         ))
       )}
@@ -234,6 +238,17 @@ function SpecSidebar({
       <Text dimColor>{transcript.length} turn{transcript.length === 1 ? '' : 's'}</Text>
     </Box>
   );
+}
+
+function extractCommentary(raw: string): string {
+  try {
+    const obj = JSON.parse(raw);
+    if (typeof obj?.commentary === 'string') return obj.commentary;
+  } catch {}
+  // Partial extraction while JSON is still streaming
+  const m = raw.match(/"commentary"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  if (m) return m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+  return raw;
 }
 
 function truncate(s: string, max: number): string {
