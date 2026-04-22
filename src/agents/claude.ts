@@ -73,16 +73,9 @@ export class ClaudeAgent implements Agent {
 
     const fullText = finalResult ?? accumulated;
     const built = buildAgentOutputFromModel(fullText);
-    if (built.ok) {
-      return { raw: JSON.stringify(built.value) };
-    }
-    // Fall back to commentary-only so the runner still gets valid JSON.
-    return {
-      raw: JSON.stringify({
-        commentary: fullText,
-        proposal: null,
-        verdict: null,
-      }),
-    };
+    const value = built.ok
+      ? built.value
+      : { commentary: fullText, proposal: null, verdict: null };
+    return { raw: JSON.stringify(value) };
   }
 }

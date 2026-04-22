@@ -36,28 +36,38 @@ const PatchInnerSchema = z.object({
     .transform(v => v ?? null),
 });
 
+function stripCodeFences(s: string): string {
+  const trimmed = s.trim();
+  const m = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/);
+  return m ? m[1]!.trim() : trimmed;
+}
+
+/**
+ * Extracts commentary + (optionally) proposal/verdict from the model's raw
+ * text. Always succeeds at returning at least the commentary — if the
+ * <patch> JSON is malformed, the UI still gets clean prose instead of a
+ * wall of raw JSON. Proposal/verdict are simply dropped.
+ */
 export function buildAgentOutputFromModel(raw: string): ParseResult {
   const { commentary, patchJson } = extractPatchBlock(raw);
-  if (patchJson === null) {
-    return {
-      ok: true,
-      value: { commentary, proposal: null, verdict: null },
-    };
-  }
+  const blank: AgentOutput = { commentary, proposal: null, verdict: null };
+  if (patchJson === null) return { ok: true, value: blank };
+
+  const cleaned = stripCodeFences(patchJson);
   let parsed: unknown;
   try {
-    parsed = JSON.parse(patchJson);
-  } catch (e) {
-    return { ok: false, error: `invalid patch JSON: ${(e as Error).message}` };
+    parsed = JSON.parse(cleaned);
+  } catch {
+    return { ok: true, value: blank };
   }
   const res = PatchInnerSchema.safeParse(parsed);
-  if (!res.success) {
-    return { ok: false, error: res.error.message };
-  }
-  const value: AgentOutput = {
-    commentary,
-    proposal: res.data.proposal,
-    verdict: res.data.verdict,
+  if (!res.success) return { ok: true, value: blank };
+  return {
+    ok: true,
+    value: {
+      commentary,
+      proposal: res.data.proposal,
+      verdict: res.data.verdict,
+    },
   };
-  return { ok: true, value };
 }

@@ -54,9 +54,32 @@ describe('buildAgentOutputFromModel', () => {
     }
   });
 
-  it('fails validation when patch JSON is malformed', () => {
+  it('degrades gracefully when patch JSON is malformed (commentary preserved)', () => {
     const raw = 'hi\n<patch>\nnot json at all\n</patch>';
     const r = buildAgentOutputFromModel(raw);
-    expect(r.ok).toBe(false);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.commentary).toBe('hi');
+      expect(r.value.proposal).toBeNull();
+      expect(r.value.verdict).toBeNull();
+    }
+  });
+
+  it('strips ```json code fences inside the <patch> block', () => {
+    const raw =
+      'critique\n<patch>\n```json\n{"verdict":"LGTM"}\n```\n</patch>';
+    const r = buildAgentOutputFromModel(raw);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.commentary).toBe('critique');
+      expect(r.value.verdict).toBe('LGTM');
+    }
+  });
+
+  it('strips bare ``` fences inside the <patch> block', () => {
+    const raw = 'x\n<patch>\n```\n{"verdict":"counter"}\n```\n</patch>';
+    const r = buildAgentOutputFromModel(raw);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.verdict).toBe('counter');
   });
 });

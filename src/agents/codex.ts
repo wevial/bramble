@@ -69,13 +69,9 @@ export class CodexAgent implements Agent {
     }
 
     const built = buildAgentOutputFromModel(fullText);
-    if (built.ok) return { raw: JSON.stringify(built.value) };
-    return {
-      raw: JSON.stringify({
-        commentary: fullText,
-        proposal: null,
-        verdict: null,
-      }),
-    };
+    const value = built.ok
+      ? built.value
+      : { commentary: fullText, proposal: null, verdict: null };
+    return { raw: JSON.stringify(value) };
   }
 }
