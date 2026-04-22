@@ -11,5 +11,6 @@ coverage/
 # Runtime artifacts (user session output)
 spec.md
 debate.md
+draft.md
 transcript.jsonl
 .bramble/
