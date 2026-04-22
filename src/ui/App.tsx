@@ -262,14 +262,14 @@ type RenderLine =
       bodyText: string;
     }
   | { kind: 'cont'; text: string }
+  | { kind: 'proposalTop'; speaker: 'claude' | 'codex'; text: string }
+  | { kind: 'proposalRow'; text: string }
+  | { kind: 'proposalBottom'; text: string }
   | {
-      kind: 'proposalHeader';
+      kind: 'proposalCollapsed';
       speaker: 'claude' | 'codex';
-      collapsed: boolean;
       lines: number;
     }
-  | { kind: 'proposalBody'; text: string }
-  | { kind: 'proposalFooter' }
   | { kind: 'verdict'; speaker: 'claude' | 'codex'; verdict: 'LGTM' | 'counter' };
 
 const PROPOSAL_SUMMARY_LINES = 6;
@@ -314,26 +314,50 @@ function tailChatLines(
       const body = item.parsed.proposal.body;
       const totalLines = body.split('\n').length;
       const collapsed = item.proposalSuperseded === true;
-      all.push({
-        kind: 'proposalHeader',
-        speaker: item.speaker,
-        collapsed,
-        lines: totalLines,
-      });
-      if (!collapsed) {
-        const preview = body.split('\n').slice(0, PROPOSAL_SUMMARY_LINES);
-        for (const bodyLine of preview) {
-          for (const w of wrapLines(bodyLine, Math.max(4, width - 4))) {
-            all.push({ kind: 'proposalBody', text: w });
+
+      if (collapsed) {
+        all.push({
+          kind: 'proposalCollapsed',
+          speaker: item.speaker,
+          lines: totalLines,
+        });
+      } else {
+        const boxWidth = Math.max(20, width);
+        const innerCap = Math.max(4, boxWidth - 4);
+
+        // ┌── <speaker> proposal ───...───┐
+        const label = ` ${item.speaker} proposal `;
+        const topLead = `──${label}`;
+        const topFill = '─'.repeat(Math.max(0, boxWidth - 2 - topLead.length));
+        all.push({
+          kind: 'proposalTop',
+          speaker: item.speaker,
+          text: `┌${topLead}${topFill}┐`,
+        });
+
+        const rawLines = body.split('\n').slice(0, PROPOSAL_SUMMARY_LINES);
+        const wrapped: string[] = [];
+        for (const bodyLine of rawLines) {
+          if (bodyLine.length === 0) {
+            wrapped.push('');
+          } else {
+            wrapped.push(...wrapLines(bodyLine, innerCap));
           }
         }
         if (totalLines > PROPOSAL_SUMMARY_LINES) {
-          all.push({
-            kind: 'proposalBody',
-            text: `… +${totalLines - PROPOSAL_SUMMARY_LINES} more lines (see draft.md)`,
-          });
+          wrapped.push(
+            `… +${totalLines - PROPOSAL_SUMMARY_LINES} more (see draft.md)`,
+          );
         }
-        all.push({ kind: 'proposalFooter' });
+        for (const w of wrapped) {
+          const padded = (w + ' '.repeat(innerCap)).slice(0, innerCap);
+          all.push({ kind: 'proposalRow', text: padded });
+        }
+
+        all.push({
+          kind: 'proposalBottom',
+          text: `└${'─'.repeat(boxWidth - 2)}┘`,
+        });
       }
     }
 
@@ -379,32 +403,31 @@ function ChatLine({ line }: { line: RenderLine }) {
       </Text>
     );
   }
-  if (line.kind === 'proposalHeader') {
-    const c = colorFor(line.speaker);
-    if (line.collapsed) {
-      return (
-        <Text dimColor>
-          <Text color={c}>▸ {line.speaker}</Text> proposal — {line.lines} lines (superseded)
-        </Text>
-      );
-    }
+  if (line.kind === 'proposalTop') {
     return (
-      <Text>
-        <Text color={c}>┌── {line.speaker} proposal ──</Text>
-      </Text>
-    );
-  }
-  if (line.kind === 'proposalBody') {
-    return (
-      <Text>
-        <Text dimColor>│ </Text>
+      <Text color={colorFor(line.speaker)} dimColor>
         {line.text}
       </Text>
     );
   }
-  if (line.kind === 'proposalFooter') {
+  if (line.kind === 'proposalRow') {
     return (
-      <Text dimColor>└──</Text>
+      <Text>
+        <Text dimColor>│ </Text>
+        {line.text}
+        <Text dimColor> │</Text>
+      </Text>
+    );
+  }
+  if (line.kind === 'proposalBottom') {
+    return <Text dimColor>{line.text}</Text>;
+  }
+  if (line.kind === 'proposalCollapsed') {
+    return (
+      <Text dimColor>
+        <Text color={colorFor(line.speaker)}>▸ {line.speaker}</Text> proposal —{' '}
+        {line.lines} lines (superseded)
+      </Text>
     );
   }
   // verdict
