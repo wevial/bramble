@@ -30,8 +30,8 @@ codex.setResponse({
   verdict: 'LGTM',
 });
 
-claude.setTokenDelayMs(10);
-codex.setTokenDelayMs(10);
+claude.setTokenDelayMs(25);
+codex.setTokenDelayMs(25);
 
 const argv = process.argv.slice(2);
 let rounds = 3;

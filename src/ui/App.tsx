@@ -142,7 +142,6 @@ export function App(props: AppProps) {
 
       <Box borderStyle="single" paddingX={1}>
         <InputBox
-          disabled={done}
           onSubmit={line => {
             const cmd = parseSlashCommand(line);
             if (cmd === null) {
