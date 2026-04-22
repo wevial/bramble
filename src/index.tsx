@@ -7,6 +7,7 @@ import { FakeAgent } from './agents/fake.js';
 import { ClaudeAgent } from './agents/claude.js';
 import { CodexAgent } from './agents/codex.js';
 import { App } from './ui/App.js';
+import { generateSessionName } from './util/name.js';
 
 const argv = process.argv.slice(2);
 let rounds = 3;
@@ -14,6 +15,7 @@ let real = false;
 let claudeModel: string | undefined;
 let codexModel: string | undefined;
 let codexEffort: string | undefined;
+let sessionName: string | undefined;
 const positional: string[] = [];
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
@@ -38,13 +40,17 @@ for (let i = 0; i < argv.length; i++) {
   } else if (a === '--codex-effort' && argv[i + 1]) {
     codexEffort = argv[i + 1];
     i++;
+  } else if (a === '--name' && argv[i + 1]) {
+    sessionName = argv[i + 1];
+    i++;
   } else {
     positional.push(a!);
   }
 }
 
-const prompt = positional.join(' ') || 'Design an authentication system';
+const prompt = positional.join(' ');
 const cwd = process.cwd();
+const name = sessionName ?? generateSessionName();
 
 let claude: Agent;
 let codex: Agent;
@@ -81,12 +87,13 @@ const { waitUntilExit } = render(
   <App
     agents={{ claude, codex }}
     prompt={prompt}
+    sessionName={name}
     rounds={rounds}
-    transcriptPath={join(cwd, 'transcript.jsonl')}
-    specPath={join(cwd, 'spec.md')}
-    debatePath={join(cwd, 'debate.md')}
-    draftPath={join(cwd, 'draft.md')}
-    draftsPath={join(cwd, 'drafts.md')}
+    transcriptPath={join(cwd, `transcript-${name}.jsonl`)}
+    specPath={join(cwd, `spec-${name}.md`)}
+    debatePath={join(cwd, `debate-${name}.md`)}
+    draftPath={join(cwd, `draft-${name}.md`)}
+    draftsPath={join(cwd, `drafts-${name}.md`)}
     onQuit={() => process.exit(0)}
   />,
 );

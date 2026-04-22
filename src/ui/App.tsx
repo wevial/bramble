@@ -13,7 +13,9 @@ import { parseSlashCommand } from './commands.js';
 
 export type AppProps = {
   agents: { claude: Agent; codex: Agent };
-  prompt: string;
+  /** Initial prompt. If undefined or empty, App opens in prompt-entry mode. */
+  prompt?: string;
+  sessionName: string;
   rounds: number;
   transcriptPath: string;
   specPath: string;
@@ -25,6 +27,11 @@ export type AppProps = {
 };
 
 export function App(props: AppProps) {
+  const initialPrompt = (props.prompt ?? '').trim();
+  const [phase, setPhase] = useState<'prompt' | 'debate'>(
+    initialPrompt.length > 0 ? 'debate' : 'prompt',
+  );
+  const [prompt, setPrompt] = useState(initialPrompt);
   const [state, setState] = useState<State>({
     speaker: 'idle',
     transcript: [],
@@ -65,9 +72,10 @@ export function App(props: AppProps) {
   }, [state.speaker]);
 
   useEffect(() => {
+    if (phase !== 'debate') return;
     const handle = startDebate({
       agents: props.agents,
-      prompt: props.prompt,
+      prompt,
       rounds: props.rounds,
       transcriptPath: props.transcriptPath,
       onState: next => {
@@ -97,7 +105,7 @@ export function App(props: AppProps) {
     return () => {
       handle.abort();
     };
-  }, []);
+  }, [phase]);
 
   const activeSpeaker = state.speaker;
   const sidebarWidth = Math.max(32, Math.min(60, Math.floor(dims.columns * 0.4)));
@@ -115,11 +123,25 @@ export function App(props: AppProps) {
 
   const proposals = collectProposals(state);
 
+  if (phase === 'prompt') {
+    return (
+      <PromptEntry
+        sessionName={props.sessionName}
+        onSubmit={p => {
+          setPrompt(p);
+          setStatus('starting…');
+          setPhase('debate');
+        }}
+        onQuit={() => props.onQuit?.()}
+      />
+    );
+  }
+
   return (
     <Box flexDirection="column" width={dims.columns} height={dims.rows}>
       <Box flexGrow={1} height={chatBodyRows + 2}>
         <ChatLog
-          goal={props.prompt}
+          goal={prompt}
           transcript={state.transcript}
           activeSpeaker={activeSpeaker}
           elapsedMs={elapsedMs}
@@ -191,7 +213,8 @@ export function App(props: AppProps) {
       </Box>
       <Box paddingX={1}>
         <Text dimColor>
-          {done ? 'done' : `speaker: ${activeSpeaker}`} · rounds {rounds} · {status} · /rounds N · /quit
+          {props.sessionName} · {done ? 'done' : `speaker: ${activeSpeaker}`} ·
+          rounds {rounds} · {status} · /rounds · /drafts · /expand · /quit
         </Text>
       </Box>
     </Box>
@@ -592,6 +615,46 @@ function SpecSidebar({
       <Text dimColor>
         {transcript.length} turn{transcript.length === 1 ? '' : 's'}
       </Text>
+    </Box>
+  );
+}
+
+function PromptEntry({
+  sessionName,
+  onSubmit,
+  onQuit,
+}: {
+  sessionName: string;
+  onSubmit: (prompt: string) => void;
+  onQuit: () => void;
+}) {
+  const { stdout } = useStdout();
+  const cols = stdout?.columns ?? 80;
+  const rows = stdout?.rows ?? 24;
+  return (
+    <Box flexDirection="column" width={cols} height={rows}>
+      <Box flexGrow={1} flexDirection="column" paddingX={2} paddingY={1}>
+        <Text bold>bramble</Text>
+        <Text dimColor>session: {sessionName}</Text>
+        <Text> </Text>
+        <Text>
+          Two agents will debate and propose a spec. What do you want to design?
+        </Text>
+        <Text dimColor>(e.g. "design tic-tac-toe" or "a URL shortener")</Text>
+      </Box>
+      <Box borderStyle="single" paddingX={1}>
+        <InputBox
+          onSubmit={line => {
+            if (line.trim().length > 0) onSubmit(line.trim());
+          }}
+          onQuit={onQuit}
+        />
+      </Box>
+      <Box paddingX={1}>
+        <Text dimColor>
+          enter to start · /quit to exit
+        </Text>
+      </Box>
     </Box>
   );
 }
