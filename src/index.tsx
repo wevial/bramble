@@ -2,51 +2,62 @@
 import React from 'react';
 import { render } from 'ink';
 import { join } from 'node:path';
+import type { Agent } from './agents/agent.js';
 import { FakeAgent } from './agents/fake.js';
+import { ClaudeAgent } from './agents/claude.js';
+import { CodexAgent } from './agents/codex.js';
 import { App } from './ui/App.js';
-
-// Phase 2 entry: FakeAgents speak the structured patch protocol so the flow
-// (proposal -> LGTM -> accepted draft in spec.md) is visible end-to-end.
-
-const claude = new FakeAgent('claude');
-const codex = new FakeAgent('codex');
-
-claude.setResponse({
-  commentary:
-    'Proposing a minimal auth spec to start. Email+password, add OAuth later.',
-  proposal: {
-    body:
-      '# Authentication\n\n' +
-      '- Email + password signup\n' +
-      '- bcrypt password hashing (cost 12)\n' +
-      '- 30-day session tokens, rotated on each request\n' +
-      '- Rate limit: 5 attempts / 15 min per IP',
-  },
-});
-
-codex.setResponse({
-  commentary:
-    'Good starting point. I have a small OAuth quibble but the core draft is sound — LGTM.',
-  verdict: 'LGTM',
-});
-
-claude.setTokenDelayMs(25);
-codex.setTokenDelayMs(25);
 
 const argv = process.argv.slice(2);
 let rounds = 3;
+let real = false;
 const positional: string[] = [];
 for (let i = 0; i < argv.length; i++) {
-  if (argv[i] === '--rounds' && argv[i + 1]) {
+  const a = argv[i];
+  if (a === '--rounds' && argv[i + 1]) {
     const n = Number(argv[i + 1]);
     if (Number.isInteger(n) && n >= 1) rounds = n;
     i++;
+  } else if (a === '--real') {
+    real = true;
   } else {
-    positional.push(argv[i]!);
+    positional.push(a!);
   }
 }
+
 const prompt = positional.join(' ') || 'Design an authentication system';
 const cwd = process.cwd();
+
+let claude: Agent;
+let codex: Agent;
+if (real) {
+  claude = new ClaudeAgent();
+  codex = new CodexAgent();
+} else {
+  const fClaude = new FakeAgent('claude');
+  const fCodex = new FakeAgent('codex');
+  fClaude.setResponse({
+    commentary:
+      'Proposing a minimal auth spec to start. Email+password, add OAuth later.',
+    proposal: {
+      body:
+        '# Authentication\n\n' +
+        '- Email + password signup\n' +
+        '- bcrypt password hashing (cost 12)\n' +
+        '- 30-day session tokens, rotated on each request\n' +
+        '- Rate limit: 5 attempts / 15 min per IP',
+    },
+  });
+  fCodex.setResponse({
+    commentary:
+      'Good starting point. I have a small OAuth quibble but the core draft is sound — LGTM.',
+    verdict: 'LGTM',
+  });
+  fClaude.setTokenDelayMs(25);
+  fCodex.setTokenDelayMs(25);
+  claude = fClaude;
+  codex = fCodex;
+}
 
 const { waitUntilExit } = render(
   <App
