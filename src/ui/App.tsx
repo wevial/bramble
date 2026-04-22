@@ -23,10 +23,6 @@ export type AppProps = {
 };
 
 export function App(props: AppProps) {
-  const [live, setLive] = useState<{ claude: string; codex: string }>({
-    claude: '',
-    codex: '',
-  });
   const [state, setState] = useState<State>({
     speaker: 'idle',
     transcript: [],
@@ -36,6 +32,8 @@ export function App(props: AppProps) {
   const [done, setDone] = useState(false);
   const [status, setStatus] = useState<string>('starting…');
   const [rounds, setRounds] = useState(props.rounds);
+  const [now, setNow] = useState(Date.now());
+  const activeStartRef = useRef<number | null>(null);
   const handleRef = useRef<DebateHandle | null>(null);
   const { stdout } = useStdout();
   const [dims, setDims] = useState({
@@ -52,32 +50,23 @@ export function App(props: AppProps) {
     };
   }, [stdout]);
 
+  // Tick a timer only while an agent is active, so the "thinking Ns" indicator updates.
   useEffect(() => {
-    let currentSpeaker: 'claude' | 'codex' | null = null;
-    const pending = { claude: '', codex: '' };
-    const FLUSH_MS = 80;
-    const flush = setInterval(() => {
-      if (pending.claude === '' && pending.codex === '') return;
-      setLive(prev => ({
-        claude: prev.claude + pending.claude,
-        codex: prev.codex + pending.codex,
-      }));
-      pending.claude = '';
-      pending.codex = '';
-    }, FLUSH_MS);
+    if (state.speaker !== 'claude' && state.speaker !== 'codex') {
+      activeStartRef.current = null;
+      return;
+    }
+    if (activeStartRef.current === null) activeStartRef.current = Date.now();
+    const id = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(id);
+  }, [state.speaker]);
 
+  useEffect(() => {
     const handle = startDebate({
       agents: props.agents,
       prompt: props.prompt,
       rounds: props.rounds,
       transcriptPath: props.transcriptPath,
-      onToken: (who, text) => {
-        if (who !== currentSpeaker) {
-          currentSpeaker = who;
-          setLive(prev => ({ ...prev, [who]: '' }));
-        }
-        pending[who] += text;
-      },
       onState: next => {
         setState(next);
         void writeDebate(
@@ -97,19 +86,12 @@ export function App(props: AppProps) {
     handleRef.current = handle;
 
     handle.done.then(() => {
-      setLive(prev => ({
-        claude: prev.claude + pending.claude,
-        codex: prev.codex + pending.codex,
-      }));
-      pending.claude = '';
-      pending.codex = '';
       setDone(true);
       setStatus('done');
       props.onDone?.();
     });
 
     return () => {
-      clearInterval(flush);
       handle.abort();
     };
   }, []);
@@ -122,19 +104,29 @@ export function App(props: AppProps) {
   // chat interior after border (2) + paddingX (2)
   const chatInnerWidth = Math.max(10, chatWidth - 4);
 
+  const elapsedMs =
+    (activeSpeaker === 'claude' || activeSpeaker === 'codex') &&
+    activeStartRef.current !== null
+      ? now - activeStartRef.current
+      : 0;
+
   return (
     <Box flexDirection="column" width={dims.columns} height={dims.rows}>
-      <Box flexGrow={1}>
+      <Box flexGrow={1} height={chatBodyRows + 2}>
         <ChatLog
+          goal={props.prompt}
           transcript={state.transcript}
           activeSpeaker={activeSpeaker}
-          liveClaude={live.claude}
-          liveCodex={live.codex}
+          elapsedMs={elapsedMs}
           width={chatWidth}
           innerWidth={chatInnerWidth}
           bodyRows={chatBodyRows}
         />
-        <SpecSidebar state={state} width={sidebarWidth} />
+        <SpecSidebar
+          state={state}
+          width={sidebarWidth}
+          bodyRows={chatBodyRows}
+        />
       </Box>
 
       <Box borderStyle="single" paddingX={1}>
@@ -190,24 +182,22 @@ type ChatItem = {
 };
 
 function ChatLog({
+  goal,
   transcript,
   activeSpeaker,
-  liveClaude,
-  liveCodex,
+  elapsedMs,
   width,
   innerWidth,
   bodyRows,
 }: {
+  goal: string;
   transcript: TurnRecord[];
   activeSpeaker: State['speaker'];
-  liveClaude: string;
-  liveCodex: string;
+  elapsedMs: number;
   width: number;
   innerWidth: number;
   bodyRows: number;
 }) {
-  // Build parsed items + supersession info: a proposal is superseded when a
-  // later turn from the same speaker also carries a proposal.
   const parsedTurns = transcript.map(t => {
     const res = parseAgentOutput(t.content, { fallbackToCommentary: true });
     return { turn: t, parsed: res.ok ? res.value : undefined };
@@ -227,13 +217,20 @@ function ChatLog({
       pt.parsed?.proposal != null &&
       lastProposalIdxBySpeaker[pt.turn.speaker] !== i,
   }));
-  if (activeSpeaker === 'claude' && liveClaude.length > 0) {
-    items.push({ speaker: 'claude', content: liveClaude, streaming: true });
-  } else if (activeSpeaker === 'codex' && liveCodex.length > 0) {
-    items.push({ speaker: 'codex', content: liveCodex, streaming: true });
+  if (activeSpeaker === 'claude' || activeSpeaker === 'codex') {
+    const secs = (elapsedMs / 1000).toFixed(1);
+    items.push({
+      speaker: activeSpeaker,
+      content: `thinking… ${secs}s`,
+      streaming: true,
+    });
   }
 
-  const lines = tailChatLines(items, innerWidth, bodyRows);
+  // Account for 2 header rows (goal + divider) before the chat body.
+  const headerRows = 2;
+  const availableRows = Math.max(1, bodyRows - headerRows);
+  const lines = tailChatLines(items, innerWidth, availableRows);
+  const goalLine = truncateOneLine(`goal: ${goal}`, innerWidth);
 
   return (
     <Box
@@ -242,7 +239,12 @@ function ChatLog({
       paddingX={1}
       width={width}
       flexShrink={0}
+      overflow="hidden"
     >
+      <Text bold color="blue">
+        {goalLine}
+      </Text>
+      <Text dimColor>{'─'.repeat(innerWidth)}</Text>
       {lines.length === 0 ? (
         <Text dimColor>(no turns yet)</Text>
       ) : (
@@ -250,6 +252,11 @@ function ChatLog({
       )}
     </Box>
   );
+}
+
+function truncateOneLine(s: string, max: number): string {
+  const single = s.replace(/\s+/g, ' ').trim();
+  return single.length > max ? single.slice(0, Math.max(0, max - 1)) + '…' : single;
 }
 
 type RenderLine =
@@ -445,9 +452,29 @@ function ChatLine({ line }: { line: RenderLine }) {
   );
 }
 
-function SpecSidebar({ state, width }: { state: State; width: number }) {
+function SpecSidebar({
+  state,
+  width,
+  bodyRows,
+}: {
+  state: State;
+  width: number;
+  bodyRows: number;
+}) {
   const { currentDraft, accepted, transcript } = state;
   const hasAccepted = accepted && currentDraft !== null;
+  const innerWidth = Math.max(10, width - 4);
+  // Header: "spec.md" + status line + optional "by proposer". Footer: "—" + "N turns".
+  const headerRows = hasAccepted ? 3 : 2;
+  const footerRows = 2;
+  const bodyMax = Math.max(1, bodyRows - headerRows - footerRows);
+
+  const bodyLines = hasAccepted
+    ? wrapLines(currentDraft!.body, innerWidth)
+    : [];
+  const clipped = bodyLines.slice(0, bodyMax);
+  const truncated = bodyLines.length > bodyMax;
+
   return (
     <Box
       flexDirection="column"
@@ -455,18 +482,23 @@ function SpecSidebar({ state, width }: { state: State; width: number }) {
       paddingX={1}
       width={width}
       flexShrink={0}
+      overflow="hidden"
     >
       <Text bold>spec.md</Text>
       {hasAccepted ? (
         <>
           <Text color="green">✓ accepted</Text>
           <Text dimColor>by {currentDraft!.proposer}</Text>
-          <Text wrap="wrap">{currentDraft!.body}</Text>
+          {clipped.map((l, i) => (
+            <Text key={i}>{l}</Text>
+          ))}
+          {truncated && <Text dimColor>… (see spec.md)</Text>}
         </>
       ) : (
         <Text dimColor>
-          (nothing accepted yet
-          {currentDraft ? ' — see draft.md for current proposal)' : ')'}
+          {currentDraft
+            ? '(nothing accepted yet — see draft.md)'
+            : '(nothing accepted yet)'}
         </Text>
       )}
       <Text dimColor>—</Text>
