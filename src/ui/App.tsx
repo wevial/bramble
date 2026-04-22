@@ -634,29 +634,51 @@ function PromptEntry({
   const { stdout } = useStdout();
   const cols = stdout?.columns ?? 80;
   const rows = stdout?.rows ?? 24;
+  const cardWidth = Math.max(40, Math.min(64, cols - 8));
+
   return (
-    <Box flexDirection="column" width={cols} height={rows}>
-      <Box flexGrow={1} flexDirection="column" paddingX={2} paddingY={1}>
-        <Text bold>bramble</Text>
-        <Text dimColor>session: {sessionName}</Text>
+    <Box
+      flexDirection="column"
+      width={cols}
+      height={rows}
+      justifyContent="center"
+      alignItems="center"
+    >
+      <Box
+        flexDirection="column"
+        borderStyle="round"
+        paddingX={3}
+        paddingY={1}
+        width={cardWidth}
+      >
+        <Box justifyContent="center">
+          <Text bold color="green">
+            ✦ bramble
+          </Text>
+        </Box>
+        <Box justifyContent="center">
+          <Text dimColor>session: {sessionName}</Text>
+        </Box>
         <Text> </Text>
-        <Text>
-          Two agents will debate and propose a spec. What do you want to design?
-        </Text>
-        <Text dimColor>(e.g. "design tic-tac-toe" or "a URL shortener")</Text>
-      </Box>
-      <Box borderStyle="single" paddingX={1}>
-        <InputBox
-          onSubmit={line => {
-            if (line.trim().length > 0) onSubmit(line.trim());
-          }}
-          onQuit={onQuit}
-        />
-      </Box>
-      <Box paddingX={1}>
+        <Text>Two agents will debate and draft a spec together.</Text>
+        <Text> </Text>
+        <Text bold>What do you want to design?</Text>
         <Text dimColor>
-          enter to start · /quit to exit
+          e.g. "design tic-tac-toe" or "a URL shortener"
         </Text>
+        <Text> </Text>
+        <Box borderStyle="single" paddingX={1}>
+          <InputBox
+            onSubmit={line => {
+              if (line.trim().length > 0) onSubmit(line.trim());
+            }}
+            onQuit={onQuit}
+          />
+        </Box>
+        <Text> </Text>
+        <Box justifyContent="center">
+          <Text dimColor>enter to start · /quit to exit</Text>
+        </Box>
       </Box>
     </Box>
   );
