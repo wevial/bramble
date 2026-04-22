@@ -51,15 +51,25 @@ export function startDebate(opts: RunDebateOptions): DebateHandle {
       outer.signal.addEventListener('abort', () => turnController?.abort(), { once: true });
 
       const prompt = buildPrompt(opts.prompt, state);
-      let content = '';
+      let displayed = '';
+      let rawTail: string | undefined;
       try {
-        for await (const token of agent.stream({ prompt }, turnController.signal)) {
-          content += token.text;
-          opts.onToken?.(speaker, token.text);
+        const iter = agent.stream({ prompt }, turnController.signal);
+        while (true) {
+          const r = await iter.next();
+          if (r.done) {
+            if (r.value) rawTail = r.value.raw;
+            break;
+          }
+          displayed += r.value.text;
+          opts.onToken?.(speaker, r.value.text);
         }
       } catch {
         // aborts may throw; treat whatever we collected as the turn's content
       }
+      // Wire content is the structured raw tail when the agent provides one
+      // (e.g. JSON patch); otherwise whatever streamed.
+      const content = rawTail ?? displayed;
 
       const timestamp = new Date().toISOString();
       state = reducer(state, { type: 'turnCompleted', speaker, content, timestamp });

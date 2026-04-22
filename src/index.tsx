@@ -11,28 +11,24 @@ import { App } from './ui/App.js';
 const claude = new FakeAgent('claude');
 const codex = new FakeAgent('codex');
 
-claude.setResponse(
-  JSON.stringify({
-    commentary:
-      'Proposing a minimal auth spec to start. Email+password, add OAuth later.',
-    proposal: {
-      body:
-        '# Authentication\n\n' +
-        '- Email + password signup\n' +
-        '- bcrypt password hashing (cost 12)\n' +
-        '- 30-day session tokens, rotated on each request\n' +
-        '- Rate limit: 5 attempts / 15 min per IP',
-    },
-  }),
-);
+claude.setResponse({
+  commentary:
+    'Proposing a minimal auth spec to start. Email+password, add OAuth later.',
+  proposal: {
+    body:
+      '# Authentication\n\n' +
+      '- Email + password signup\n' +
+      '- bcrypt password hashing (cost 12)\n' +
+      '- 30-day session tokens, rotated on each request\n' +
+      '- Rate limit: 5 attempts / 15 min per IP',
+  },
+});
 
-codex.setResponse(
-  JSON.stringify({
-    commentary:
-      'Good starting point. I have a small OAuth quibble but the core draft is sound — LGTM.',
-    verdict: 'LGTM',
-  }),
-);
+codex.setResponse({
+  commentary:
+    'Good starting point. I have a small OAuth quibble but the core draft is sound — LGTM.',
+  verdict: 'LGTM',
+});
 
 claude.setTokenDelayMs(10);
 codex.setTokenDelayMs(10);

@@ -5,6 +5,7 @@ import { startDebate, type DebateHandle } from '../orchestrator/runner.js';
 import { appendSpecTurn, writeAcceptedSpec } from '../docs/spec.js';
 import { writeDebate } from '../docs/debate.js';
 import type { State, TurnRecord } from '../orchestrator/types.js';
+import { parseAgentOutput } from '../protocol/patch.js';
 import { InputBox } from './InputBox.js';
 
 export type AppProps = {
@@ -170,10 +171,13 @@ function SpeakerPane({
   live: string;
   lastTurn: TurnRecord | undefined;
 }) {
+  // During streaming, `live` is the display token stream — which for
+  // structured agents is commentary-only. For completed turns we parse
+  // the wire content and show the commentary field.
   const body = active
-    ? extractCommentary(live)
+    ? live
     : lastTurn
-      ? extractCommentary(lastTurn.content)
+      ? commentaryOf(lastTurn.content)
       : '(no turn yet)';
   return (
     <Box
@@ -206,7 +210,7 @@ function DebateStrip({ transcript }: { transcript: TurnRecord[] }) {
       ) : (
         tail.map((t, i) => (
           <Text key={i}>
-            <Text color={colorFor(t.speaker)}>{t.speaker}</Text>: {oneLine(extractCommentary(t.content))}
+            <Text color={colorFor(t.speaker)}>{t.speaker}</Text>: {oneLine(commentaryOf(t.content))}
           </Text>
         ))
       )}
@@ -240,15 +244,9 @@ function SpecSidebar({
   );
 }
 
-function extractCommentary(raw: string): string {
-  try {
-    const obj = JSON.parse(raw);
-    if (typeof obj?.commentary === 'string') return obj.commentary;
-  } catch {}
-  // Partial extraction while JSON is still streaming
-  const m = raw.match(/"commentary"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-  if (m) return m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
-  return raw;
+function commentaryOf(raw: string): string {
+  const parsed = parseAgentOutput(raw, { fallbackToCommentary: true });
+  return parsed.ok ? parsed.value.commentary : raw;
 }
 
 function truncate(s: string, max: number): string {
