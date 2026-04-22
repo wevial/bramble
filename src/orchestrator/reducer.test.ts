@@ -67,6 +67,53 @@ describe('reducer', () => {
     ]);
   });
 
+  it('proposalReceived stores the draft body on state', () => {
+    const next = reducer(initialState, {
+      type: 'proposalReceived',
+      speaker: 'claude',
+      body: '# Auth\n\nemail+password',
+    });
+    expect(next.currentDraft).toEqual({
+      body: '# Auth\n\nemail+password',
+      proposer: 'claude',
+    });
+    expect(next.accepted).toBe(false);
+  });
+
+  it('proposalReceived replaces any prior draft', () => {
+    let s = initialState;
+    s = reducer(s, { type: 'proposalReceived', speaker: 'claude', body: 'v1' });
+    s = reducer(s, { type: 'proposalReceived', speaker: 'codex', body: 'v2' });
+    expect(s.currentDraft?.body).toBe('v2');
+    expect(s.currentDraft?.proposer).toBe('codex');
+  });
+
+  it('verdictReceived: LGTM on an existing draft accepts it', () => {
+    let s = initialState;
+    s = reducer(s, { type: 'proposalReceived', speaker: 'claude', body: 'final' });
+    s = reducer(s, { type: 'verdictReceived', speaker: 'codex', verdict: 'LGTM' });
+    expect(s.accepted).toBe(true);
+    expect(s.currentDraft?.body).toBe('final');
+  });
+
+  it('verdictReceived: LGTM with no draft does nothing', () => {
+    const next = reducer(initialState, {
+      type: 'verdictReceived',
+      speaker: 'codex',
+      verdict: 'LGTM',
+    });
+    expect(next.accepted).toBe(false);
+    expect(next.currentDraft).toBeNull();
+  });
+
+  it('verdictReceived: counter clears no state (debate continues)', () => {
+    let s = initialState;
+    s = reducer(s, { type: 'proposalReceived', speaker: 'claude', body: 'x' });
+    s = reducer(s, { type: 'verdictReceived', speaker: 'codex', verdict: 'counter' });
+    expect(s.accepted).toBe(false);
+    expect(s.currentDraft?.body).toBe('x');
+  });
+
   it('is a pure function (does not mutate prior state)', () => {
     const before = { ...initialState, transcript: [] as any[] };
     const after = reducer(before, {
