@@ -7,7 +7,7 @@
     "bramble": "./dist/index.js"
   },
   "scripts": {
-    "dev": "tsx src/index.tsx",
+    "dev": "bun src/index.tsx",
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -23,7 +23,6 @@
     "@types/node": "^22.0.0",
     "@types/react": "^18.3.0",
     "ink-testing-library": "^4.0.0",
-    "tsx": "^4.19.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"
   }

@@ -14,9 +14,9 @@ in to steer, and the agreed content lands in `spec.md`.
 ## Quickstart
 
 ```sh
-npm install
+bun install
 cp .env.example .env   # fill in ANTHROPIC_API_KEY + CODEX_COMPANION_PATH
-npm run dev
+bun run dev
 ```
 
 ## Runtime artifacts
@@ -33,5 +33,5 @@ npm run dev
 ## Tests
 
 ```sh
-npm test
+bun run test
 ```
