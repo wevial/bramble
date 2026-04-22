@@ -33,14 +33,26 @@ codex.setResponse({
 claude.setTokenDelayMs(10);
 codex.setTokenDelayMs(10);
 
-const prompt = process.argv.slice(2).join(' ') || 'Design an authentication system';
+const argv = process.argv.slice(2);
+let rounds = 3;
+const positional: string[] = [];
+for (let i = 0; i < argv.length; i++) {
+  if (argv[i] === '--rounds' && argv[i + 1]) {
+    const n = Number(argv[i + 1]);
+    if (Number.isInteger(n) && n >= 1) rounds = n;
+    i++;
+  } else {
+    positional.push(argv[i]!);
+  }
+}
+const prompt = positional.join(' ') || 'Design an authentication system';
 const cwd = process.cwd();
 
 const { waitUntilExit } = render(
   <App
     agents={{ claude, codex }}
     prompt={prompt}
-    rounds={1}
+    rounds={rounds}
     transcriptPath={join(cwd, 'transcript.jsonl')}
     specPath={join(cwd, 'spec.md')}
     debatePath={join(cwd, 'debate.md')}

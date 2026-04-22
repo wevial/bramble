@@ -7,6 +7,7 @@ import { writeDebate } from '../docs/debate.js';
 import type { State, TurnRecord } from '../orchestrator/types.js';
 import { parseAgentOutput } from '../protocol/patch.js';
 import { InputBox } from './InputBox.js';
+import { parseSlashCommand } from './commands.js';
 
 export type AppProps = {
   agents: { claude: Agent; codex: Agent };
@@ -27,6 +28,7 @@ export function App(props: AppProps) {
   const [state, setState] = useState<State>({ speaker: 'idle', transcript: [] });
   const [done, setDone] = useState(false);
   const [status, setStatus] = useState<string>('starting…');
+  const [rounds, setRounds] = useState(props.rounds);
   const handleRef = useRef<DebateHandle | null>(null);
   const lastTurnCountRef = useRef(0);
   const { stdout } = useStdout();
@@ -142,8 +144,29 @@ export function App(props: AppProps) {
         <InputBox
           disabled={done}
           onSubmit={line => {
-            handleRef.current?.interject(line);
-            setStatus(`interjected: ${line.slice(0, 40)}`);
+            const cmd = parseSlashCommand(line);
+            if (cmd === null) {
+              handleRef.current?.interject(line);
+              setStatus(`interjected: ${line.slice(0, 40)}`);
+              return;
+            }
+            if (cmd.kind === 'quit') {
+              handleRef.current?.abort();
+              props.onQuit?.();
+              return;
+            }
+            if (cmd.kind === 'rounds') {
+              if (cmd.value === null) {
+                const current = handleRef.current?.getRounds() ?? rounds;
+                setStatus(`rounds: ${current}`);
+              } else {
+                handleRef.current?.setRounds(cmd.value);
+                setRounds(cmd.value);
+                setStatus(`rounds → ${cmd.value}`);
+              }
+              return;
+            }
+            setStatus(cmd.hint);
           }}
           onQuit={() => {
             handleRef.current?.abort();
@@ -153,7 +176,7 @@ export function App(props: AppProps) {
       </Box>
       <Box paddingX={1}>
         <Text dimColor>
-          {done ? 'done' : `speaker: ${activeSpeaker}`} · {status} · Ctrl-C abort · /quit to exit
+          {done ? 'done' : `speaker: ${activeSpeaker}`} · rounds {rounds} · {status} · /rounds N · /quit
         </Text>
       </Box>
     </Box>

@@ -23,10 +23,6 @@ export function InputBox({ onSubmit, onQuit, disabled }: InputBoxProps) {
     if (key.return) {
       const line = buffer.trim();
       setBuffer('');
-      if (line === '/quit' || line === '/q') {
-        onQuit();
-        return;
-      }
       if (line.length > 0) onSubmit(line);
       return;
     }
