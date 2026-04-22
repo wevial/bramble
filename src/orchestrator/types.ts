@@ -13,7 +13,8 @@ export type State = {
 
 export type Action =
   | { type: 'turnStarted'; speaker: Speaker }
-  | { type: 'turnCompleted'; speaker: Speaker; content: string; timestamp: string };
+  | { type: 'turnCompleted'; speaker: Speaker; content: string; timestamp: string }
+  | { type: 'userInterjection'; content: string; timestamp: string };
 
 export const initialState: State = {
   speaker: 'idle',

@@ -17,5 +17,13 @@ export function reducer(state: State, action: Action): State {
           },
         ],
       };
+    case 'userInterjection':
+      return {
+        ...state,
+        transcript: [
+          ...state.transcript,
+          { speaker: 'user', content: action.content, timestamp: action.timestamp },
+        ],
+      };
   }
 }
