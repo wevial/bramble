@@ -47,10 +47,11 @@ describe('App smoke', () => {
     await waitFor(() => done);
 
     const frame = lastFrame() ?? '';
-    expect(frame).toContain('Claude');
-    expect(frame).toContain('Codex');
+    expect(frame).toContain('claude:');
+    expect(frame).toContain('codex:');
+    expect(frame).toContain('CLAUDE_SAYS_HI');
+    expect(frame).toContain('CODEX_REPLIES');
     expect(frame).toContain('spec.md');
-    expect(frame).toContain('debate');
     expect(frame).toContain('2 turns');
 
     // Free-form (non-JSON) content shows up in debate.md as the live debate,

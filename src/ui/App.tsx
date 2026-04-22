@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import type { Agent } from '../agents/agent.js';
 import { startDebate, type DebateHandle } from '../orchestrator/runner.js';
-import { appendSpecTurn, writeAcceptedSpec } from '../docs/spec.js';
+import { writeAcceptedSpec } from '../docs/spec.js';
 import { writeDebate } from '../docs/debate.js';
 import type { State, TurnRecord } from '../orchestrator/types.js';
 import { parseAgentOutput } from '../protocol/patch.js';
@@ -25,12 +25,16 @@ export function App(props: AppProps) {
     claude: '',
     codex: '',
   });
-  const [state, setState] = useState<State>({ speaker: 'idle', transcript: [] });
+  const [state, setState] = useState<State>({
+    speaker: 'idle',
+    transcript: [],
+    currentDraft: null,
+    accepted: false,
+  });
   const [done, setDone] = useState(false);
   const [status, setStatus] = useState<string>('starting…');
   const [rounds, setRounds] = useState(props.rounds);
   const handleRef = useRef<DebateHandle | null>(null);
-  const lastTurnCountRef = useRef(0);
   const { stdout } = useStdout();
   const [dims, setDims] = useState({
     rows: stdout?.rows ?? 24,
@@ -48,8 +52,6 @@ export function App(props: AppProps) {
 
   useEffect(() => {
     let currentSpeaker: 'claude' | 'codex' | null = null;
-    // Token buffer: tokens accumulate here and flush to React state on a
-    // timer so the UI updates in smooth chunks instead of per-char flicker.
     const pending = { claude: '', codex: '' };
     const FLUSH_MS = 80;
     const flush = setInterval(() => {
@@ -76,18 +78,11 @@ export function App(props: AppProps) {
       },
       onState: next => {
         setState(next);
-        // persist any newly-completed turns to transcript + debate.md (live)
-        lastTurnCountRef.current = next.transcript.length;
         void writeDebate(
           props.debatePath,
           next.transcript.map(t => ({ speaker: t.speaker, content: t.content })),
         );
-        // Once a draft is accepted, spec.md gets the accepted body (replacing
-        // anything that was appended turn-by-turn during the debate).
-        if (next.accepted && next.currentDraft) {
-          void writeAcceptedSpec(props.specPath, next.currentDraft.body);
-        } else if (next.currentDraft) {
-          // Live preview of the current draft in spec.md while debating.
+        if (next.currentDraft) {
           void writeAcceptedSpec(props.specPath, next.currentDraft.body);
         }
       },
@@ -95,7 +90,6 @@ export function App(props: AppProps) {
     handleRef.current = handle;
 
     handle.done.then(() => {
-      // final flush so any tail tokens land
       setLive(prev => ({
         claude: prev.claude + pending.claude,
         codex: prev.codex + pending.codex,
@@ -113,30 +107,26 @@ export function App(props: AppProps) {
     };
   }, []);
 
-  const claudeTurns = state.transcript.filter(t => t.speaker === 'claude');
-  const codexTurns = state.transcript.filter(t => t.speaker === 'codex');
   const activeSpeaker = state.speaker;
-
-  const sidebarWidth = Math.max(20, Math.min(36, Math.floor(dims.columns * 0.28)));
+  const sidebarWidth = Math.max(32, Math.min(60, Math.floor(dims.columns * 0.4)));
+  const chatWidth = Math.max(20, dims.columns - sidebarWidth);
+  // dims.rows minus: input box (3) + status row (1) + chat border (2) = 6
+  const chatBodyRows = Math.max(4, dims.rows - 6);
+  // chat interior after border (2) + paddingX (2)
+  const chatInnerWidth = Math.max(10, chatWidth - 4);
 
   return (
     <Box flexDirection="column" width={dims.columns} height={dims.rows}>
       <Box flexGrow={1}>
-        <Box flexDirection="column" flexGrow={1}>
-          <SpeakerPane
-            title="Claude"
-            active={activeSpeaker === 'claude'}
-            live={live.claude}
-            lastTurn={last(claudeTurns)}
-          />
-          <SpeakerPane
-            title="Codex"
-            active={activeSpeaker === 'codex'}
-            live={live.codex}
-            lastTurn={last(codexTurns)}
-          />
-          <DebateStrip transcript={state.transcript} />
-        </Box>
+        <ChatLog
+          transcript={state.transcript}
+          activeSpeaker={activeSpeaker}
+          liveClaude={live.claude}
+          liveCodex={live.codex}
+          width={chatWidth}
+          innerWidth={chatInnerWidth}
+          bodyRows={chatBodyRows}
+        />
         <SpecSidebar state={state} width={sidebarWidth} />
       </Box>
 
@@ -182,86 +172,157 @@ export function App(props: AppProps) {
   );
 }
 
-function SpeakerPane({
-  title,
-  active,
-  live,
-  lastTurn,
+type ChatItem = {
+  speaker: 'claude' | 'codex' | 'user';
+  content: string;
+  streaming?: boolean;
+};
+
+function ChatLog({
+  transcript,
+  activeSpeaker,
+  liveClaude,
+  liveCodex,
+  width,
+  innerWidth,
+  bodyRows,
 }: {
-  title: string;
-  active: boolean;
-  live: string;
-  lastTurn: TurnRecord | undefined;
+  transcript: TurnRecord[];
+  activeSpeaker: State['speaker'];
+  liveClaude: string;
+  liveCodex: string;
+  width: number;
+  innerWidth: number;
+  bodyRows: number;
 }) {
-  // During streaming, `live` is the display token stream — which for
-  // structured agents is commentary-only. For completed turns we parse
-  // the wire content and show the commentary field.
-  const body = active
-    ? live
-    : lastTurn
-      ? commentaryOf(lastTurn.content)
-      : '(no turn yet)';
+  const items: ChatItem[] = transcript.map(t => ({
+    speaker: t.speaker,
+    content: commentaryOf(t.content),
+  }));
+  if (activeSpeaker === 'claude' && liveClaude.length > 0) {
+    items.push({ speaker: 'claude', content: liveClaude, streaming: true });
+  } else if (activeSpeaker === 'codex' && liveCodex.length > 0) {
+    items.push({ speaker: 'codex', content: liveCodex, streaming: true });
+  }
+
+  const lines = tailChatLines(items, innerWidth, bodyRows);
+
   return (
     <Box
       flexDirection="column"
       borderStyle="single"
       paddingX={1}
-      flexGrow={1}
-      flexShrink={1}
-      flexBasis={0}
-      overflow="hidden"
+      width={width}
+      flexShrink={0}
     >
-      <Text bold color={active ? 'green' : undefined}>
-        {title}
-        {active ? ' ●' : lastTurn ? ' (last turn)' : ''}
-      </Text>
-      <Text wrap="wrap">{body}</Text>
-    </Box>
-  );
-}
-
-function DebateStrip({ transcript }: { transcript: TurnRecord[] }) {
-  const tail = transcript.slice(-4);
-  return (
-    <Box flexDirection="column" borderStyle="single" paddingX={1}>
-      <Text bold dimColor>
-        debate
-      </Text>
-      {tail.length === 0 ? (
+      {lines.length === 0 ? (
         <Text dimColor>(no turns yet)</Text>
       ) : (
-        tail.map((t, i) => (
-          <Text key={i}>
-            <Text color={colorFor(t.speaker)}>{t.speaker}</Text>: {oneLine(commentaryOf(t.content))}
-          </Text>
-        ))
+        lines.map((l, i) => <ChatLine key={i} line={l} />)
       )}
     </Box>
   );
 }
 
-function SpecSidebar({
-  state,
-  width,
-}: {
-  state: State;
-  width: number;
-}) {
+type RenderLine =
+  | { kind: 'blank' }
+  | {
+      kind: 'label';
+      speaker: 'claude' | 'codex' | 'user';
+      streaming?: boolean;
+      labelText: string;
+      bodyText: string;
+    }
+  | { kind: 'cont'; text: string };
+
+function tailChatLines(
+  items: ChatItem[],
+  width: number,
+  maxLines: number,
+): RenderLine[] {
+  const all: RenderLine[] = [];
+  for (let idx = 0; idx < items.length; idx++) {
+    const item = items[idx]!;
+    if (idx > 0) all.push({ kind: 'blank' });
+    const label = `${item.speaker}${item.streaming ? ' ●' : ''}: `;
+    const firstCap = Math.max(4, width - label.length);
+    const contCap = Math.max(4, width - 2);
+
+    // Slice off the first firstCap chars of the first paragraph for the label line.
+    const nl = item.content.indexOf('\n');
+    const firstPara = nl >= 0 ? item.content.slice(0, nl) : item.content;
+    const firstBody = firstPara.slice(0, firstCap);
+    all.push({
+      kind: 'label',
+      speaker: item.speaker,
+      streaming: item.streaming,
+      labelText: label,
+      bodyText: firstBody,
+    });
+
+    const remainder =
+      firstPara.slice(firstCap) + (nl >= 0 ? item.content.slice(nl) : '');
+    if (remainder.length > 0) {
+      for (const w of wrapLines(remainder, contCap)) {
+        all.push({ kind: 'cont', text: '  ' + w });
+      }
+    }
+  }
+  return all.slice(-maxLines);
+}
+
+function wrapLines(text: string, width: number): string[] {
+  const out: string[] = [];
+  if (width < 1) return [text];
+  for (const raw of text.split('\n')) {
+    if (raw.length === 0) {
+      out.push('');
+      continue;
+    }
+    for (let i = 0; i < raw.length; i += width) {
+      out.push(raw.slice(i, i + width));
+    }
+  }
+  return out;
+}
+
+function ChatLine({ line }: { line: RenderLine }) {
+  if (line.kind === 'blank') return <Text> </Text>;
+  if (line.kind === 'cont') return <Text>{line.text}</Text>;
+  return (
+    <Text>
+      <Text color={colorFor(line.speaker)} bold>
+        {line.labelText}
+      </Text>
+      {line.bodyText}
+    </Text>
+  );
+}
+
+function SpecSidebar({ state, width }: { state: State; width: number }) {
   const { currentDraft, accepted, transcript } = state;
   const status = accepted ? '✓ accepted' : currentDraft ? '◷ in debate' : '· no draft';
   const statusColor = accepted ? 'green' : currentDraft ? 'yellow' : undefined;
   return (
-    <Box flexDirection="column" borderStyle="single" paddingX={1} width={width} flexShrink={0}>
+    <Box
+      flexDirection="column"
+      borderStyle="single"
+      paddingX={1}
+      width={width}
+      flexShrink={0}
+    >
       <Text bold>spec.md</Text>
       <Text color={statusColor}>{status}</Text>
       {currentDraft && (
         <>
           <Text dimColor>by {currentDraft.proposer}</Text>
-          <Text>{truncate(currentDraft.body, width * 6)}</Text>
+          <Text wrap="wrap">{currentDraft.body}</Text>
         </>
       )}
       <Text dimColor>—</Text>
-      <Text dimColor>{transcript.length} turn{transcript.length === 1 ? '' : 's'}</Text>
+      <Text dimColor>
+        {transcript.length} turn{transcript.length === 1 ? '' : 's'}
+      </Text>
     </Box>
   );
 }
@@ -271,19 +332,6 @@ function commentaryOf(raw: string): string {
   return parsed.ok ? parsed.value.commentary : raw;
 }
 
-function truncate(s: string, max: number): string {
-  return s.length > max ? s.slice(0, max - 1) + '…' : s;
-}
-
 function colorFor(speaker: 'claude' | 'codex' | 'user'): string {
   return speaker === 'claude' ? 'cyan' : speaker === 'codex' ? 'magenta' : 'yellow';
-}
-
-function oneLine(s: string): string {
-  const trimmed = s.replace(/\s+/g, ' ').trim();
-  return trimmed.length > 60 ? trimmed.slice(0, 57) + '…' : trimmed;
-}
-
-function last<T>(xs: T[]): T | undefined {
-  return xs.length > 0 ? xs[xs.length - 1] : undefined;
 }
