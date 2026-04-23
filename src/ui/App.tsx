@@ -104,7 +104,7 @@ export function App(props: AppProps) {
         pendingGRef.current = false;
         return;
       }
-      const page = Math.max(1, Math.floor((dims.rows - 6) / 2));
+      const page = Math.max(1, Math.floor((dims.rows - 7) / 2));
       const isChat = focusMode === 'chat';
       const max = isChat ? maxChatScroll : maxSpecScroll;
       const setScroll = isChat ? setChatScroll : setSpecScroll;
@@ -230,8 +230,8 @@ export function App(props: AppProps) {
   // 50/50 split between chat and spec sidebar.
   const sidebarWidth = Math.max(20, Math.floor(dims.columns / 2));
   const chatWidth = Math.max(20, dims.columns - sidebarWidth);
-  // dims.rows minus: input box (3) + status row (1) + chat border (2) = 6
-  const chatBodyRows = Math.max(4, dims.rows - 6);
+  // dims.rows minus: top header (1) + input box (3) + status row (1) + chat border (2) = 7
+  const chatBodyRows = Math.max(4, dims.rows - 7);
   // chat interior after border (2) + paddingX (2)
   const chatInnerWidth = Math.max(10, chatWidth - 4);
 
@@ -257,8 +257,46 @@ export function App(props: AppProps) {
     );
   }
 
+  const agentTurns = state.transcript.filter(
+    t => t.speaker === 'claude' || t.speaker === 'codex',
+  ).length;
+  const currentRound = Math.min(
+    rounds,
+    Math.max(1, Math.floor(agentTurns / 2) + (done ? 0 : 1)),
+  );
+
   return (
     <Box flexDirection="column" width={dims.columns} height={dims.rows}>
+      <Box paddingX={1} flexShrink={0}>
+        <Text>
+          <Text color="greenBright" bold>
+            ✦ bramble
+          </Text>
+          <Text dimColor> · </Text>
+          <Text color="white">{props.sessionName}</Text>
+          <Text dimColor> · </Text>
+          <Text color={mode === 'auto' ? 'magenta' : 'yellow'}>{mode}</Text>
+          <Text dimColor> · </Text>
+          {done ? (
+            <Text color="green">done</Text>
+          ) : paused ? (
+            <Text color="yellow">paused (enter to continue)</Text>
+          ) : (
+            <Text>
+              <Text dimColor>speaker </Text>
+              <Text color={colorFor(activeSpeaker as 'claude' | 'codex' | 'user')}>
+                {activeSpeaker}
+              </Text>
+            </Text>
+          )}
+          <Text dimColor> · </Text>
+          <Text>
+            round {currentRound}/{rounds}
+          </Text>
+          <Text dimColor> · </Text>
+          <Text dimColor>{status}</Text>
+        </Text>
+      </Box>
       <Box height={chatBodyRows + 2} flexShrink={0}>
         <ChatLog
           goal={prompt}
@@ -350,20 +388,12 @@ export function App(props: AppProps) {
         />
       </Box>
       <Box paddingX={1}>
-        <Text dimColor>
-          <Text color="green">✦ bramble</Text> · {props.sessionName} · {mode}
-          {paused ? (
-            <Text color="yellow"> (paused — enter to continue)</Text>
-          ) : (
-            ''
-          )}{' '}
-          · {done ? 'done' : `speaker: ${activeSpeaker}`} · rounds {rounds} ·{' '}
-          {status} ·{' '}
+        <Text>
           {focusMode === 'input' ? (
-            <Text color="green">insert (esc to scroll · tab to switch panes)</Text>
+            <Text color="green">-- INSERT --  esc: scroll · tab: switch pane</Text>
           ) : (
-            <Text color="cyan">
-              scroll {focusMode} (j/k · gg/G · ctrl+d/ctrl+u · tab=pane · i to type)
+            <Text color="cyanBright">
+              -- SCROLL {focusMode.toUpperCase()} --  j/k · gg/G · ctrl+d/u · tab: switch pane · i: type
             </Text>
           )}
         </Text>
@@ -469,7 +499,7 @@ function ChatLog({
     <Box
       flexDirection="column"
       borderStyle="single"
-      borderColor={focused ? 'cyan' : undefined}
+      borderColor={focused ? 'cyanBright' : undefined}
       paddingX={1}
       width={width}
       flexShrink={0}
@@ -829,7 +859,7 @@ function SpecSidebar({
     <Box
       flexDirection="column"
       borderStyle="single"
-      borderColor={focused ? 'cyan' : undefined}
+      borderColor={focused ? 'cyanBright' : undefined}
       paddingX={1}
       width={width}
       flexShrink={0}
