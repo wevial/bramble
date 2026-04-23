@@ -61,18 +61,30 @@ export class ClaudeAgent implements Agent {
     const prompt = `${this.systemInstructions}\n\n---\n\n${ctx.prompt}`;
     let accumulated = '';
     let finalResult: string | null = null;
+    let subprocessError: string | null = null;
 
-    for await (const line of this.streamLines(prompt, signal)) {
-      if (signal.aborted) break;
-      const evt = parseClaudeEvent(line);
-      if (evt === null) continue;
-      if (evt.kind === 'text') {
-        accumulated += evt.text;
-        yield { text: evt.text };
-      } else {
-        // kind: 'result'
-        finalResult = evt.result;
+    try {
+      for await (const line of this.streamLines(prompt, signal)) {
+        if (signal.aborted) break;
+        const evt = parseClaudeEvent(line);
+        if (evt === null) continue;
+        if (evt.kind === 'text') {
+          accumulated += evt.text;
+          yield { text: evt.text };
+        } else {
+          finalResult = evt.result;
+        }
       }
+    } catch (err) {
+      subprocessError = (err as Error)?.message ?? String(err);
+    }
+
+    if (subprocessError && !finalResult && accumulated.length === 0) {
+      const errMsg = `⚠ claude subprocess failed: ${subprocessError}`;
+      yield { text: errMsg };
+      return {
+        raw: JSON.stringify({ commentary: errMsg, proposal: null, verdict: null }),
+      };
     }
 
     const fullText = finalResult ?? accumulated;

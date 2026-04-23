@@ -30,6 +30,41 @@ describe('streamProcessLines', () => {
     expect(received.length).toBeLessThan(50);
   });
 
+  it('throws on nonzero exit, surfacing stderr', async () => {
+    const signal = new AbortController().signal;
+    let caught: Error | null = null;
+    try {
+      for await (const _line of streamProcessLines(
+        { cmd: 'sh', args: ['-c', 'echo "boom" >&2; exit 2'] },
+        signal,
+      )) {
+        // no-op
+      }
+    } catch (e) {
+      caught = e as Error;
+    }
+    expect(caught).not.toBeNull();
+    expect(caught!.message).toContain('exited with code 2');
+    expect(caught!.message).toContain('boom');
+  });
+
+  it('throws when the command is not found', async () => {
+    const signal = new AbortController().signal;
+    let caught: Error | null = null;
+    try {
+      for await (const _line of streamProcessLines(
+        { cmd: '/no/such/command/zzz', args: [] },
+        signal,
+      )) {
+        // no-op
+      }
+    } catch (e) {
+      caught = e as Error;
+    }
+    expect(caught).not.toBeNull();
+    expect(caught!.message).toMatch(/failed to spawn|exited with code/);
+  });
+
   it('handles lines larger than the default chunk boundary', async () => {
     const big = 'x'.repeat(5000);
     const lines: string[] = [];

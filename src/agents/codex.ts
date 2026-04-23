@@ -60,16 +60,28 @@ export class CodexAgent implements Agent {
   ): AsyncGenerator<Token, StreamTail | void, void> {
     const prompt = `${this.systemInstructions}\n\n---\n\n${ctx.prompt}`;
     let fullText = '';
+    let subprocessError: string | null = null;
 
-    for await (const line of this.streamLines(prompt, signal)) {
-      if (signal.aborted) break;
-      const evt = parseCodexEvent(line);
-      if (evt === null) continue;
-      if (evt.kind === 'message') {
-        fullText += evt.text;
-        yield { text: evt.text };
+    try {
+      for await (const line of this.streamLines(prompt, signal)) {
+        if (signal.aborted) break;
+        const evt = parseCodexEvent(line);
+        if (evt === null) continue;
+        if (evt.kind === 'message') {
+          fullText += evt.text;
+          yield { text: evt.text };
+        }
       }
-      // kind: 'turnDone' — end marker; subprocess will close shortly.
+    } catch (err) {
+      subprocessError = (err as Error)?.message ?? String(err);
+    }
+
+    if (subprocessError && fullText.length === 0) {
+      const errMsg = `⚠ codex subprocess failed: ${subprocessError}`;
+      yield { text: errMsg };
+      return {
+        raw: JSON.stringify({ commentary: errMsg, proposal: null, verdict: null }),
+      };
     }
 
     const built = buildAgentOutputFromModel(fullText);

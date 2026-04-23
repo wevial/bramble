@@ -10,6 +10,7 @@ import { App } from './ui/App.js';
 import { generateSessionName } from './util/name.js';
 import { readTranscript } from './docs/transcript.js';
 import { rehydrateState } from './orchestrator/replay.js';
+import { spawnSync } from 'node:child_process';
 
 const argv = process.argv.slice(2);
 let rounds = 3;
@@ -80,6 +81,28 @@ if (resumeName) {
     resumedPrompt = (await readFile(promptSidecarPath, 'utf8')).trim();
   } catch {
     resumedPrompt = undefined;
+  }
+}
+
+function binaryExists(cmd: string): boolean {
+  const r = spawnSync('which', [cmd], { stdio: 'ignore' });
+  return r.status === 0;
+}
+
+if (real) {
+  const missing: string[] = [];
+  if (!binaryExists('claude')) missing.push('claude');
+  if (!binaryExists('codex')) missing.push('codex');
+  if (missing.length > 0) {
+    console.error(
+      `bramble --real needs these CLIs on PATH: ${missing.join(', ')}`,
+    );
+    console.error(
+      'install + auth them first:\n' +
+        '  claude: https://claude.ai/code → claude /login\n' +
+        '  codex:  https://openai.com/codex → codex login',
+    );
+    process.exit(1);
   }
 }
 

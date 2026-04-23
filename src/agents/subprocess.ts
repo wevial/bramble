@@ -37,6 +37,10 @@ export async function* streamProcessLines(
     }
   };
 
+  let stderr = '';
+  let exitCode: number | null = null;
+  let spawnError: Error | null = null;
+
   let buffer = '';
   child.stdout.setEncoding('utf8');
   child.stdout.on('data', (chunk: string) => {
@@ -50,12 +54,18 @@ export async function* streamProcessLines(
     }
     wake();
   });
-  child.on('close', () => {
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (chunk: string) => {
+    stderr += chunk;
+  });
+  child.on('close', code => {
+    exitCode = code;
     if (buffer.length > 0) queue.push(buffer);
     queue.push(null);
     wake();
   });
-  child.on('error', () => {
+  child.on('error', err => {
+    spawnError = err as Error;
     queue.push(null);
     wake();
   });
@@ -69,8 +79,21 @@ export async function* streamProcessLines(
         continue;
       }
       const next = queue.shift()!;
-      if (next === null) return;
+      if (next === null) break;
       yield next;
+    }
+    if (spawnError) {
+      throw new Error(
+        `failed to spawn \`${spec.cmd}\`: ${spawnError.message}`,
+      );
+    }
+    if (!signal.aborted && exitCode !== null && exitCode !== 0) {
+      const tail = stderr.trim().split('\n').slice(-3).join(' · ');
+      throw new Error(
+        `\`${spec.cmd}\` exited with code ${exitCode}${
+          tail ? `: ${tail}` : ''
+        }`,
+      );
     }
   } finally {
     signal.removeEventListener('abort', onAbort);
