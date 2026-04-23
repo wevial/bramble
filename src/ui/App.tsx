@@ -811,7 +811,7 @@ function SpecSidebar({
               <MarkdownLine key={i} line={l.text} />
             ),
           )}
-          {truncated && <Text dimColor>… (see spec.md)</Text>}
+          {truncated && <Text dimColor>… (see spec-{sessionName}.md)</Text>}
         </>
       ) : (
         <Text dimColor>
