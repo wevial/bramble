@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Box, Text, useStdout } from 'ink';
+import { Box, Text, useStdout, useInput } from 'ink';
 import type { Agent } from '../agents/agent.js';
 import {
   startDebate,
@@ -57,6 +57,12 @@ export function App(props: AppProps) {
   const [now, setNow] = useState(Date.now());
   const [paused, setPaused] = useState(false);
   const mode: DebateMode = props.mode ?? 'auto';
+  const [focusMode, setFocusMode] = useState<'input' | 'chat'>('input');
+  const [chatScroll, setChatScroll] = useState(0); // lines from tail; 0 = latest
+  const pendingGRef = useRef(false); // two-key "gg" handler
+  // Keep scroll anchored to tail when new lines arrive — if the user is not
+  // actively scrolled up, new lines shouldn't push them off the bottom.
+  // We just leave chatScroll at 0 in that case; the tail slice naturally updates.
   const activeStartRef = useRef<number | null>(null);
   const handleRef = useRef<DebateHandle | null>(null);
   const { stdout } = useStdout();
@@ -73,6 +79,58 @@ export function App(props: AppProps) {
       stdout.off('resize', onResize);
     };
   }, [stdout]);
+
+  // Tab toggles between input and chat-scroll focus modes, globally. Active
+  // regardless of which sub-component has its own useInput handler.
+  useInput((input, key) => {
+    if (key.tab) {
+      setFocusMode(f => (f === 'input' ? 'chat' : 'input'));
+      pendingGRef.current = false;
+    }
+  });
+
+  // Vim-style scroll controls, only active when focus is on the chat.
+  useInput(
+    (input, key) => {
+      const page = Math.max(1, Math.floor((dims.rows - 6) / 2));
+      if (input === 'j' || key.downArrow) {
+        setChatScroll(s => Math.max(0, s - 1));
+        pendingGRef.current = false;
+        return;
+      }
+      if (input === 'k' || key.upArrow) {
+        setChatScroll(s => s + 1);
+        pendingGRef.current = false;
+        return;
+      }
+      if (key.ctrl && input === 'd') {
+        setChatScroll(s => Math.max(0, s - page));
+        pendingGRef.current = false;
+        return;
+      }
+      if (key.ctrl && input === 'u') {
+        setChatScroll(s => s + page);
+        pendingGRef.current = false;
+        return;
+      }
+      if (input === 'G') {
+        setChatScroll(0);
+        pendingGRef.current = false;
+        return;
+      }
+      if (input === 'g') {
+        if (pendingGRef.current) {
+          setChatScroll(Number.MAX_SAFE_INTEGER); // clamped in ChatLog
+          pendingGRef.current = false;
+        } else {
+          pendingGRef.current = true;
+        }
+        return;
+      }
+      pendingGRef.current = false;
+    },
+    { isActive: focusMode === 'chat' },
+  );
 
   // Tick a timer only while an agent is active, so the "thinking Ns" indicator updates.
   useEffect(() => {
@@ -169,6 +227,7 @@ export function App(props: AppProps) {
           activeSpeaker={activeSpeaker}
           elapsedMs={elapsedMs}
           expanded={expanded}
+          scrollOffset={chatScroll}
           width={chatWidth}
           innerWidth={chatInnerWidth}
           bodyRows={chatBodyRows}
@@ -183,6 +242,7 @@ export function App(props: AppProps) {
 
       <Box borderStyle="single" paddingX={1}>
         <InputBox
+          disabled={focusMode !== 'input'}
           allowEmptySubmit={mode === 'collab'}
           onSubmit={line => {
             // Collab mode: empty enter = continue past the pause.
@@ -253,7 +313,12 @@ export function App(props: AppProps) {
             ''
           )}{' '}
           · {done ? 'done' : `speaker: ${activeSpeaker}`} · rounds {rounds} ·{' '}
-          {status} · /rounds · /drafts · /expand · /quit
+          {status} ·{' '}
+          {focusMode === 'chat' ? (
+            <Text color="cyan">scrolling (j/k · Tab back)</Text>
+          ) : (
+            <>Tab to scroll · /rounds · /drafts · /expand · /quit</>
+          )}
         </Text>
       </Box>
     </Box>
@@ -280,6 +345,7 @@ function ChatLog({
   activeSpeaker,
   elapsedMs,
   expanded,
+  scrollOffset,
   width,
   innerWidth,
   bodyRows,
@@ -289,6 +355,7 @@ function ChatLog({
   activeSpeaker: State['speaker'];
   elapsedMs: number;
   expanded: Set<string>;
+  scrollOffset: number;
   width: number;
   innerWidth: number;
   bodyRows: number;
@@ -333,7 +400,12 @@ function ChatLog({
   // Account for 2 header rows (goal + divider) before the chat body.
   const headerRows = 2;
   const availableRows = Math.max(1, bodyRows - headerRows);
-  const lines = tailChatLines(items, innerWidth, availableRows);
+  const { lines, atTop, atBottom, totalLines } = tailChatLines(
+    items,
+    innerWidth,
+    availableRows,
+    scrollOffset,
+  );
   const goalLine = truncateOneLine(`goal: ${goal}`, innerWidth);
 
   return (
@@ -347,6 +419,12 @@ function ChatLog({
     >
       <Text bold color="blue">
         {goalLine}
+        {!atBottom && (
+          <Text color="yellow">
+            {'  '}
+            ↑ scrolled {atTop ? '(top)' : ''}
+          </Text>
+        )}
       </Text>
       <Text dimColor>{'─'.repeat(innerWidth)}</Text>
       {lines.length === 0 ? (
@@ -390,7 +468,8 @@ function tailChatLines(
   items: ChatItem[],
   width: number,
   maxLines: number,
-): RenderLine[] {
+  scrollOffset: number,
+): { lines: RenderLine[]; atTop: boolean; atBottom: boolean; totalLines: number } {
   const all: RenderLine[] = [];
   for (let idx = 0; idx < items.length; idx++) {
     const item = items[idx]!;
@@ -502,7 +581,17 @@ function tailChatLines(
       });
     }
   }
-  return all.slice(-maxLines);
+  const total = all.length;
+  const maxOffset = Math.max(0, total - maxLines);
+  const clamped = Math.min(Math.max(0, scrollOffset), maxOffset);
+  const end = total - clamped;
+  const start = Math.max(0, end - maxLines);
+  return {
+    lines: all.slice(start, end),
+    atTop: start === 0,
+    atBottom: clamped === 0,
+    totalLines: total,
+  };
 }
 
 function wrapLines(text: string, width: number): string[] {
@@ -567,10 +656,15 @@ function ChatLine({ line }: { line: RenderLine }) {
     );
   }
   if (line.kind === 'proposalRow') {
+    // Pad count is encoded in trailing spaces; split so markdown styling
+    // never spills into the pad region and the right │ stays aligned.
+    const trimmed = line.text.replace(/\s+$/, '');
+    const pad = ' '.repeat(line.text.length - trimmed.length);
     return (
       <Text>
         <Text dimColor>│ </Text>
-        {line.text}
+        <MarkdownLine line={trimmed} />
+        {pad}
         <Text dimColor> │</Text>
       </Text>
     );
