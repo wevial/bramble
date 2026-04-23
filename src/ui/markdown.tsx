@@ -84,6 +84,30 @@ function headingColor(level: number): string | undefined {
   return undefined;
 }
 
+/**
+ * Visible length of a line after markdown rendering. Markdown delimiters
+ * (**, *, _, `) are stripped on render but present in the raw string, so
+ * naive string-length padding produces misaligned borders.
+ */
+export function visibleLength(line: string): number {
+  const cls = classifyLine(line);
+  if (cls.kind === 'heading') {
+    return cls.level + 1 + inlineVisibleLength(cls.content);
+  }
+  if (cls.kind === 'bullet') {
+    // renders as "<indent>• <content>" (• is 1 col, space is 1)
+    return cls.indent.length + 2 + inlineVisibleLength(cls.content);
+  }
+  return inlineVisibleLength(cls.content);
+}
+
+function inlineVisibleLength(s: string): number {
+  const spans = parseInline(s);
+  let n = 0;
+  for (const span of spans) n += span.text.length;
+  return n;
+}
+
 export function MarkdownLine({ line }: { line: string }) {
   const cls = classifyLine(line);
   if (cls.kind === 'heading') {

@@ -14,7 +14,7 @@ import type { State, TurnRecord } from '../orchestrator/types.js';
 import { parseAgentOutput, type AgentOutput } from '../protocol/patch.js';
 import { InputBox } from './InputBox.js';
 import { parseSlashCommand } from './commands.js';
-import { MarkdownLine } from './markdown.js';
+import { MarkdownLine, visibleLength } from './markdown.js';
 
 export type AppProps = {
   agents: { claude: Agent; codex: Agent };
@@ -57,12 +57,12 @@ export function App(props: AppProps) {
   const [now, setNow] = useState(Date.now());
   const [paused, setPaused] = useState(false);
   const mode: DebateMode = props.mode ?? 'auto';
-  const [focusMode, setFocusMode] = useState<'input' | 'chat'>('input');
+  // Vim-style modal: start in scroll mode. Press `i` to enter insert/input.
+  const [focusMode, setFocusMode] = useState<'input' | 'chat'>('chat');
   const [chatScroll, setChatScroll] = useState(0); // lines from tail; 0 = latest
+  const [maxChatScroll, setMaxChatScroll] = useState(0);
+  const [expandAll, setExpandAll] = useState(false);
   const pendingGRef = useRef(false); // two-key "gg" handler
-  // Keep scroll anchored to tail when new lines arrive — if the user is not
-  // actively scrolled up, new lines shouldn't push them off the bottom.
-  // We just leave chatScroll at 0 in that case; the tail slice naturally updates.
   const activeStartRef = useRef<number | null>(null);
   const handleRef = useRef<DebateHandle | null>(null);
   const { stdout } = useStdout();
@@ -80,18 +80,27 @@ export function App(props: AppProps) {
     };
   }, [stdout]);
 
-  // Tab toggles between input and chat-scroll focus modes, globally. Active
-  // regardless of which sub-component has its own useInput handler.
+  // Tab toggles modes too, as a convenience. Always active.
   useInput((input, key) => {
     if (key.tab) {
       setFocusMode(f => (f === 'input' ? 'chat' : 'input'));
       pendingGRef.current = false;
     }
+    // Ctrl+O toggles expand-all for superseded proposals, regardless of mode.
+    if (key.ctrl && input === 'o') {
+      setExpandAll(v => !v);
+    }
   });
 
-  // Vim-style scroll controls, only active when focus is on the chat.
+  // Vim-style scroll controls + `i` to enter insert mode. Active only in
+  // scroll mode so typing `i` in the input box works normally.
   useInput(
     (input, key) => {
+      if (input === 'i') {
+        setFocusMode('input');
+        pendingGRef.current = false;
+        return;
+      }
       const page = Math.max(1, Math.floor((dims.rows - 6) / 2));
       if (input === 'j' || key.downArrow) {
         setChatScroll(s => Math.max(0, s - 1));
@@ -99,7 +108,7 @@ export function App(props: AppProps) {
         return;
       }
       if (input === 'k' || key.upArrow) {
-        setChatScroll(s => s + 1);
+        setChatScroll(s => Math.min(maxChatScroll, s + 1));
         pendingGRef.current = false;
         return;
       }
@@ -109,7 +118,7 @@ export function App(props: AppProps) {
         return;
       }
       if (key.ctrl && input === 'u') {
-        setChatScroll(s => s + page);
+        setChatScroll(s => Math.min(maxChatScroll, s + page));
         pendingGRef.current = false;
         return;
       }
@@ -120,7 +129,7 @@ export function App(props: AppProps) {
       }
       if (input === 'g') {
         if (pendingGRef.current) {
-          setChatScroll(Number.MAX_SAFE_INTEGER); // clamped in ChatLog
+          setChatScroll(maxChatScroll);
           pendingGRef.current = false;
         } else {
           pendingGRef.current = true;
@@ -130,6 +139,17 @@ export function App(props: AppProps) {
       pendingGRef.current = false;
     },
     { isActive: focusMode === 'chat' },
+  );
+
+  // Esc exits input mode back to scroll. Only active in input mode so it
+  // doesn't fire for other esc-initiated sequences in scroll mode.
+  useInput(
+    (input, key) => {
+      if (key.escape) {
+        setFocusMode('chat');
+      }
+    },
+    { isActive: focusMode === 'input' },
   );
 
   // Tick a timer only while an agent is active, so the "thinking Ns" indicator updates.
@@ -189,7 +209,8 @@ export function App(props: AppProps) {
   }, [phase]);
 
   const activeSpeaker = state.speaker;
-  const sidebarWidth = Math.max(32, Math.min(60, Math.floor(dims.columns * 0.4)));
+  // 50/50 split between chat and spec sidebar.
+  const sidebarWidth = Math.max(20, Math.floor(dims.columns / 2));
   const chatWidth = Math.max(20, dims.columns - sidebarWidth);
   // dims.rows minus: input box (3) + status row (1) + chat border (2) = 6
   const chatBodyRows = Math.max(4, dims.rows - 6);
@@ -227,7 +248,9 @@ export function App(props: AppProps) {
           activeSpeaker={activeSpeaker}
           elapsedMs={elapsedMs}
           expanded={expanded}
+          expandAll={expandAll}
           scrollOffset={chatScroll}
+          onMaxScrollChange={setMaxChatScroll}
           width={chatWidth}
           innerWidth={chatInnerWidth}
           bodyRows={chatBodyRows}
@@ -315,9 +338,11 @@ export function App(props: AppProps) {
           · {done ? 'done' : `speaker: ${activeSpeaker}`} · rounds {rounds} ·{' '}
           {status} ·{' '}
           {focusMode === 'chat' ? (
-            <Text color="cyan">scrolling (j/k · Tab back)</Text>
+            <Text color="cyan">
+              scroll (j/k · gg/G · ^d/^u · ^o expand all · i to type)
+            </Text>
           ) : (
-            <>Tab to scroll · /rounds · /drafts · /expand · /quit</>
+            <Text color="green">insert (esc to scroll)</Text>
           )}
         </Text>
       </Box>
@@ -345,7 +370,9 @@ function ChatLog({
   activeSpeaker,
   elapsedMs,
   expanded,
+  expandAll,
   scrollOffset,
+  onMaxScrollChange,
   width,
   innerWidth,
   bodyRows,
@@ -355,7 +382,9 @@ function ChatLog({
   activeSpeaker: State['speaker'];
   elapsedMs: number;
   expanded: Set<string>;
+  expandAll: boolean;
   scrollOffset: number;
+  onMaxScrollChange: (max: number) => void;
   width: number;
   innerWidth: number;
   bodyRows: number;
@@ -385,7 +414,7 @@ function ChatLog({
       parsed: pt.parsed,
       proposalSuperseded: superseded,
       proposalId: id,
-      proposalExpanded: id ? expanded.has(id) : false,
+      proposalExpanded: expandAll || (id ? expanded.has(id) : false),
     };
   });
   if (activeSpeaker === 'claude' || activeSpeaker === 'codex') {
@@ -406,6 +435,10 @@ function ChatLog({
     availableRows,
     scrollOffset,
   );
+  const maxOffset = Math.max(0, totalLines - availableRows);
+  useEffect(() => {
+    onMaxScrollChange(maxOffset);
+  }, [maxOffset, onMaxScrollChange]);
   const goalLine = truncateOneLine(`goal: ${goal}`, innerWidth);
 
   return (
@@ -419,12 +452,8 @@ function ChatLog({
     >
       <Text bold color="blue">
         {goalLine}
-        {!atBottom && (
-          <Text color="yellow">
-            {'  '}
-            ↑ scrolled {atTop ? '(top)' : ''}
-          </Text>
-        )}
+        {!atTop && <Text color="yellow">{'  '}▲ more above</Text>}
+        {!atBottom && <Text color="yellow">{'  '}▼ more below</Text>}
       </Text>
       <Text dimColor>{'─'.repeat(innerWidth)}</Text>
       {lines.length === 0 ? (
@@ -656,10 +685,12 @@ function ChatLine({ line }: { line: RenderLine }) {
     );
   }
   if (line.kind === 'proposalRow') {
-    // Pad count is encoded in trailing spaces; split so markdown styling
-    // never spills into the pad region and the right │ stays aligned.
     const trimmed = line.text.replace(/\s+$/, '');
-    const pad = ' '.repeat(line.text.length - trimmed.length);
+    // After markdown rendering, **bold**/`code`/etc. occupy fewer columns than
+    // raw chars — pad based on visible width, not string length, so the right
+    // │ lands in the correct column.
+    const visible = visibleLength(trimmed);
+    const pad = ' '.repeat(Math.max(0, line.text.length - visible));
     return (
       <Text>
         <Text dimColor>│ </Text>

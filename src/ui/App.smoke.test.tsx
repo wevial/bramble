@@ -123,8 +123,10 @@ describe('App smoke', () => {
       />,
     );
 
-    // let claude start streaming, then interject
+    // let claude start streaming, then enter insert mode and interject
     await new Promise(r => setTimeout(r, 40));
+    stdin.write('i');
+    await new Promise(r => setTimeout(r, 10));
     for (const ch of 'wait') {
       stdin.write(ch);
       await new Promise(r => setTimeout(r, 2));
