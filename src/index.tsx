@@ -19,6 +19,7 @@ let codexModel: string | undefined;
 let codexEffort: string | undefined;
 let sessionName: string | undefined;
 let resumeName: string | undefined;
+let mode: 'auto' | 'collab' = 'auto';
 const positional: string[] = [];
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
@@ -49,6 +50,10 @@ for (let i = 0; i < argv.length; i++) {
   } else if (a === '--resume' && argv[i + 1]) {
     resumeName = argv[i + 1];
     i++;
+  } else if (a === '--collab') {
+    mode = 'collab';
+  } else if (a === '--auto') {
+    mode = 'auto';
   } else {
     positional.push(a!);
   }
@@ -115,6 +120,7 @@ const { waitUntilExit } = render(
     prompt={prompt || resumedPrompt}
     sessionName={name}
     rounds={rounds}
+    mode={mode}
     initialState={resumedState}
     promptSidecarPath={promptSidecarPath}
     transcriptPath={transcriptPath}

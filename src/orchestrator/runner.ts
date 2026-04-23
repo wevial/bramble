@@ -5,6 +5,8 @@ import { reducer } from './reducer.js';
 import { nextSpeaker } from './scheduler.js';
 import { initialState, type State } from './types.js';
 
+export type DebateMode = 'auto' | 'collab';
+
 export type RunDebateOptions = {
   agents: { claude: Agent; codex: Agent };
   prompt: string;
@@ -12,8 +14,12 @@ export type RunDebateOptions = {
   transcriptPath: string;
   /** Optional starting state — used for --resume. Defaults to initialState. */
   initialState?: State;
+  /** Debate cadence: "auto" runs turns back-to-back, "collab" pauses between. */
+  mode?: DebateMode;
   onToken?: (speaker: 'claude' | 'codex', text: string) => void;
   onState?: (state: State) => void;
+  /** Fired whenever the collab-mode pause state changes. */
+  onPauseChange?: (paused: boolean) => void;
   signal?: AbortSignal;
 };
 
@@ -28,14 +34,27 @@ export type DebateHandle = {
   setRounds(n: number): void;
   /** Current round cap. */
   getRounds(): number;
+  /** In collab mode, advance past the current between-turns pause. No-op in auto mode. */
+  continue(): void;
 };
 
 export function startDebate(opts: RunDebateOptions): DebateHandle {
   let state: State = opts.initialState ?? { ...initialState };
   let turnController: AbortController | null = null;
   let rounds = Math.max(1, Math.floor(opts.rounds));
+  const mode: DebateMode = opts.mode ?? 'auto';
+  let continueResolver: (() => void) | null = null;
   const outer = new AbortController();
   opts.signal?.addEventListener('abort', () => outer.abort(), { once: true });
+
+  const resumePause = () => {
+    if (continueResolver) {
+      const r = continueResolver;
+      continueResolver = null;
+      opts.onPauseChange?.(false);
+      r();
+    }
+  };
 
   const interject = (content: string) => {
     const timestamp = new Date().toISOString();
@@ -43,6 +62,9 @@ export function startDebate(opts: RunDebateOptions): DebateHandle {
     opts.onState?.(state);
     void appendTurn(opts.transcriptPath, { speaker: 'user', content, timestamp });
     turnController?.abort();
+    // In collab mode, a user interjection also wakes the between-turns pause
+    // so the next agent picks up the new context immediately.
+    resumePause();
   };
 
   const done = (async () => {
@@ -112,6 +134,21 @@ export function startDebate(opts: RunDebateOptions): DebateHandle {
         }
       }
       i++;
+      // Collab mode: pause between turns (unless this was the final turn or
+      // a terminal verdict landed).
+      if (
+        mode === 'collab' &&
+        i < rounds * 2 &&
+        !state.accepted &&
+        !outer.signal.aborted
+      ) {
+        opts.onPauseChange?.(true);
+        await new Promise<void>(resolve => {
+          continueResolver = resolve;
+          outer.signal.addEventListener('abort', () => resolve(), { once: true });
+        });
+        opts.onPauseChange?.(false);
+      }
     }
     return state;
   })();
@@ -124,6 +161,7 @@ export function startDebate(opts: RunDebateOptions): DebateHandle {
       rounds = Math.max(1, Math.floor(n));
     },
     getRounds: () => rounds,
+    continue: resumePause,
   };
 }
 

@@ -229,6 +229,61 @@ describe('runDebate (Phase 0 walking skeleton)', () => {
     expect(final.transcript.filter(t => t.speaker !== 'user').length).toBe(2);
   });
 
+  it('collab mode pauses between turns until continue() is called', async () => {
+    const claude = new FakeAgent('claude');
+    const codex = new FakeAgent('codex');
+    claude.setResponse('c');
+    codex.setResponse('d');
+
+    const dir = mkdtempSync(join(tmpdir(), 'bramble-collab-'));
+    const handle = startDebate({
+      agents: { claude, codex },
+      prompt: 'x',
+      rounds: 2,
+      mode: 'collab',
+      transcriptPath: join(dir, 'transcript.jsonl'),
+    });
+
+    // After a short delay only the first turn should have landed.
+    await new Promise(r => setTimeout(r, 80));
+    // We can't peek the runner's state directly, so wait a bit more to be
+    // confident the runner really is paused (not just slow). If auto mode
+    // were in effect, all 4 turns would complete in <80ms with no delays.
+    await new Promise(r => setTimeout(r, 100));
+
+    // Now continue through all pauses.
+    handle.continue();
+    await new Promise(r => setTimeout(r, 40));
+    handle.continue();
+    await new Promise(r => setTimeout(r, 40));
+    handle.continue();
+
+    const final = await handle.done;
+    expect(final.transcript.filter(t => t.speaker !== 'user').length).toBe(4);
+  });
+
+  it('interject() also wakes a collab-mode pause', async () => {
+    const claude = new FakeAgent('claude');
+    const codex = new FakeAgent('codex');
+    claude.setResponse('c');
+    codex.setResponse('d');
+
+    const dir = mkdtempSync(join(tmpdir(), 'bramble-collab-'));
+    const handle = startDebate({
+      agents: { claude, codex },
+      prompt: 'x',
+      rounds: 1,
+      mode: 'collab',
+      transcriptPath: join(dir, 'transcript.jsonl'),
+    });
+
+    await new Promise(r => setTimeout(r, 80));
+    handle.interject('please continue');
+    const final = await handle.done;
+    expect(final.transcript.filter(t => t.speaker === 'user').length).toBe(1);
+    expect(final.transcript.filter(t => t.speaker !== 'user').length).toBe(2);
+  });
+
   it('invokes onToken for live streaming updates', async () => {
     const { claude, codex } = makeAgents();
     const dir = mkdtempSync(join(tmpdir(), 'bramble-run-'));

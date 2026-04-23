@@ -1,7 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import type { Agent } from '../agents/agent.js';
-import { startDebate, type DebateHandle } from '../orchestrator/runner.js';
+import {
+  startDebate,
+  type DebateHandle,
+  type DebateMode,
+} from '../orchestrator/runner.js';
 import { writeAcceptedSpec, clearSpec } from '../docs/spec.js';
 import { writeDebate } from '../docs/debate.js';
 import { writeDraft, clearDraft } from '../docs/draft.js';
@@ -17,6 +21,7 @@ export type AppProps = {
   prompt?: string;
   sessionName: string;
   rounds: number;
+  mode?: DebateMode;
   /** Optional starting state from --resume. */
   initialState?: State;
   /** Where to save the prompt so future --resume runs can restore context. */
@@ -49,6 +54,8 @@ export function App(props: AppProps) {
   const [rounds, setRounds] = useState(props.rounds);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [now, setNow] = useState(Date.now());
+  const [paused, setPaused] = useState(false);
+  const mode: DebateMode = props.mode ?? 'auto';
   const activeStartRef = useRef<number | null>(null);
   const handleRef = useRef<DebateHandle | null>(null);
   const { stdout } = useStdout();
@@ -89,8 +96,10 @@ export function App(props: AppProps) {
       agents: props.agents,
       prompt,
       rounds: props.rounds,
+      mode,
       transcriptPath: props.transcriptPath,
       initialState: props.initialState,
+      onPauseChange: p => setPaused(p),
       onState: next => {
         setState(next);
         void writeDebate(
@@ -173,7 +182,16 @@ export function App(props: AppProps) {
 
       <Box borderStyle="single" paddingX={1}>
         <InputBox
+          allowEmptySubmit={mode === 'collab'}
           onSubmit={line => {
+            // Collab mode: empty enter = continue past the pause.
+            if (mode === 'collab' && line.length === 0) {
+              if (paused) {
+                handleRef.current?.continue();
+                setStatus('continuing…');
+              }
+              return;
+            }
             const cmd = parseSlashCommand(line);
             if (cmd === null) {
               handleRef.current?.interject(line);
@@ -227,8 +245,13 @@ export function App(props: AppProps) {
       </Box>
       <Box paddingX={1}>
         <Text dimColor>
-          <Text color="green">✦ bramble</Text> · {props.sessionName} ·{' '}
-          {done ? 'done' : `speaker: ${activeSpeaker}`} · rounds {rounds} ·{' '}
+          <Text color="green">✦ bramble</Text> · {props.sessionName} · {mode}
+          {paused ? (
+            <Text color="yellow"> (paused — enter to continue)</Text>
+          ) : (
+            ''
+          )}{' '}
+          · {done ? 'done' : `speaker: ${activeSpeaker}`} · rounds {rounds} ·{' '}
           {status} · /rounds · /drafts · /expand · /quit
         </Text>
       </Box>

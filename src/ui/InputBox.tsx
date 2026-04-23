@@ -5,9 +5,16 @@ export type InputBoxProps = {
   onSubmit(line: string): void;
   onQuit(): void;
   disabled?: boolean;
+  /** When true, hitting enter on an empty buffer still fires onSubmit(''). */
+  allowEmptySubmit?: boolean;
 };
 
-export function InputBox({ onSubmit, onQuit, disabled }: InputBoxProps) {
+export function InputBox({
+  onSubmit,
+  onQuit,
+  disabled,
+  allowEmptySubmit,
+}: InputBoxProps) {
   const [buffer, setBuffer] = useState('');
 
   useInput((input, key) => {
@@ -23,7 +30,7 @@ export function InputBox({ onSubmit, onQuit, disabled }: InputBoxProps) {
     if (key.return) {
       const line = buffer.trim();
       setBuffer('');
-      if (line.length > 0) onSubmit(line);
+      if (line.length > 0 || allowEmptySubmit) onSubmit(line);
       return;
     }
     if (key.backspace || key.delete) {
