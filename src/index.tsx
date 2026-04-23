@@ -114,25 +114,72 @@ if (real) {
 } else {
   const fClaude = new FakeAgent('claude');
   const fCodex = new FakeAgent('codex');
-  fClaude.setResponse({
-    commentary:
-      'Proposing a minimal auth spec to start. Email+password, add OAuth later.',
-    proposal: {
-      body:
-        '# Authentication\n\n' +
-        '- Email + password signup\n' +
-        '- bcrypt password hashing (cost 12)\n' +
-        '- 30-day session tokens, rotated on each request\n' +
-        '- Rate limit: 5 attempts / 15 min per IP',
+  fClaude.setResponses([
+    {
+      commentary:
+        'Proposing a minimal auth spec to start. Email+password core, OAuth deferred.',
+      proposal: {
+        body:
+          '# Authentication\n\n' +
+          '## Signup\n\n' +
+          '- Email + password\n' +
+          '- **bcrypt** password hashing (cost 12)\n' +
+          '- 30-day session tokens, rotated on each request\n\n' +
+          '## Example request\n\n' +
+          '```json\n' +
+          '{\n' +
+          '  "email": "a@b.com",\n' +
+          '  "password": "hunter2"\n' +
+          '}\n' +
+          '```\n\n' +
+          '## Rate limits\n\n' +
+          '- 5 attempts / 15 min per IP',
+      },
     },
-  });
-  fCodex.setResponse({
-    commentary:
-      'Good starting point. I have a small OAuth quibble but the core draft is sound — LGTM.',
-    verdict: 'LGTM',
-  });
-  fClaude.setTokenDelayMs(25);
-  fCodex.setTokenDelayMs(25);
+    {
+      commentary:
+        'Fair points on rotation and 2FA. Revising to pin token rotation and add a TOTP hook.',
+      proposal: {
+        body:
+          '# Authentication\n\n' +
+          '## Signup\n\n' +
+          '- Email + password\n' +
+          '- **bcrypt** password hashing (cost 12)\n' +
+          '- Session tokens rotate on privilege change; sliding 30-day idle expiry\n' +
+          '- Optional **TOTP** second factor (RFC 6238, 30s window)\n\n' +
+          '## Example request\n\n' +
+          '```json\n' +
+          '{\n' +
+          '  "email": "a@b.com",\n' +
+          '  "password": "hunter2",\n' +
+          '  "totp": "123456"\n' +
+          '}\n' +
+          '```\n\n' +
+          '## Rate limits\n\n' +
+          '- 5 attempts / 15 min per IP\n' +
+          '- Lockout escalates to 1h after 3 consecutive trip-ups',
+      },
+    },
+    {
+      commentary:
+        'Codex is right that the revised draft is tighter. LGTM.',
+      verdict: 'LGTM',
+    },
+  ]);
+  fCodex.setResponses([
+    {
+      commentary:
+        'Solid skeleton. Two concerns: *rotate on every request* is chatty, and no 2FA path. Countering.',
+      verdict: 'counter',
+    },
+    {
+      commentary:
+        'The revised draft addresses both points cleanly. Happy to accept.',
+      verdict: 'LGTM',
+    },
+  ]);
+  fClaude.setTokenDelayMs(15);
+  fCodex.setTokenDelayMs(15);
   claude = fClaude;
   codex = fCodex;
 }

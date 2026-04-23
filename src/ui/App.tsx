@@ -14,7 +14,7 @@ import type { State, TurnRecord } from '../orchestrator/types.js';
 import { parseAgentOutput, type AgentOutput } from '../protocol/patch.js';
 import { InputBox } from './InputBox.js';
 import { parseSlashCommand } from './commands.js';
-import { MarkdownLine, visibleLength } from './markdown.js';
+import { MarkdownLine, InlineText, visibleLength } from './markdown.js';
 
 export type AppProps = {
   agents: { claude: Agent; codex: Agent };
@@ -241,7 +241,7 @@ export function App(props: AppProps) {
 
   return (
     <Box flexDirection="column" width={dims.columns} height={dims.rows}>
-      <Box flexGrow={1} height={chatBodyRows + 2}>
+      <Box height={chatBodyRows + 2} flexShrink={0}>
         <ChatLog
           goal={prompt}
           transcript={state.transcript}
@@ -482,6 +482,7 @@ type RenderLine =
   | { kind: 'cont'; text: string }
   | { kind: 'proposalTop'; speaker: 'claude' | 'codex'; text: string }
   | { kind: 'proposalRow'; text: string }
+  | { kind: 'proposalCodeRow'; text: string }
   | { kind: 'proposalBottom'; text: string }
   | {
       kind: 'proposalCollapsed';
@@ -570,26 +571,37 @@ function tailChatLines(
 
         const previewCount = expandedFull ? totalLines : PROPOSAL_SUMMARY_LINES;
         const rawLines = body.split('\n').slice(0, previewCount);
-        const wrapped: string[] = [];
+        const wrapped: Array<{ text: string; code: boolean }> = [];
+        let inFence = false;
         for (const bodyLine of rawLines) {
+          if (/^\s*```/.test(bodyLine)) {
+            inFence = !inFence;
+            continue; // don't render the fence marker itself
+          }
           if (bodyLine.length === 0) {
-            wrapped.push('');
+            wrapped.push({ text: '', code: inFence });
           } else {
-            wrapped.push(...wrapLines(bodyLine, innerCap));
+            for (const w of wrapLines(bodyLine, innerCap)) {
+              wrapped.push({ text: w, code: inFence });
+            }
           }
         }
         if (!expandedFull && totalLines > PROPOSAL_SUMMARY_LINES) {
           const id = item.proposalId ?? '';
           const hint = id
-            ? ` (/expand ${id} or see draft.md)`
-            : ' (see draft.md)';
-          wrapped.push(
-            `… +${totalLines - PROPOSAL_SUMMARY_LINES} more${hint}`,
-          );
+            ? ` (/expand ${id} · ^o all · draft.md)`
+            : ' (^o expand all · draft.md)';
+          wrapped.push({
+            text: `… +${totalLines - PROPOSAL_SUMMARY_LINES} more${hint}`,
+            code: false,
+          });
         }
         for (const w of wrapped) {
-          const padded = (w + ' '.repeat(innerCap)).slice(0, innerCap);
-          all.push({ kind: 'proposalRow', text: padded });
+          const padded = (w.text + ' '.repeat(innerCap)).slice(0, innerCap);
+          all.push({
+            kind: w.code ? 'proposalCodeRow' : 'proposalRow',
+            text: padded,
+          });
         }
 
         all.push({
@@ -666,14 +678,14 @@ function wrapLines(text: string, width: number): string[] {
 
 function ChatLine({ line }: { line: RenderLine }) {
   if (line.kind === 'blank') return <Text> </Text>;
-  if (line.kind === 'cont') return <Text>{line.text}</Text>;
+  if (line.kind === 'cont') return <Text><InlineText text={line.text} /></Text>;
   if (line.kind === 'label') {
     return (
       <Text>
         <Text color={colorFor(line.speaker)} bold>
           {line.labelText}
         </Text>
-        {line.bodyText}
+        <InlineText text={line.bodyText} />
       </Text>
     );
   }
@@ -700,6 +712,17 @@ function ChatLine({ line }: { line: RenderLine }) {
       </Text>
     );
   }
+  if (line.kind === 'proposalCodeRow') {
+    return (
+      <Text>
+        <Text dimColor>│ </Text>
+        <Text backgroundColor="#1c1f26" color="cyan">
+          {line.text}
+        </Text>
+        <Text dimColor> │</Text>
+      </Text>
+    );
+  }
   if (line.kind === 'proposalBottom') {
     return <Text dimColor>{line.text}</Text>;
   }
@@ -707,7 +730,7 @@ function ChatLine({ line }: { line: RenderLine }) {
     return (
       <Text dimColor>
         <Text color={colorFor(line.speaker)}>▸ {line.id}</Text> — {line.lines}{' '}
-        lines (superseded, /expand {line.id})
+        lines (superseded, /expand {line.id} or ^o)
       </Text>
     );
   }
@@ -745,9 +768,23 @@ function SpecSidebar({
   const footerRows = 2;
   const bodyMax = Math.max(1, bodyRows - headerRows - footerRows);
 
-  const bodyLines = hasAccepted
-    ? wrapLines(currentDraft!.body, innerWidth)
-    : [];
+  const bodyLines: Array<{ text: string; code: boolean }> = [];
+  if (hasAccepted) {
+    let inFence = false;
+    for (const raw of currentDraft!.body.split('\n')) {
+      if (/^\s*```/.test(raw)) {
+        inFence = !inFence;
+        continue;
+      }
+      if (raw.length === 0) {
+        bodyLines.push({ text: '', code: inFence });
+      } else {
+        for (const w of wrapLines(raw, innerWidth)) {
+          bodyLines.push({ text: w, code: inFence });
+        }
+      }
+    }
+  }
   const clipped = bodyLines.slice(0, bodyMax);
   const truncated = bodyLines.length > bodyMax;
 
@@ -765,9 +802,15 @@ function SpecSidebar({
         <>
           <Text color="green">✓ accepted</Text>
           <Text dimColor>by {currentDraft!.proposer}</Text>
-          {clipped.map((l, i) => (
-            <MarkdownLine key={i} line={l} />
-          ))}
+          {clipped.map((l, i) =>
+            l.code ? (
+              <Text key={i} backgroundColor="#1c1f26" color="cyan">
+                {(l.text + ' '.repeat(innerWidth)).slice(0, innerWidth)}
+              </Text>
+            ) : (
+              <MarkdownLine key={i} line={l.text} />
+            ),
+          )}
           {truncated && <Text dimColor>… (see spec.md)</Text>}
         </>
       ) : (

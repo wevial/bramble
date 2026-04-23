@@ -53,9 +53,20 @@ export function parseInline(text: string): InlineSpan[] {
       const end = text.indexOf(delim, i + 1);
       // avoid matching **...** as two italic opens/closes
       if (end > i + 1 && text[end + 1] !== delim && text[i + 1] !== delim) {
-        push({ text: text.slice(i + 1, end), italic: true });
-        i = end + 1;
-        continue;
+        // For `_`, require a word boundary on each side — otherwise
+        // identifiers like CLAUDE_SAYS_HI or snake_case would render as
+        // italic runs with the underscores stripped.
+        const openOk =
+          delim !== '_' || i === 0 || !/\w/.test(text[i - 1] ?? '');
+        const closeOk =
+          delim !== '_' ||
+          end === text.length - 1 ||
+          !/\w/.test(text[end + 1] ?? '');
+        if (openOk && closeOk) {
+          push({ text: text.slice(i + 1, end), italic: true });
+          i = end + 1;
+          continue;
+        }
       }
     }
     push({ text: text[i]! });
@@ -92,7 +103,7 @@ function headingColor(level: number): string | undefined {
 export function visibleLength(line: string): number {
   const cls = classifyLine(line);
   if (cls.kind === 'heading') {
-    return cls.level + 1 + inlineVisibleLength(cls.content);
+    return inlineVisibleLength(cls.content);
   }
   if (cls.kind === 'bullet') {
     // renders as "<indent>• <content>" (• is 1 col, space is 1)
@@ -113,7 +124,7 @@ export function MarkdownLine({ line }: { line: string }) {
   if (cls.kind === 'heading') {
     return (
       <Text bold color={headingColor(cls.level)}>
-        {'#'.repeat(cls.level)} {renderInline(cls.content)}
+        {renderInline(cls.content)}
       </Text>
     );
   }
@@ -126,6 +137,16 @@ export function MarkdownLine({ line }: { line: string }) {
     );
   }
   return <Text>{renderInline(cls.content)}</Text>;
+}
+
+/**
+ * Inline-only markdown rendering: parses **bold**, *italic*, `code` but does
+ * NOT interpret leading # or - as structural (use MarkdownLine for that).
+ * Intended for chat commentary where the text may contain inline formatting
+ * but should not reflow as headings/bullets.
+ */
+export function InlineText({ text }: { text: string }) {
+  return <>{renderInline(text)}</>;
 }
 
 function renderInline(text: string): React.ReactNode {

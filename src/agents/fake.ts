@@ -8,7 +8,8 @@ export type StructuredResponse = {
 
 export class FakeAgent implements Agent {
   readonly name: AgentName;
-  private response: string | StructuredResponse = '';
+  private responses: Array<string | StructuredResponse> = [''];
+  private turnIdx = 0;
   private tokenDelayMs = 0;
 
   constructor(name: AgentName) {
@@ -16,7 +17,15 @@ export class FakeAgent implements Agent {
   }
 
   setResponse(text: string | StructuredResponse): void {
-    this.response = text;
+    this.responses = [text];
+    this.turnIdx = 0;
+  }
+
+  /** Cycle through this list, one entry per turn. The last entry repeats. */
+  setResponses(list: Array<string | StructuredResponse>): void {
+    if (list.length === 0) throw new Error('setResponses: empty list');
+    this.responses = list;
+    this.turnIdx = 0;
   }
 
   setTokenDelayMs(ms: number): void {
@@ -27,10 +36,13 @@ export class FakeAgent implements Agent {
     _ctx: TurnContext,
     signal: AbortSignal,
   ): AsyncGenerator<Token, StreamTail | void, void> {
-    const isStructured = typeof this.response !== 'string';
+    const response =
+      this.responses[Math.min(this.turnIdx, this.responses.length - 1)]!;
+    this.turnIdx += 1;
+    const isStructured = typeof response !== 'string';
     const displayText = isStructured
-      ? (this.response as StructuredResponse).commentary
-      : (this.response as string);
+      ? (response as StructuredResponse).commentary
+      : (response as string);
 
     for (const ch of displayText) {
       if (signal.aborted) return;
@@ -42,7 +54,7 @@ export class FakeAgent implements Agent {
     }
 
     if (isStructured) {
-      const r = this.response as StructuredResponse;
+      const r = response as StructuredResponse;
       const raw = JSON.stringify({
         commentary: r.commentary,
         proposal: r.proposal ?? null,
