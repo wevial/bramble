@@ -58,9 +58,11 @@ export function App(props: AppProps) {
   const [paused, setPaused] = useState(false);
   const mode: DebateMode = props.mode ?? 'auto';
   // Vim-style modal: start in scroll mode. Press `i` to enter insert/input.
-  const [focusMode, setFocusMode] = useState<'input' | 'chat'>('chat');
+  const [focusMode, setFocusMode] = useState<'input' | 'chat' | 'spec'>('chat');
   const [chatScroll, setChatScroll] = useState(0); // lines from tail; 0 = latest
   const [maxChatScroll, setMaxChatScroll] = useState(0);
+  const [specScroll, setSpecScroll] = useState(0); // lines from top; 0 = top
+  const [maxSpecScroll, setMaxSpecScroll] = useState(0);
   const [expandAll, setExpandAll] = useState(false);
   const pendingGRef = useRef(false); // two-key "gg" handler
   const activeStartRef = useRef<number | null>(null);
@@ -80,10 +82,10 @@ export function App(props: AppProps) {
     };
   }, [stdout]);
 
-  // Tab toggles modes too, as a convenience. Always active.
+  // Tab rotates focus: input → chat → spec → input.
   useInput((input, key) => {
     if (key.tab) {
-      setFocusMode(f => (f === 'input' ? 'chat' : 'input'));
+      setFocusMode(f => (f === 'input' ? 'chat' : f === 'chat' ? 'spec' : 'input'));
       pendingGRef.current = false;
     }
     // Ctrl+O toggles expand-all for superseded proposals, regardless of mode.
@@ -92,8 +94,9 @@ export function App(props: AppProps) {
     }
   });
 
-  // Vim-style scroll controls + `i` to enter insert mode. Active only in
-  // scroll mode so typing `i` in the input box works normally.
+  // Vim-style scroll controls. Active in chat or spec scroll mode; routes to
+  // the focused pane's scroll state. Chat uses tail-anchored offset (0 =
+  // latest), spec uses top-anchored (0 = top).
   useInput(
     (input, key) => {
       if (input === 'i') {
@@ -102,34 +105,49 @@ export function App(props: AppProps) {
         return;
       }
       const page = Math.max(1, Math.floor((dims.rows - 6) / 2));
+      const isChat = focusMode === 'chat';
+      const max = isChat ? maxChatScroll : maxSpecScroll;
+      const setScroll = isChat ? setChatScroll : setSpecScroll;
+      // Direction convention per pane: in chat, +offset scrolls up (older);
+      // in spec, +offset scrolls down (further into the doc).
+      const down = (delta: number) =>
+        isChat
+          ? setScroll(s => Math.max(0, s - delta))
+          : setScroll(s => Math.min(max, s + delta));
+      const up = (delta: number) =>
+        isChat
+          ? setScroll(s => Math.min(max, s + delta))
+          : setScroll(s => Math.max(0, s - delta));
       if (input === 'j' || key.downArrow) {
-        setChatScroll(s => Math.max(0, s - 1));
+        down(1);
         pendingGRef.current = false;
         return;
       }
       if (input === 'k' || key.upArrow) {
-        setChatScroll(s => Math.min(maxChatScroll, s + 1));
+        up(1);
         pendingGRef.current = false;
         return;
       }
       if (key.ctrl && input === 'd') {
-        setChatScroll(s => Math.max(0, s - page));
+        down(page);
         pendingGRef.current = false;
         return;
       }
       if (key.ctrl && input === 'u') {
-        setChatScroll(s => Math.min(maxChatScroll, s + page));
+        up(page);
         pendingGRef.current = false;
         return;
       }
       if (input === 'G') {
-        setChatScroll(0);
+        // G = bottom: for chat that's offset 0 (latest); for spec it's max.
+        setScroll(isChat ? 0 : max);
         pendingGRef.current = false;
         return;
       }
       if (input === 'g') {
         if (pendingGRef.current) {
-          setChatScroll(maxChatScroll);
+          // gg = top: for chat that's max (oldest); for spec it's 0.
+          setScroll(isChat ? max : 0);
           pendingGRef.current = false;
         } else {
           pendingGRef.current = true;
@@ -138,7 +156,7 @@ export function App(props: AppProps) {
       }
       pendingGRef.current = false;
     },
-    { isActive: focusMode === 'chat' },
+    { isActive: focusMode === 'chat' || focusMode === 'spec' },
   );
 
   // Esc exits input mode back to scroll. Only active in input mode so it
@@ -149,7 +167,7 @@ export function App(props: AppProps) {
         setFocusMode('chat');
       }
     },
-    { isActive: focusMode === 'input' },
+    { isActive: focusMode === 'input' || focusMode === 'spec' },
   );
 
   // Tick a timer only while an agent is active, so the "thinking Ns" indicator updates.
@@ -254,12 +272,16 @@ export function App(props: AppProps) {
           width={chatWidth}
           innerWidth={chatInnerWidth}
           bodyRows={chatBodyRows}
+          focused={focusMode === 'chat'}
         />
         <SpecSidebar
           state={state}
           sessionName={props.sessionName}
           width={sidebarWidth}
           bodyRows={chatBodyRows}
+          focused={focusMode === 'spec'}
+          scrollOffset={specScroll}
+          onMaxScrollChange={setMaxSpecScroll}
         />
       </Box>
 
@@ -337,12 +359,12 @@ export function App(props: AppProps) {
           )}{' '}
           · {done ? 'done' : `speaker: ${activeSpeaker}`} · rounds {rounds} ·{' '}
           {status} ·{' '}
-          {focusMode === 'chat' ? (
-            <Text color="cyan">
-              scroll (j/k · gg/G · ctrl+d/ctrl+u · ctrl+o expand all · i to type)
-            </Text>
+          {focusMode === 'input' ? (
+            <Text color="green">insert (esc to scroll · tab to switch panes)</Text>
           ) : (
-            <Text color="green">insert (esc to scroll)</Text>
+            <Text color="cyan">
+              scroll {focusMode} (j/k · gg/G · ctrl+d/ctrl+u · tab=pane · i to type)
+            </Text>
           )}
         </Text>
       </Box>
@@ -376,6 +398,7 @@ function ChatLog({
   width,
   innerWidth,
   bodyRows,
+  focused,
 }: {
   goal: string;
   transcript: TurnRecord[];
@@ -388,6 +411,7 @@ function ChatLog({
   width: number;
   innerWidth: number;
   bodyRows: number;
+  focused: boolean;
 }) {
   const parsedTurns = transcript.map(t => {
     const res = parseAgentOutput(t.content, { fallbackToCommentary: true });
@@ -445,6 +469,7 @@ function ChatLog({
     <Box
       flexDirection="column"
       borderStyle="single"
+      borderColor={focused ? 'cyan' : undefined}
       paddingX={1}
       width={width}
       flexShrink={0}
@@ -754,16 +779,22 @@ function SpecSidebar({
   sessionName,
   width,
   bodyRows,
+  focused,
+  scrollOffset,
+  onMaxScrollChange,
 }: {
   state: State;
   sessionName: string;
   width: number;
   bodyRows: number;
+  focused: boolean;
+  scrollOffset: number;
+  onMaxScrollChange: (max: number) => void;
 }) {
   const { currentDraft, accepted, transcript } = state;
   const hasAccepted = accepted && currentDraft !== null;
   const innerWidth = Math.max(10, width - 4);
-  // Header: "spec.md" + status line + optional "by proposer". Footer: "—" + "N turns".
+  // Header: title + status line + optional "by proposer". Footer: "—" + "N turns".
   const headerRows = hasAccepted ? 3 : 2;
   const footerRows = 2;
   const bodyMax = Math.max(1, bodyRows - headerRows - footerRows);
@@ -785,19 +816,30 @@ function SpecSidebar({
       }
     }
   }
-  const clipped = bodyLines.slice(0, bodyMax);
-  const truncated = bodyLines.length > bodyMax;
+  const maxOffset = Math.max(0, bodyLines.length - bodyMax);
+  useEffect(() => {
+    onMaxScrollChange(maxOffset);
+  }, [maxOffset, onMaxScrollChange]);
+  const start = Math.min(Math.max(0, scrollOffset), maxOffset);
+  const clipped = bodyLines.slice(start, start + bodyMax);
+  const atTop = start === 0;
+  const atBottom = start >= maxOffset;
 
   return (
     <Box
       flexDirection="column"
       borderStyle="single"
+      borderColor={focused ? 'cyan' : undefined}
       paddingX={1}
       width={width}
       flexShrink={0}
       overflow="hidden"
     >
-      <Text bold>spec-{sessionName}.md</Text>
+      <Text bold>
+        spec-{sessionName}.md
+        {hasAccepted && !atTop && <Text color="yellow">{'  '}▲</Text>}
+        {hasAccepted && !atBottom && <Text color="yellow">{'  '}▼</Text>}
+      </Text>
       {hasAccepted ? (
         <>
           <Text color="green">✓ accepted</Text>
@@ -811,7 +853,6 @@ function SpecSidebar({
               <MarkdownLine key={i} line={l.text} />
             ),
           )}
-          {truncated && <Text dimColor>… (see spec-{sessionName}.md)</Text>}
         </>
       ) : (
         <Text dimColor>
