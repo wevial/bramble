@@ -14,6 +14,7 @@ import type { State, TurnRecord } from '../orchestrator/types.js';
 import { parseAgentOutput, type AgentOutput } from '../protocol/patch.js';
 import { InputBox } from './InputBox.js';
 import { parseSlashCommand } from './commands.js';
+import { MarkdownLine } from './markdown.js';
 
 export type AppProps = {
   agents: { claude: Agent; codex: Agent };
@@ -640,7 +641,7 @@ function SpecSidebar({
           <Text color="green">✓ accepted</Text>
           <Text dimColor>by {currentDraft!.proposer}</Text>
           {clipped.map((l, i) => (
-            <Text key={i}>{l}</Text>
+            <MarkdownLine key={i} line={l} />
           ))}
           {truncated && <Text dimColor>… (see spec.md)</Text>}
         </>
