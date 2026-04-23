@@ -339,7 +339,7 @@ export function App(props: AppProps) {
           {status} ·{' '}
           {focusMode === 'chat' ? (
             <Text color="cyan">
-              scroll (j/k · gg/G · ^d/^u · ^o expand all · i to type)
+              scroll (j/k · gg/G · ctrl+d/ctrl+u · ctrl+o expand all · i to type)
             </Text>
           ) : (
             <Text color="green">insert (esc to scroll)</Text>
@@ -589,8 +589,8 @@ function tailChatLines(
         if (!expandedFull && totalLines > PROPOSAL_SUMMARY_LINES) {
           const id = item.proposalId ?? '';
           const hint = id
-            ? ` (/expand ${id} · ^o all · draft.md)`
-            : ' (^o expand all · draft.md)';
+            ? ` (/expand ${id} · ctrl+o all · draft.md)`
+            : ' (ctrl+o expand all · draft.md)';
           wrapped.push({
             text: `… +${totalLines - PROPOSAL_SUMMARY_LINES} more${hint}`,
             code: false,
@@ -730,7 +730,7 @@ function ChatLine({ line }: { line: RenderLine }) {
     return (
       <Text dimColor>
         <Text color={colorFor(line.speaker)}>▸ {line.id}</Text> — {line.lines}{' '}
-        lines (superseded, /expand {line.id} or ^o)
+        lines (superseded, /expand {line.id} or ctrl+o)
       </Text>
     );
   }
