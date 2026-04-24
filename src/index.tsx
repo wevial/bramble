@@ -10,7 +10,8 @@ import { App } from './ui/App.js';
 import { generateSessionName } from './util/name.js';
 import { readTranscript } from './docs/transcript.js';
 import { rehydrateState } from './orchestrator/replay.js';
-import { listSessions } from './sessions/list.js';
+import { listSessions, sessionPaths } from './sessions/list.js';
+import { mkdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 
 const argv = process.argv.slice(2);
@@ -23,6 +24,7 @@ let sessionName: string | undefined;
 let resumeName: string | undefined;
 let mode: 'auto' | 'collab' = 'auto';
 let listMode = false;
+let dirFlag: string | undefined;
 const positional: string[] = [];
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
@@ -59,6 +61,9 @@ for (let i = 0; i < argv.length; i++) {
     mode = 'collab';
   } else if (a === '--auto') {
     mode = 'auto';
+  } else if (a === '--dir' && argv[i + 1]) {
+    dirFlag = argv[i + 1];
+    i++;
   } else {
     positional.push(a!);
   }
@@ -66,11 +71,14 @@ for (let i = 0; i < argv.length; i++) {
 
 const prompt = positional.join(' ');
 const cwd = process.cwd();
+const storeRoot = dirFlag
+  ? (dirFlag.startsWith('/') ? dirFlag : join(cwd, dirFlag))
+  : join(cwd, '.bramble');
 
 if (listMode) {
-  const rows = await listSessions(cwd);
+  const rows = await listSessions(storeRoot);
   if (rows.length === 0) {
-    console.log('no bramble sessions in', cwd);
+    console.log('no bramble sessions in', storeRoot);
     process.exit(0);
   }
   const nameW = Math.max(4, ...rows.map(r => r.name.length));
@@ -94,21 +102,21 @@ function pad(s: string, w: number): string {
 
 // --resume <name> takes over the session name; --name overrides otherwise.
 const name = resumeName ?? sessionName ?? generateSessionName();
+const paths = sessionPaths(storeRoot, name);
+mkdirSync(paths.dir, { recursive: true });
 
-const transcriptPath = join(cwd, `transcript-${name}.jsonl`);
-const resumedTurns = resumeName ? await readTranscript(transcriptPath) : [];
+const resumedTurns = resumeName ? await readTranscript(paths.transcriptPath) : [];
 const resumedState =
   resumedTurns.length > 0 ? rehydrateState(resumedTurns) : undefined;
 // If resuming, the original prompt lives in a sidecar file so we can rebuild
 // the per-turn context. If not present, fall back to a short placeholder —
 // the user can see the transcript but any new turns will have a weaker
-// "goal" context. (We start writing prompt.txt below on fresh runs.)
-const promptSidecarPath = join(cwd, `prompt-${name}.txt`);
+// "goal" context.
 let resumedPrompt: string | undefined;
 if (resumeName) {
   try {
     const { readFile } = await import('node:fs/promises');
-    resumedPrompt = (await readFile(promptSidecarPath, 'utf8')).trim();
+    resumedPrompt = (await readFile(paths.promptPath, 'utf8')).trim();
   } catch {
     resumedPrompt = undefined;
   }
@@ -222,12 +230,12 @@ const { waitUntilExit } = render(
     rounds={rounds}
     mode={mode}
     initialState={resumedState}
-    promptSidecarPath={promptSidecarPath}
-    transcriptPath={transcriptPath}
-    specPath={join(cwd, `spec-${name}.md`)}
-    debatePath={join(cwd, `debate-${name}.md`)}
-    draftPath={join(cwd, `draft-${name}.md`)}
-    draftsPath={join(cwd, `drafts-${name}.md`)}
+    promptSidecarPath={paths.promptPath}
+    transcriptPath={paths.transcriptPath}
+    specPath={paths.specPath}
+    debatePath={paths.debatePath}
+    draftPath={paths.draftPath}
+    draftsPath={paths.draftsPath}
     onQuit={() => process.exit(0)}
   />,
 );
