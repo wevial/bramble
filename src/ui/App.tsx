@@ -83,12 +83,11 @@ export function App(props: AppProps) {
     };
   }, [stdout]);
 
-  // Tab toggles between input and scroll (returning to whichever pane was
-  // last focused in scroll mode). h/l hops between chat and spec while
-  // already in scroll mode.
+  // Tab swaps between the two scroll panes (chat ↔ spec). In input mode
+  // tab is a no-op — use `i`/Esc to move between insert and scroll.
   useInput((input, key) => {
-    if (key.tab) {
-      setFocusMode(f => (f === 'input' ? lastScrollPaneRef.current : 'input'));
+    if (key.tab && focusMode !== 'input') {
+      setFocusMode(f => (f === 'chat' ? 'spec' : 'chat'));
       pendingGRef.current = false;
       return;
     }
@@ -105,19 +104,6 @@ export function App(props: AppProps) {
     (input, key) => {
       if (input === 'i') {
         setFocusMode('input');
-        pendingGRef.current = false;
-        return;
-      }
-      // h/l (or left/right arrows) hops panes within scroll mode.
-      if (input === 'h' || key.leftArrow) {
-        lastScrollPaneRef.current = 'chat';
-        setFocusMode('chat');
-        pendingGRef.current = false;
-        return;
-      }
-      if (input === 'l' || key.rightArrow) {
-        lastScrollPaneRef.current = 'spec';
-        setFocusMode('spec');
         pendingGRef.current = false;
         return;
       }
@@ -414,10 +400,10 @@ export function App(props: AppProps) {
       <Box paddingX={1}>
         <Text>
           {focusMode === 'input' ? (
-            <Text color="green">-- INSERT --  esc/tab: scroll</Text>
+            <Text color="green">-- INSERT --  esc: scroll</Text>
           ) : (
             <Text color="cyanBright">
-              -- SCROLL {focusMode.toUpperCase()} --  j/k · gg/G · ctrl+d/u · h/l: swap pane · i/tab: type
+              -- SCROLL {focusMode.toUpperCase()} --  j/k · gg/G · ctrl+d/u · tab: swap pane · i: type
             </Text>
           )}
         </Text>
