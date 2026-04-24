@@ -14,8 +14,15 @@ import { listSessions, sessionPaths } from './sessions/list.js';
 import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
+import { helpText } from './help.js';
 
 const argv = process.argv.slice(2);
+
+if (argv.includes('--help') || argv.includes('-h')) {
+  console.log(helpText());
+  process.exit(0);
+}
+
 let rounds = 3;
 let real = false;
 let claudeModel: string | undefined;
@@ -103,6 +110,7 @@ if (listMode) {
 function pad(s: string, w: number): string {
   return s.length >= w ? s : s + ' '.repeat(w - s.length);
 }
+
 
 // --resume <name> takes over the session name; --name overrides otherwise.
 const name = resumeName ?? sessionName ?? generateSessionName();
