@@ -72,6 +72,7 @@ export function App(props: AppProps) {
   const lastScrollPaneRef = useRef<'chat' | 'spec'>('chat');
   const activeStartRef = useRef<number | null>(null);
   const handleRef = useRef<DebateHandle | null>(null);
+  const pendingWritesRef = useRef<Promise<void>>(Promise.resolve());
   const { stdout } = useStdout();
   const [dims, setDims] = useState({
     rows: stdout?.rows ?? 24,
@@ -213,27 +214,35 @@ export function App(props: AppProps) {
       onPauseChange: p => setPaused(p),
       onState: next => {
         setState(next);
-        void writeDebate(
-          props.debatePath,
-          next.transcript.map(t => ({ speaker: t.speaker, content: t.content })),
-        );
+        const writes: Array<Promise<unknown>> = [
+          writeDebate(
+            props.debatePath,
+            next.transcript.map(t => ({ speaker: t.speaker, content: t.content })),
+          ),
+        ];
         // draft.md = whatever is in-debate; spec.md = accepted only.
         if (next.accepted && next.currentDraft) {
-          void writeAcceptedSpec(props.specPath, next.currentDraft.body);
-          void clearDraft(props.draftPath);
+          writes.push(writeAcceptedSpec(props.specPath, next.currentDraft.body));
+          writes.push(clearDraft(props.draftPath));
         } else if (next.currentDraft) {
-          void writeDraft(props.draftPath, next.currentDraft.body);
-          void clearSpec(props.specPath);
+          writes.push(writeDraft(props.draftPath, next.currentDraft.body));
+          writes.push(clearSpec(props.specPath));
         }
+        pendingWritesRef.current = Promise.all([
+          pendingWritesRef.current,
+          ...writes,
+        ]).then(() => undefined);
       },
     });
     handleRef.current = handle;
 
-    handle.done.then(() => {
-      setDone(true);
-      setStatus('done');
-      props.onDone?.();
-    });
+    handle.done
+      .then(() => pendingWritesRef.current)
+      .then(() => {
+        setDone(true);
+        setStatus('done');
+        props.onDone?.();
+      });
 
     return () => {
       handle.abort();
