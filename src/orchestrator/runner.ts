@@ -86,7 +86,7 @@ export function startDebate(opts: RunDebateOptions): DebateHandle {
       turnController = new AbortController();
       outer.signal.addEventListener('abort', () => turnController?.abort(), { once: true });
 
-      const prompt = buildPrompt(opts.prompt, state);
+      const prompt = buildPrompt(opts.prompt, state, speaker, mode);
       let displayed = '';
       let rawTail: string | undefined;
       try {
@@ -169,19 +169,35 @@ export async function runDebate(opts: RunDebateOptions): Promise<State> {
   return startDebate(opts).done;
 }
 
-function buildPrompt(basePrompt: string, state: State): string {
-  const parts: string[] = [`# Goal\n\n${basePrompt}`];
+export function buildPrompt(
+  basePrompt: string,
+  state: State,
+  speaker: 'claude' | 'codex',
+  mode: DebateMode,
+): string {
+  const other = speaker === 'claude' ? 'codex' : 'claude';
+  const parts: string[] = [];
+
+  parts.push(
+    `# Your role\n\nYou are ${speaker}, debating ${other} to converge on the best possible spec for the goal below. This is an adversarial-but-constructive debate: disagree when you have a real reason, and don't rubber-stamp a draft just to be agreeable. When you eventually accept, it should be because the spec is genuinely solid.`,
+  );
+
+  parts.push(`# Goal\n\n${basePrompt}`);
 
   const userTurns = state.transcript.filter(t => t.speaker === 'user');
   if (userTurns.length > 0) {
     parts.push(
-      `# User constraints\n\n${userTurns.map(t => `- ${t.content}`).join('\n')}`,
+      `# User guidance\n\nThe human driving this session has added the following. Treat these as hard constraints — incorporate them directly into the spec, not just as things to discuss.\n\n${userTurns
+        .map(t => `- ${t.content}`)
+        .join('\n')}`,
     );
   }
 
   if (state.currentDraft) {
+    const authorTag =
+      state.currentDraft.proposer === speaker ? ' — yours' : '';
     parts.push(
-      `# Current draft (by ${state.currentDraft.proposer})\n\n${state.currentDraft.body}`,
+      `# Current draft (by ${state.currentDraft.proposer}${authorTag})\n\n${state.currentDraft.body}`,
     );
   }
 
@@ -193,9 +209,41 @@ function buildPrompt(basePrompt: string, state: State): string {
     parts.push(`# Debate so far\n\n${lines.join('\n\n')}`);
   }
 
-  parts.push(
-    `# Your turn\n\nRespond now. If you want to revise the current draft, emit a new <patch> with the full body. If you accept it, emit verdict "LGTM". Otherwise critique it as commentary and optionally verdict "counter".`,
-  );
-
+  parts.push(`# Your turn\n\n${turnGuidance(state, speaker, mode)}`);
   return parts.join('\n\n');
+}
+
+function turnGuidance(
+  state: State,
+  speaker: 'claude' | 'codex',
+  mode: DebateMode,
+): string {
+  const other = speaker === 'claude' ? 'codex' : 'claude';
+  const draft = state.currentDraft;
+  const sections: string[] = [];
+
+  if (!draft) {
+    sections.push(
+      `No draft exists yet. Open with a concrete proposal — emit a <patch> with a full spec body. Don't critique in the abstract; show the shape you want.`,
+    );
+  } else if (draft.proposer === speaker) {
+    sections.push(
+      `The current draft is yours, so you can't LGTM it — only ${other} can accept your proposal. React to ${other}'s latest critique: either revise with a new <patch> body that addresses it, or defend your design in commentary if you think they're wrong.`,
+    );
+  } else {
+    sections.push(
+      `${other} proposed the current draft. Pick one:
+- LGTM if it's genuinely solid (verdict "LGTM" — this ends the debate).
+- Counter-propose with a revised body via a <patch> (verdict "counter").
+- Critique it as commentary without a <patch> if you want to push back before rewriting.`,
+    );
+  }
+
+  if (mode === 'collab') {
+    sections.push(
+      `This session is in collab mode: a human is reviewing between turns and may interject with constraints or redirects. If any appear under "User guidance", reflect them directly in your response — don't wait for the next turn.`,
+    );
+  }
+
+  return sections.join('\n\n');
 }

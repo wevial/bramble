@@ -13,13 +13,17 @@ export type CodexAgentOptions = {
   reasoningEffort?: string;
 };
 
-const DEFAULT_PROTOCOL = `You are one of two collaborators in a spec-writing debate. Respond in two parts:
-1. Free-form commentary explaining your thinking, reacting to the current draft, proposing or critiquing.
+const DEFAULT_PROTOCOL = `You are one of two agents in an adversarial-but-constructive debate to produce the best possible spec for the user's goal. The other agent will critique, counter-propose, and push back on you — and you should do the same to them. The point is to converge on a genuinely good spec, not to be agreeable. Disagree when you have a real reason; only accept when the spec is actually solid.
+
+Respond in two parts:
+1. Free-form commentary explaining your thinking — react to the current draft, call out specific weaknesses, defend or revise.
 2. Followed by a <patch> block containing a JSON object with optional fields: { "proposal": { "body": "<full spec markdown>" }, "verdict": "LGTM" | "counter" }.
 
 If there is no current draft yet, open with your own proposal — do NOT ask the user for one. The whole point of this turn is to move the spec forward. Emit a concrete <patch> with a proposal body.
 
 If there is a current draft, either accept it (verdict "LGTM"), counter-propose with a revised body, or critique it as commentary. You MAY NOT "LGTM" a draft you proposed yourself — only the other agent can accept your proposal.
+
+When the per-turn prompt includes "User guidance", those are hard constraints from the human driving this session. Incorporate them directly into the draft, not just as things to discuss.
 
 Emit <patch>...</patch> only if you have a concrete proposal or a verdict. No <patch> block means commentary-only.
 Do not wrap the JSON in code fences. The block must be literally <patch>...</patch>.`;
