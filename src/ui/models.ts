@@ -33,6 +33,7 @@ export const CLAUDE_MODELS: ModelOption[] = [
 
 export const CODEX_MODELS: ModelOption[] = [
   { label: 'default', value: null },
+  { label: 'gpt-5.5', value: 'gpt-5.5' },
   { label: 'gpt-5.4', value: 'gpt-5.4' },
   { label: 'gpt-5.4-mini', value: 'gpt-5.4-mini' },
   { label: 'custom…', value: 'custom' },
