@@ -1,4 +1,4 @@
-import type { Agent } from '../agents/agent.js';
+import type { Agent, TurnUsage } from '../agents/agent.js';
 import { appendTurn } from '../docs/transcript.js';
 import { parseAgentOutput } from '../protocol/patch.js';
 import { reducer } from './reducer.js';
@@ -18,6 +18,8 @@ export type RunDebateOptions = {
   mode?: DebateMode;
   onToken?: (speaker: 'claude' | 'codex', text: string) => void;
   onState?: (state: State) => void;
+  /** Fired at the end of each agent turn with the CLI-reported token usage. */
+  onUsage?: (speaker: 'claude' | 'codex', usage: TurnUsage) => void;
   /** Fired whenever the collab-mode pause state changes. */
   onPauseChange?: (paused: boolean) => void;
   signal?: AbortSignal;
@@ -89,12 +91,16 @@ export function startDebate(opts: RunDebateOptions): DebateHandle {
       const prompt = buildPrompt(opts.prompt, state, speaker, mode);
       let displayed = '';
       let rawTail: string | undefined;
+      let usageTail: TurnUsage | undefined;
       try {
         const iter = agent.stream({ prompt }, turnController.signal);
         while (true) {
           const r = await iter.next();
           if (r.done) {
-            if (r.value) rawTail = r.value.raw;
+            if (r.value) {
+              rawTail = r.value.raw;
+              usageTail = r.value.usage;
+            }
             break;
           }
           displayed += r.value.text;
@@ -103,6 +109,7 @@ export function startDebate(opts: RunDebateOptions): DebateHandle {
       } catch {
         // aborts may throw; treat whatever we collected as the turn's content
       }
+      if (usageTail) opts.onUsage?.(speaker, usageTail);
       // Wire content is the structured raw tail when the agent provides one
       // (e.g. JSON patch); otherwise whatever streamed.
       const content = rawTail ?? displayed;
@@ -193,20 +200,24 @@ export function buildPrompt(
     );
   }
 
-  if (state.currentDraft) {
-    const authorTag =
-      state.currentDraft.proposer === speaker ? ' — yours' : '';
-    parts.push(
-      `# Current draft (by ${state.currentDraft.proposer}${authorTag})\n\n${state.currentDraft.body}`,
-    );
-  }
-
+  // Section order below is tuned for prompt-caching: stable-append sections
+  // (debate so far) come before turn-variable ones (current draft, your turn)
+  // so consecutive turns share the longest possible token prefix. See
+  // buildPrompt.test.ts ("stable prefix for prompt-caching").
   const debateTurns = state.transcript.filter(
     t => t.speaker === 'claude' || t.speaker === 'codex',
   );
   if (debateTurns.length > 0) {
     const lines = debateTurns.map(t => `## ${t.speaker}\n\n${t.content}`);
     parts.push(`# Debate so far\n\n${lines.join('\n\n')}`);
+  }
+
+  if (state.currentDraft) {
+    const authorTag =
+      state.currentDraft.proposer === speaker ? ' — yours' : '';
+    parts.push(
+      `# Current draft (by ${state.currentDraft.proposer}${authorTag})\n\n${state.currentDraft.body}`,
+    );
   }
 
   parts.push(`# Your turn\n\n${turnGuidance(state, speaker, mode)}`);

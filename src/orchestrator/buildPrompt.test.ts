@@ -73,4 +73,60 @@ describe('buildPrompt', () => {
     expect(out).toContain('turn one');
     expect(out).toContain('turn two');
   });
+
+  // Prompt-caching: server-side prompt caching matches on the longest shared
+  // token prefix. For the same speaker, the prompt for turn N+1 should share a
+  // strictly longer prefix with turn N than everything before the section that
+  // actually changed this turn. That means stable-append sections (user
+  // guidance, debate so far) must come before turn-variable sections (current
+  // draft, your turn).
+  describe('stable prefix for prompt-caching', () => {
+    it('places debate-so-far before current-draft so the prefix keeps growing', () => {
+      const state = stateWith({
+        currentDraft: { body: '# draft v1', proposer: 'codex' },
+        transcript: [
+          { speaker: 'claude', content: 'turn one', timestamp: 't1' },
+          { speaker: 'codex', content: 'turn two', timestamp: 't2' },
+        ],
+      });
+      const out = buildPrompt('x', state, 'claude', 'auto');
+      expect(out.indexOf('Debate so far')).toBeGreaterThan(-1);
+      expect(out.indexOf('Current draft')).toBeGreaterThan(
+        out.indexOf('Debate so far'),
+      );
+    });
+
+    it('consecutive same-speaker turns share a prefix through the prior debate', () => {
+      const t1 = { speaker: 'claude' as const, content: 'turn one', timestamp: 't1' };
+      const t2 = { speaker: 'codex' as const, content: 'turn two', timestamp: 't2' };
+      const t3 = { speaker: 'claude' as const, content: 'turn three', timestamp: 't3' };
+      const t4 = { speaker: 'codex' as const, content: 'turn four', timestamp: 't4' };
+
+      // claude's 2nd turn: transcript has t1..t2, current draft from codex (t2).
+      const atTurn2 = buildPrompt(
+        'x',
+        stateWith({
+          currentDraft: { body: '# draft v1', proposer: 'codex' },
+          transcript: [t1, t2],
+        }),
+        'claude',
+        'auto',
+      );
+      // claude's 3rd turn: two more turns appended, current draft replaced.
+      const atTurn3 = buildPrompt(
+        'x',
+        stateWith({
+          currentDraft: { body: '# draft v2', proposer: 'codex' },
+          transcript: [t1, t2, t3, t4],
+        }),
+        'claude',
+        'auto',
+      );
+
+      // The shared prefix must reach through the full Debate-so-far of turn 2.
+      const turn2DebateEnd = atTurn2.indexOf('turn two') + 'turn two'.length;
+      expect(turn2DebateEnd).toBeGreaterThan(0);
+      expect(atTurn3.slice(0, turn2DebateEnd)).toBe(atTurn2.slice(0, turn2DebateEnd));
+    });
+  });
 });
