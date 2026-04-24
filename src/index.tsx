@@ -10,6 +10,7 @@ import { App } from './ui/App.js';
 import { generateSessionName } from './util/name.js';
 import { readTranscript } from './docs/transcript.js';
 import { rehydrateState } from './orchestrator/replay.js';
+import { listSessions } from './sessions/list.js';
 import { spawnSync } from 'node:child_process';
 
 const argv = process.argv.slice(2);
@@ -21,10 +22,13 @@ let codexEffort: string | undefined;
 let sessionName: string | undefined;
 let resumeName: string | undefined;
 let mode: 'auto' | 'collab' = 'auto';
+let listMode = false;
 const positional: string[] = [];
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
-  if (a === '--rounds' && argv[i + 1]) {
+  if (a === '--list') {
+    listMode = true;
+  } else if (a === '--rounds' && argv[i + 1]) {
     const n = Number(argv[i + 1]);
     if (Number.isInteger(n) && n >= 1) rounds = n;
     i++;
@@ -62,6 +66,32 @@ for (let i = 0; i < argv.length; i++) {
 
 const prompt = positional.join(' ');
 const cwd = process.cwd();
+
+if (listMode) {
+  const rows = await listSessions(cwd);
+  if (rows.length === 0) {
+    console.log('no bramble sessions in', cwd);
+    process.exit(0);
+  }
+  const nameW = Math.max(4, ...rows.map(r => r.name.length));
+  const header = `${pad('name', nameW)}  ${pad('turns', 5)}  ${pad('spec', 4)}  mtime                  goal`;
+  console.log(header);
+  console.log('-'.repeat(header.length));
+  for (const r of rows) {
+    const when = r.mtime.toISOString().replace('T', ' ').slice(0, 19);
+    const goal = r.goal.length > 60 ? r.goal.slice(0, 57) + '…' : r.goal;
+    console.log(
+      `${pad(r.name, nameW)}  ${pad(String(r.turns), 5)}  ${pad(r.accepted ? '✓' : '·', 4)}  ${when}    ${goal}`,
+    );
+  }
+  console.log('\nresume with: bramble --resume <name>');
+  process.exit(0);
+}
+
+function pad(s: string, w: number): string {
+  return s.length >= w ? s : s + ' '.repeat(w - s.length);
+}
+
 // --resume <name> takes over the session name; --name overrides otherwise.
 const name = resumeName ?? sessionName ?? generateSessionName();
 
