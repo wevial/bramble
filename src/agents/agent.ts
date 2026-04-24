@@ -23,6 +23,11 @@ export type TurnUsage = {
   outputTokens: number;
   cacheReadTokens: number;
   cacheCreationTokens: number;
+  /** Debug-only prompt mode used for this turn. */
+  promptMode?: 'full' | 'delta';
+  promptChars?: number;
+  fullPromptChars?: number;
+  deltaPromptChars?: number;
 };
 
 /**

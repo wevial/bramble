@@ -237,7 +237,22 @@ export function App(props: AppProps) {
       transcriptPath: props.transcriptPath,
       initialState: props.initialState,
       onPauseChange: p => setPaused(p),
-      onUsage: (_speaker, u) => {
+      onUsage: (speaker, u) => {
+        if (process.env.BRAMBLE_DEBUG_CACHE === '1') {
+          console.error(
+            `[bramble-cache] ${JSON.stringify({
+              speaker,
+              promptMode: u.promptMode,
+              promptChars: u.promptChars,
+              fullPromptChars: u.fullPromptChars,
+              deltaPromptChars: u.deltaPromptChars,
+              inputTokens: u.inputTokens,
+              cacheReadTokens: u.cacheReadTokens,
+              cacheCreationTokens: u.cacheCreationTokens,
+              outputTokens: u.outputTokens,
+            })}`,
+          );
+        }
         // Both agents' `TurnUsage.inputTokens` is normalized to mean
         // uncached-only (see codex-events.ts). Total prompt size for the
         // turn = inputTokens + cacheReadTokens + cacheCreationTokens.

@@ -107,10 +107,10 @@ export class ClaudeAgent implements Agent {
     // session). Once the persistent Claude session has been seeded with one
     // full prompt, send only the new debate delta so we don't duplicate the
     // whole transcript inside every subsequent user message.
-    const prompt =
-      this.supportsDeltaPrompts && this.hasSessionContext && ctx.deltaPrompt
-        ? ctx.deltaPrompt
-        : ctx.prompt;
+    const useDelta =
+      this.supportsDeltaPrompts && this.hasSessionContext && ctx.deltaPrompt;
+    const prompt = useDelta ? ctx.deltaPrompt! : ctx.prompt;
+    const promptMode = useDelta ? 'delta' : 'full';
     let accumulated = '';
     let finalResult: string | null = null;
     let usage: TurnUsage | undefined;
@@ -133,6 +133,15 @@ export class ClaudeAgent implements Agent {
       subprocessError = (err as Error)?.message ?? String(err);
     }
     this.hasSessionContext = !signal.aborted && subprocessError === null;
+    if (usage) {
+      usage = {
+        ...usage,
+        promptMode,
+        promptChars: prompt.length,
+        fullPromptChars: ctx.prompt.length,
+        deltaPromptChars: ctx.deltaPrompt?.length,
+      };
+    }
 
     if (subprocessError && !finalResult && accumulated.length === 0) {
       const errMsg = `⚠ claude subprocess failed: ${subprocessError}`;

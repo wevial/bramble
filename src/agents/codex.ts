@@ -102,6 +102,14 @@ export class CodexAgent implements Agent {
     } catch (err) {
       subprocessError = (err as Error)?.message ?? String(err);
     }
+    if (usage) {
+      usage = {
+        ...usage,
+        promptMode: 'full',
+        promptChars: prompt.length,
+        fullPromptChars: prompt.length,
+      };
+    }
 
     if (subprocessError && fullText.length === 0) {
       const errMsg = `⚠ codex subprocess failed: ${subprocessError}`;
