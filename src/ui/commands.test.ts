@@ -60,6 +60,11 @@ describe('parseSlashCommand', () => {
     expect(parseSlashCommand('/expand claude-x')).toMatchObject({ kind: 'unknown' });
   });
 
+  it('parses /export and /copy', () => {
+    expect(parseSlashCommand('/export')).toEqual({ kind: 'export' });
+    expect(parseSlashCommand('/copy')).toEqual({ kind: 'copy' });
+  });
+
   it('returns unknown for unrecognised slash commands', () => {
     expect(parseSlashCommand('/foo')).toEqual({
       kind: 'unknown',

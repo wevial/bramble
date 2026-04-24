@@ -236,6 +236,7 @@ const { waitUntilExit } = render(
     debatePath={paths.debatePath}
     draftPath={paths.draftPath}
     draftsPath={paths.draftsPath}
+    exportPath={paths.exportPath}
     onQuit={() => process.exit(0)}
   />,
 );

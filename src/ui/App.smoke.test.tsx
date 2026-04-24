@@ -15,6 +15,7 @@ function paths() {
     debatePath: join(dir, 'debate.md'),
     draftPath: join(dir, 'draft.md'),
     draftsPath: join(dir, 'drafts.md'),
+    exportPath: join(dir, 'export.md'),
   };
 }
 

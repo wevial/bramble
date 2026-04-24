@@ -10,6 +10,8 @@ import { writeAcceptedSpec, clearSpec } from '../docs/spec.js';
 import { writeDebate } from '../docs/debate.js';
 import { writeDraft, clearDraft } from '../docs/draft.js';
 import { writeDraftsHistory, type ProposalRecord } from '../docs/drafts.js';
+import { writeExport } from '../docs/export.js';
+import { copyToClipboard } from '../util/clipboard.js';
 import type { State, TurnRecord } from '../orchestrator/types.js';
 import { parseAgentOutput, type AgentOutput } from '../protocol/patch.js';
 import { InputBox } from './InputBox.js';
@@ -32,6 +34,7 @@ export type AppProps = {
   debatePath: string;
   draftPath: string;
   draftsPath: string;
+  exportPath: string;
   onDone?: () => void;
   onQuit?: () => void;
 };
@@ -377,6 +380,31 @@ export function App(props: AppProps) {
               setStatus(`drafts → drafts.md (${proposals.length} proposal${
                 proposals.length === 1 ? '' : 's'
               })`);
+              return;
+            }
+            if (cmd.kind === 'export') {
+              void writeExport(props.exportPath, {
+                sessionName: props.sessionName,
+                goal: prompt,
+                state,
+              }).then(
+                () => setStatus(`exported → ${props.exportPath}`),
+                err => setStatus(`export failed: ${err.message ?? err}`),
+              );
+              return;
+            }
+            if (cmd.kind === 'copy') {
+              const body = state.accepted && state.currentDraft
+                ? state.currentDraft.body
+                : null;
+              if (!body) {
+                setStatus('nothing to copy — no spec accepted yet');
+                return;
+              }
+              void copyToClipboard(body).then(
+                () => setStatus(`copied spec (${body.length} chars)`),
+                err => setStatus(`copy failed: ${err.message ?? err}`),
+              );
               return;
             }
             if (cmd.kind === 'expand') {

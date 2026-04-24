@@ -18,6 +18,7 @@ export type SessionPaths = {
   draftPath: string;
   draftsPath: string;
   promptPath: string;
+  exportPath: string;
 };
 
 /**
@@ -36,6 +37,7 @@ export function sessionPaths(root: string, name: string): SessionPaths {
     draftPath: join(dir, 'draft.md'),
     draftsPath: join(dir, 'drafts.md'),
     promptPath: join(dir, 'prompt.txt'),
+    exportPath: join(dir, 'export.md'),
   };
 }
 

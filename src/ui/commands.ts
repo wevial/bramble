@@ -2,6 +2,8 @@ export type SlashCommand =
   | { kind: 'quit' }
   | { kind: 'rounds'; value: number | null }
   | { kind: 'drafts' }
+  | { kind: 'export' }
+  | { kind: 'copy' }
   | { kind: 'expand'; id: string }
   | { kind: 'unknown'; raw: string; hint: string };
 
@@ -37,6 +39,10 @@ export function parseSlashCommand(input: string): SlashCommand | null {
     }
     case 'drafts':
       return { kind: 'drafts' };
+    case 'export':
+      return { kind: 'export' };
+    case 'copy':
+      return { kind: 'copy' };
     case 'expand': {
       if (!/^(claude|codex)-\d+$/.test(arg)) {
         return {
