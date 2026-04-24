@@ -12,6 +12,7 @@ import { writeDraft, clearDraft } from '../docs/draft.js';
 import { writeDraftsHistory, type ProposalRecord } from '../docs/drafts.js';
 import { writeExport } from '../docs/export.js';
 import { copyToClipboard } from '../util/clipboard.js';
+import { resolve as resolvePath } from 'node:path';
 import type { State, TurnRecord } from '../orchestrator/types.js';
 import { parseAgentOutput, type AgentOutput } from '../protocol/patch.js';
 import { InputBox } from './InputBox.js';
@@ -383,12 +384,15 @@ export function App(props: AppProps) {
               return;
             }
             if (cmd.kind === 'export') {
-              void writeExport(props.exportPath, {
+              const target = cmd.filename
+                ? resolvePath(process.cwd(), cmd.filename)
+                : props.exportPath;
+              void writeExport(target, {
                 sessionName: props.sessionName,
                 goal: prompt,
                 state,
               }).then(
-                () => setStatus(`exported → ${props.exportPath}`),
+                () => setStatus(`exported → ${target}`),
                 err => setStatus(`export failed: ${err.message ?? err}`),
               );
               return;

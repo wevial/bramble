@@ -60,8 +60,19 @@ describe('parseSlashCommand', () => {
     expect(parseSlashCommand('/expand claude-x')).toMatchObject({ kind: 'unknown' });
   });
 
-  it('parses /export and /copy', () => {
-    expect(parseSlashCommand('/export')).toEqual({ kind: 'export' });
+  it('parses /export with optional filename', () => {
+    expect(parseSlashCommand('/export')).toEqual({ kind: 'export', filename: null });
+    expect(parseSlashCommand('/export my-plan')).toEqual({
+      kind: 'export',
+      filename: 'my-plan.md',
+    });
+    expect(parseSlashCommand('/export my-plan.md')).toEqual({
+      kind: 'export',
+      filename: 'my-plan.md',
+    });
+  });
+
+  it('parses /copy', () => {
     expect(parseSlashCommand('/copy')).toEqual({ kind: 'copy' });
   });
 

@@ -2,7 +2,7 @@ export type SlashCommand =
   | { kind: 'quit' }
   | { kind: 'rounds'; value: number | null }
   | { kind: 'drafts' }
-  | { kind: 'export' }
+  | { kind: 'export'; filename: string | null }
   | { kind: 'copy' }
   | { kind: 'expand'; id: string }
   | { kind: 'unknown'; raw: string; hint: string };
@@ -39,8 +39,11 @@ export function parseSlashCommand(input: string): SlashCommand | null {
     }
     case 'drafts':
       return { kind: 'drafts' };
-    case 'export':
-      return { kind: 'export' };
+    case 'export': {
+      if (arg === '') return { kind: 'export', filename: null };
+      const filename = arg.endsWith('.md') ? arg : `${arg}.md`;
+      return { kind: 'export', filename };
+    }
     case 'copy':
       return { kind: 'copy' };
     case 'expand': {
