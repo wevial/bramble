@@ -32,7 +32,9 @@ describe('parseCodexEvent', () => {
     expect(parseCodexEvent(line)).toEqual({
       kind: 'turnDone',
       usage: {
-        inputTokens: 1500,
+        // codex reports 1500 total input incl. 1200 cached; normalize to
+        // uncached-only to match claude's convention.
+        inputTokens: 300,
         outputTokens: 42,
         cacheReadTokens: 1200,
         cacheCreationTokens: 0,

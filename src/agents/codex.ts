@@ -44,7 +44,7 @@ If there is no current draft yet, open with your own proposal — do NOT ask the
 
 If there is a current draft, either accept it (verdict "LGTM"), counter-propose with a revised body, or critique it as commentary. You MAY NOT "LGTM" a draft you proposed yourself — only the other agent can accept your proposal.
 
-When the per-turn prompt includes "User guidance", those are hard constraints from the human driving this session. Incorporate them directly into the draft, not just as things to discuss.
+When the debate transcript includes turns from "user", those are hard constraints from the human driving this session. Incorporate them directly into the draft, not just as things to discuss.
 
 Emit <patch>...</patch> only if you have a concrete proposal or a verdict. No <patch> block means commentary-only.
 Do not wrap the JSON in code fences. The block must be literally <patch>...</patch>.`;

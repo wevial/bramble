@@ -49,6 +49,23 @@ export function startDebate(opts: RunDebateOptions): DebateHandle {
   const outer = new AbortController();
   opts.signal?.addEventListener('abort', () => outer.abort(), { once: true });
 
+  let disposed = false;
+  const disposeAgents = () => {
+    if (disposed) return;
+    disposed = true;
+    try {
+      opts.agents.claude.dispose?.();
+    } catch {
+      /* ignore */
+    }
+    try {
+      opts.agents.codex.dispose?.();
+    } catch {
+      /* ignore */
+    }
+  };
+  outer.signal.addEventListener('abort', disposeAgents, { once: true });
+
   const resumePause = () => {
     if (continueResolver) {
       const r = continueResolver;
@@ -77,85 +94,93 @@ export function startDebate(opts: RunDebateOptions): DebateHandle {
     }
     let i = 0;
     // Accept short-circuit for already-accepted resumes: no more turns needed.
-    if (state.accepted) return state;
-    while (i < rounds * 2) {
-      if (outer.signal.aborted) break;
-      const speaker = nextSpeaker(state);
-      const agent = opts.agents[speaker];
-      state = reducer(state, { type: 'turnStarted', speaker });
-      opts.onState?.(state);
+    if (state.accepted) {
+      disposeAgents();
+      return state;
+    }
+    try {
+      while (i < rounds * 2) {
+        if (outer.signal.aborted) break;
+        const speaker = nextSpeaker(state);
+        const agent = opts.agents[speaker];
+        state = reducer(state, { type: 'turnStarted', speaker });
+        opts.onState?.(state);
 
-      turnController = new AbortController();
-      outer.signal.addEventListener('abort', () => turnController?.abort(), { once: true });
+        turnController = new AbortController();
+        outer.signal.addEventListener('abort', () => turnController?.abort(), { once: true });
 
-      const prompt = buildPrompt(opts.prompt, state, speaker, mode);
-      let displayed = '';
-      let rawTail: string | undefined;
-      let usageTail: TurnUsage | undefined;
-      try {
-        const iter = agent.stream({ prompt }, turnController.signal);
-        while (true) {
-          const r = await iter.next();
-          if (r.done) {
-            if (r.value) {
-              rawTail = r.value.raw;
-              usageTail = r.value.usage;
+        const prompt = buildPrompt(opts.prompt, state, speaker, mode);
+        const deltaPrompt = buildDeltaPrompt(opts.prompt, state, speaker, mode);
+        let displayed = '';
+        let rawTail: string | undefined;
+        let usageTail: TurnUsage | undefined;
+        try {
+          const iter = agent.stream({ prompt, deltaPrompt }, turnController.signal);
+          while (true) {
+            const r = await iter.next();
+            if (r.done) {
+              if (r.value) {
+                rawTail = r.value.raw;
+                usageTail = r.value.usage;
+              }
+              break;
             }
-            break;
+            displayed += r.value.text;
+            opts.onToken?.(speaker, r.value.text);
           }
-          displayed += r.value.text;
-          opts.onToken?.(speaker, r.value.text);
+        } catch {
+          // aborts may throw; treat whatever we collected as the turn's content
         }
-      } catch {
-        // aborts may throw; treat whatever we collected as the turn's content
-      }
-      if (usageTail) opts.onUsage?.(speaker, usageTail);
-      // Wire content is the structured raw tail when the agent provides one
-      // (e.g. JSON patch); otherwise whatever streamed.
-      const content = rawTail ?? displayed;
+        if (usageTail) opts.onUsage?.(speaker, usageTail);
+        // Wire content is the structured raw tail when the agent provides one
+        // (e.g. JSON patch); otherwise whatever streamed.
+        const content = rawTail ?? displayed;
 
-      const timestamp = new Date().toISOString();
-      state = reducer(state, { type: 'turnCompleted', speaker, content, timestamp });
-      opts.onState?.(state);
-      await appendTurn(opts.transcriptPath, { speaker, content, timestamp });
+        const timestamp = new Date().toISOString();
+        state = reducer(state, { type: 'turnCompleted', speaker, content, timestamp });
+        opts.onState?.(state);
+        await appendTurn(opts.transcriptPath, { speaker, content, timestamp });
 
-      // Parse structured output and dispatch proposal/verdict if present.
-      const parsed = parseAgentOutput(content, { fallbackToCommentary: true });
-      if (parsed.ok) {
-        if (parsed.value.proposal) {
-          state = reducer(state, {
-            type: 'proposalReceived',
-            speaker,
-            body: parsed.value.proposal.body,
-          });
-          opts.onState?.(state);
+        // Parse structured output and dispatch proposal/verdict if present.
+        const parsed = parseAgentOutput(content, { fallbackToCommentary: true });
+        if (parsed.ok) {
+          if (parsed.value.proposal) {
+            state = reducer(state, {
+              type: 'proposalReceived',
+              speaker,
+              body: parsed.value.proposal.body,
+            });
+            opts.onState?.(state);
+          }
+          if (parsed.value.verdict) {
+            state = reducer(state, {
+              type: 'verdictReceived',
+              speaker,
+              verdict: parsed.value.verdict,
+            });
+            opts.onState?.(state);
+            if (state.accepted) break;
+          }
         }
-        if (parsed.value.verdict) {
-          state = reducer(state, {
-            type: 'verdictReceived',
-            speaker,
-            verdict: parsed.value.verdict,
+        i++;
+        // Collab mode: pause between turns (unless this was the final turn or
+        // a terminal verdict landed).
+        if (
+          mode === 'collab' &&
+          i < rounds * 2 &&
+          !state.accepted &&
+          !outer.signal.aborted
+        ) {
+          opts.onPauseChange?.(true);
+          await new Promise<void>(resolve => {
+            continueResolver = resolve;
+            outer.signal.addEventListener('abort', () => resolve(), { once: true });
           });
-          opts.onState?.(state);
-          if (state.accepted) break;
+          opts.onPauseChange?.(false);
         }
       }
-      i++;
-      // Collab mode: pause between turns (unless this was the final turn or
-      // a terminal verdict landed).
-      if (
-        mode === 'collab' &&
-        i < rounds * 2 &&
-        !state.accepted &&
-        !outer.signal.aborted
-      ) {
-        opts.onPauseChange?.(true);
-        await new Promise<void>(resolve => {
-          continueResolver = resolve;
-          outer.signal.addEventListener('abort', () => resolve(), { once: true });
-        });
-        opts.onPauseChange?.(false);
-      }
+    } finally {
+      disposeAgents();
     }
     return state;
   })();
@@ -191,25 +216,56 @@ export function buildPrompt(
 
   parts.push(`# Goal\n\n${basePrompt}`);
 
-  const userTurns = state.transcript.filter(t => t.speaker === 'user');
-  if (userTurns.length > 0) {
+  // Render the full transcript (agents + user interjections) in chronological
+  // order. Keeping everything append-only here — including user turns, which
+  // the agents should treat as hard constraints — means consecutive same-
+  // speaker turns share the longest possible token prefix. The "hard
+  // constraints" framing lives in each agent's system instructions, so we
+  // don't need a separate re-rendered guidance section that would shift when
+  // the user interjects. See buildPrompt.test.ts ("stable prefix").
+  if (state.transcript.length > 0) {
+    const lines = state.transcript.map(t => `## ${t.speaker}\n\n${t.content}`);
+    parts.push(`# Debate so far\n\n${lines.join('\n\n')}`);
+  }
+
+  if (state.currentDraft) {
+    const authorTag =
+      state.currentDraft.proposer === speaker ? ' — yours' : '';
     parts.push(
-      `# User guidance\n\nThe human driving this session has added the following. Treat these as hard constraints — incorporate them directly into the spec, not just as things to discuss.\n\n${userTurns
-        .map(t => `- ${t.content}`)
-        .join('\n')}`,
+      `# Current draft (by ${state.currentDraft.proposer}${authorTag})\n\n${state.currentDraft.body}`,
     );
   }
 
-  // Section order below is tuned for prompt-caching: stable-append sections
-  // (debate so far) come before turn-variable ones (current draft, your turn)
-  // so consecutive turns share the longest possible token prefix. See
-  // buildPrompt.test.ts ("stable prefix for prompt-caching").
-  const debateTurns = state.transcript.filter(
-    t => t.speaker === 'claude' || t.speaker === 'codex',
+  parts.push(`# Your turn\n\n${turnGuidance(state, speaker, mode)}`);
+  return parts.join('\n\n');
+}
+
+export function buildDeltaPrompt(
+  basePrompt: string,
+  state: State,
+  speaker: 'claude' | 'codex',
+  mode: DebateMode,
+): string {
+  const parts: string[] = [];
+  let lastOwnTurn = -1;
+  for (let i = state.transcript.length - 1; i >= 0; i--) {
+    if (state.transcript[i]!.speaker === speaker) {
+      lastOwnTurn = i;
+      break;
+    }
+  }
+  const newTurns =
+    lastOwnTurn >= 0 ? state.transcript.slice(lastOwnTurn + 1) : state.transcript;
+
+  parts.push(
+    `# Debate update\n\nContinue the existing debate for this goal:\n\n${basePrompt}`,
   );
-  if (debateTurns.length > 0) {
-    const lines = debateTurns.map(t => `## ${t.speaker}\n\n${t.content}`);
-    parts.push(`# Debate so far\n\n${lines.join('\n\n')}`);
+
+  if (newTurns.length > 0) {
+    const lines = newTurns.map(t => `## ${t.speaker}\n\n${t.content}`);
+    parts.push(`# New turns since your last response\n\n${lines.join('\n\n')}`);
+  } else {
+    parts.push(`# New turns since your last response\n\nNone.`);
   }
 
   if (state.currentDraft) {
@@ -252,7 +308,7 @@ function turnGuidance(
 
   if (mode === 'collab') {
     sections.push(
-      `This session is in collab mode: a human is reviewing between turns and may interject with constraints or redirects. If any appear under "User guidance", reflect them directly in your response — don't wait for the next turn.`,
+      `This session is in collab mode: a human is reviewing between turns and may interject with constraints or redirects. If any turns from "user" appear in the debate transcript or latest update, reflect them directly in your response — don't wait for the next turn.`,
     );
   }
 

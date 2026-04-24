@@ -1,37 +1,45 @@
 import { describe, it, expect } from 'vitest';
-import { claudeSpawnSpec } from './claude.js';
+import { claudeTransportArgs } from './claude-transport.js';
 import { codexSpawnSpec } from './codex.js';
 
-describe('claudeSpawnSpec', () => {
-  it('builds base args with stream-json output and the prompt', () => {
-    const spec = claudeSpawnSpec('hello');
-    expect(spec.cmd).toBe('claude');
-    expect(spec.args).toEqual([
+describe('claudeTransportArgs (long-lived)', () => {
+  it('opens stream-json on both input and output so one process spans the debate', () => {
+    const args = claudeTransportArgs({});
+    expect(args.slice(0, 7)).toEqual([
       '-p',
-      'hello',
+      '--input-format',
+      'stream-json',
       '--output-format',
       'stream-json',
       '--verbose',
       '--include-partial-messages',
     ]);
-    expect(spec.cwd).toBeUndefined();
+    // No positional prompt — the transport feeds each turn over stdin.
+    expect(args).not.toContain('hello');
   });
 
-  it('appends --model when pinned', () => {
-    const spec = claudeSpawnSpec('x', { model: 'claude-haiku-4-5' });
-    expect(spec.args).toContain('--model');
-    expect(spec.args).toContain('claude-haiku-4-5');
+  it('passes --exclude-dynamic-system-prompt-sections to stabilize the cached system prefix', () => {
+    expect(claudeTransportArgs({})).toContain(
+      '--exclude-dynamic-system-prompt-sections',
+    );
   });
 
-  it('threads cwd when isolated', () => {
-    const spec = claudeSpawnSpec('x', { cwd: '/tmp/iso-abc' });
-    expect(spec.cwd).toBe('/tmp/iso-abc');
+  it('appends --append-system-prompt when given', () => {
+    const args = claudeTransportArgs({ appendSystemPrompt: 'DEBATE RULES' });
+    const i = args.indexOf('--append-system-prompt');
+    expect(i).toBeGreaterThanOrEqual(0);
+    expect(args[i + 1]).toBe('DEBATE RULES');
   });
 
-  it('appends --effort for reasoning tier', () => {
-    const spec = claudeSpawnSpec('x', { reasoningEffort: 'high' });
-    expect(spec.args).toContain('--effort');
-    expect(spec.args).toContain('high');
+  it('threads --model and --effort', () => {
+    const args = claudeTransportArgs({
+      model: 'claude-haiku-4-5',
+      reasoningEffort: 'high',
+    });
+    expect(args).toContain('--model');
+    expect(args).toContain('claude-haiku-4-5');
+    expect(args).toContain('--effort');
+    expect(args).toContain('high');
   });
 });
 

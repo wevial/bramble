@@ -1,12 +1,25 @@
 import type { Agent, AgentName, StreamTail, Token, TurnContext, TurnUsage } from './agent.js';
-import { streamProcessLines, type SpawnSpec } from './subprocess.js';
 import { parseClaudeEvent } from './claude-events.js';
+import {
+  createClaudeTransport,
+  type ClaudeTransport,
+  claudeTransportArgs,
+} from './claude-transport.js';
 import { buildAgentOutputFromModel } from '../protocol/patchBlock.js';
 
 export type ClaudeAgentOptions = {
-  /** Override the line-stream source for testing. Default spawns `claude`. */
+  /**
+   * Legacy per-turn override for testing: if given, each turn spawns a fresh
+   * line stream. Production uses a long-lived `ClaudeTransport` instead — see
+   * claude-transport.ts. Prefer `transport` for new tests.
+   */
   streamLines?: (prompt: string, signal: AbortSignal) => AsyncIterable<string>;
-  /** Appended to the user prompt. Defaults to the patch-protocol instructions. */
+  /** Inject a transport directly (for tests of the long-lived path). */
+  transport?: ClaudeTransport;
+  /**
+   * Appended to the CLI's system prompt as the bramble debate protocol.
+   * Stable across turns, so it sits inside the cacheable system prefix.
+   */
   systemInstructions?: string;
   /** Pinned model id (e.g. "claude-sonnet-4-6"). Default uses the CLI default. */
   model?: string;
@@ -20,23 +33,14 @@ export type ClaudeAgentOptions = {
   cwd?: string;
 };
 
-export function claudeSpawnSpec(
-  prompt: string,
-  opts: { model?: string; reasoningEffort?: string; cwd?: string } = {},
-): SpawnSpec {
-  const args = [
-    '-p',
-    prompt,
-    '--output-format',
-    'stream-json',
-    '--verbose',
-    '--include-partial-messages',
-  ];
-  if (opts.model) args.push('--model', opts.model);
-  if (opts.reasoningEffort) args.push('--effort', opts.reasoningEffort);
-  const spec: SpawnSpec = { cmd: 'claude', args };
-  if (opts.cwd) spec.cwd = opts.cwd;
-  return spec;
+/** Exposed for tests — returns the argv shape the long-lived transport uses. */
+export function claudeTransportArgsFor(opts: {
+  model?: string;
+  reasoningEffort?: string;
+  cwd?: string;
+  appendSystemPrompt?: string;
+}): string[] {
+  return claudeTransportArgs(opts);
 }
 
 const DEFAULT_PROTOCOL = `You are one of two agents in an adversarial-but-constructive debate to produce the best possible spec for the user's goal. The other agent will critique, counter-propose, and push back on you — and you should do the same to them. The point is to converge on a genuinely good spec, not to be agreeable. Disagree when you have a real reason; only accept when the spec is actually solid.
@@ -49,52 +53,71 @@ If there is no current draft yet, open with your own proposal — do NOT ask the
 
 If there is a current draft, either accept it (verdict "LGTM"), counter-propose with a revised body, or critique it as commentary. You MAY NOT "LGTM" a draft you proposed yourself — only the other agent can accept your proposal.
 
-When the per-turn prompt includes "User guidance", those are hard constraints from the human driving this session. Incorporate them directly into the draft, not just as things to discuss.
+When the debate transcript includes turns from "user", those are hard constraints from the human driving this session. Incorporate them directly into the draft, not just as things to discuss.
 
 Emit <patch>...</patch> only if you have a concrete proposal or a verdict. No <patch> block means commentary-only.
 Do not wrap the JSON in code fences. The block must be literally <patch>...</patch>.`;
 
-function defaultSpawn(
-  prompt: string,
-  signal: AbortSignal,
-  model: string | undefined,
-  reasoningEffort: string | undefined,
-  cwd: string | undefined,
-): AsyncIterable<string> {
-  return streamProcessLines(
-    claudeSpawnSpec(prompt, { model, reasoningEffort, cwd }),
-    signal,
-  );
+/**
+ * Wrap a legacy per-turn `streamLines` callback as a ClaudeTransport. Every
+ * turn spawns a fresh line source — identical to the old behavior. Only used
+ * by existing tests that predate the long-lived transport.
+ */
+function perTurnTransport(
+  streamLines: (prompt: string, signal: AbortSignal) => AsyncIterable<string>,
+): ClaudeTransport {
+  return {
+    runTurn(prompt, signal) {
+      return streamLines(prompt, signal);
+    },
+    dispose() {
+      /* nothing to tear down per turn */
+    },
+  };
 }
 
 export class ClaudeAgent implements Agent {
   readonly name: AgentName = 'claude';
-  private readonly streamLines: (
-    prompt: string,
-    signal: AbortSignal,
-  ) => AsyncIterable<string>;
-  private readonly systemInstructions: string;
+  private readonly transport: ClaudeTransport;
+  private readonly supportsDeltaPrompts: boolean;
+  private hasSessionContext = false;
 
   constructor(opts: ClaudeAgentOptions = {}) {
-    this.streamLines =
-      opts.streamLines ??
-      ((p, s) =>
-        defaultSpawn(p, s, opts.model, opts.reasoningEffort, opts.cwd));
-    this.systemInstructions = opts.systemInstructions ?? DEFAULT_PROTOCOL;
+    const systemInstructions = opts.systemInstructions ?? DEFAULT_PROTOCOL;
+    this.supportsDeltaPrompts = opts.streamLines === undefined;
+    if (opts.transport) {
+      this.transport = opts.transport;
+    } else if (opts.streamLines) {
+      this.transport = perTurnTransport(opts.streamLines);
+    } else {
+      this.transport = createClaudeTransport({
+        model: opts.model,
+        reasoningEffort: opts.reasoningEffort,
+        cwd: opts.cwd,
+        appendSystemPrompt: systemInstructions,
+      });
+    }
   }
 
   async *stream(
     ctx: TurnContext,
     signal: AbortSignal,
   ): AsyncGenerator<Token, StreamTail | void, void> {
-    const prompt = `${this.systemInstructions}\n\n---\n\n${ctx.prompt}`;
+    // The debate protocol rides in --append-system-prompt (stable across the
+    // session). Once the persistent Claude session has been seeded with one
+    // full prompt, send only the new debate delta so we don't duplicate the
+    // whole transcript inside every subsequent user message.
+    const prompt =
+      this.supportsDeltaPrompts && this.hasSessionContext && ctx.deltaPrompt
+        ? ctx.deltaPrompt
+        : ctx.prompt;
     let accumulated = '';
     let finalResult: string | null = null;
     let usage: TurnUsage | undefined;
     let subprocessError: string | null = null;
 
     try {
-      for await (const line of this.streamLines(prompt, signal)) {
+      for await (const line of this.transport.runTurn(prompt, signal)) {
         if (signal.aborted) break;
         const evt = parseClaudeEvent(line);
         if (evt === null) continue;
@@ -109,6 +132,7 @@ export class ClaudeAgent implements Agent {
     } catch (err) {
       subprocessError = (err as Error)?.message ?? String(err);
     }
+    this.hasSessionContext = !signal.aborted && subprocessError === null;
 
     if (subprocessError && !finalResult && accumulated.length === 0) {
       const errMsg = `⚠ claude subprocess failed: ${subprocessError}`;
@@ -124,5 +148,10 @@ export class ClaudeAgent implements Agent {
       ? built.value
       : { commentary: fullText, proposal: null, verdict: null };
     return { raw: JSON.stringify(value), usage };
+  }
+
+  dispose() {
+    this.hasSessionContext = false;
+    this.transport.dispose();
   }
 }

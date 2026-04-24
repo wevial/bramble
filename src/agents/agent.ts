@@ -1,7 +1,13 @@
 export type AgentName = 'claude' | 'codex';
 
 export type TurnContext = {
+  /** Full self-contained prompt for one-shot agents or a fresh session. */
   prompt: string;
+  /**
+   * Smaller prompt for persistent agents that already have the earlier debate
+   * in their conversation history.
+   */
+  deltaPrompt?: string;
 };
 
 export type Token = { text: string };
@@ -33,4 +39,6 @@ export interface Agent {
     ctx: TurnContext,
     signal: AbortSignal,
   ): AsyncGenerator<Token, StreamTail | void, void>;
+  /** Release any long-lived resources (e.g. a persistent subprocess). */
+  dispose?(): void;
 }

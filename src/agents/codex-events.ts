@@ -48,12 +48,20 @@ export function parseCodexEvent(line: string): CodexEvent | null {
     return {
       kind: 'turnDone',
       usage: turn.data.usage
-        ? {
-            inputTokens: turn.data.usage.input_tokens ?? 0,
-            outputTokens: turn.data.usage.output_tokens ?? 0,
-            cacheReadTokens: turn.data.usage.cached_input_tokens ?? 0,
-            cacheCreationTokens: 0,
-          }
+        ? (() => {
+            // Codex `input_tokens` already includes `cached_input_tokens`.
+            // Normalize to the claude convention where `inputTokens` is
+            // uncached-only, so both agents share one semantic for downstream
+            // math (denominator = inputTokens + cacheReadTokens + cacheCreationTokens).
+            const rawInput = turn.data.usage.input_tokens ?? 0;
+            const cached = turn.data.usage.cached_input_tokens ?? 0;
+            return {
+              inputTokens: Math.max(0, rawInput - cached),
+              outputTokens: turn.data.usage.output_tokens ?? 0,
+              cacheReadTokens: cached,
+              cacheCreationTokens: 0,
+            };
+          })()
         : undefined,
     };
   }

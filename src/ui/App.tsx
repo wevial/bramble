@@ -79,7 +79,10 @@ export function App(props: AppProps) {
   const [now, setNow] = useState(Date.now());
   const [paused, setPaused] = useState(false);
   const [usageTotals, setUsageTotals] = useState({
-    inputTokens: 0,
+    // Running totals across all turns. `promptTokens` is the total prompt
+    // size (uncached + cache-read + cache-creation). Cache-hit ratio is
+    // cacheReadTokens / promptTokens.
+    promptTokens: 0,
     cacheReadTokens: 0,
   });
   const mode: DebateMode = props.mode ?? 'auto';
@@ -235,12 +238,15 @@ export function App(props: AppProps) {
       initialState: props.initialState,
       onPauseChange: p => setPaused(p),
       onUsage: (_speaker, u) => {
-        // Running totals across all turns this session. cacheReadTokens / (input
-        // prompt tokens that *could* have been cached) is our rough cache-hit
-        // gauge. `input_tokens` in the claude result is NEW (uncached) input —
-        // so cached+uncached is the denominator.
+        // Both agents' `TurnUsage.inputTokens` is normalized to mean
+        // uncached-only (see codex-events.ts). Total prompt size for the
+        // turn = inputTokens + cacheReadTokens + cacheCreationTokens.
         setUsageTotals(prev => ({
-          inputTokens: prev.inputTokens + u.inputTokens + u.cacheReadTokens,
+          promptTokens:
+            prev.promptTokens +
+            u.inputTokens +
+            u.cacheReadTokens +
+            u.cacheCreationTokens,
           cacheReadTokens: prev.cacheReadTokens + u.cacheReadTokens,
         }));
       },
@@ -377,11 +383,11 @@ export function App(props: AppProps) {
           <Text>
             round {currentRound}/{rounds}
           </Text>
-          {usageTotals.inputTokens > 0 && (
+          {usageTotals.promptTokens > 0 && (
             <>
               <Text dimColor> · </Text>
               <Text dimColor>
-                cache {Math.round((usageTotals.cacheReadTokens / usageTotals.inputTokens) * 100)}%
+                cache {Math.round((usageTotals.cacheReadTokens / usageTotals.promptTokens) * 100)}%
               </Text>
             </>
           )}

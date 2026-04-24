@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildPrompt } from './runner.js';
+import { buildDeltaPrompt, buildPrompt } from './runner.js';
 import { initialState, type State } from './types.js';
 
 function stateWith(partial: Partial<State>): State {
@@ -50,15 +50,24 @@ describe('buildPrompt', () => {
     expect(auto).not.toMatch(/human is reviewing/i);
   });
 
-  it('flags user interjections as hard constraints the agent must reflect', () => {
+  it('includes user interjections inline in chronological debate order', () => {
     const state = stateWith({
       transcript: [
-        { speaker: 'user', content: 'must use passkeys', timestamp: 't' },
+        { speaker: 'claude', content: 'proposal one', timestamp: 't1' },
+        { speaker: 'user', content: 'must use passkeys', timestamp: 't2' },
+        { speaker: 'codex', content: 'counter', timestamp: 't3' },
       ],
     });
     const out = buildPrompt('x', state, 'claude', 'collab');
     expect(out).toContain('must use passkeys');
-    expect(out).toMatch(/constraint|incorporate/i);
+    expect(out).toContain('## user');
+    expect(out).not.toContain('User guidance');
+    // User turn must appear between the two agent turns, preserving order.
+    const idxClaude = out.indexOf('proposal one');
+    const idxUser = out.indexOf('must use passkeys');
+    const idxCodex = out.indexOf('counter');
+    expect(idxClaude).toBeLessThan(idxUser);
+    expect(idxUser).toBeLessThan(idxCodex);
   });
 
   it('includes prior debate turns under a debate-so-far section', () => {
@@ -96,6 +105,32 @@ describe('buildPrompt', () => {
       );
     });
 
+    it('user interjections extend — do not invalidate — the prior prefix', () => {
+      const t1 = { speaker: 'claude' as const, content: 'turn one', timestamp: 't1' };
+      const t2 = { speaker: 'codex' as const, content: 'turn two', timestamp: 't2' };
+      const before = buildPrompt(
+        'x',
+        stateWith({ transcript: [t1, t2] }),
+        'claude',
+        'collab',
+      );
+      const after = buildPrompt(
+        'x',
+        stateWith({
+          transcript: [
+            t1,
+            t2,
+            { speaker: 'user', content: 'please be concise', timestamp: 't3' },
+          ],
+        }),
+        'claude',
+        'collab',
+      );
+      // `after` must start with every byte of `before` up to the end of turn two.
+      const turnTwoEnd = before.indexOf('turn two') + 'turn two'.length;
+      expect(after.slice(0, turnTwoEnd)).toBe(before.slice(0, turnTwoEnd));
+    });
+
     it('consecutive same-speaker turns share a prefix through the prior debate', () => {
       const t1 = { speaker: 'claude' as const, content: 'turn one', timestamp: 't1' };
       const t2 = { speaker: 'codex' as const, content: 'turn two', timestamp: 't2' };
@@ -128,5 +163,26 @@ describe('buildPrompt', () => {
       expect(turn2DebateEnd).toBeGreaterThan(0);
       expect(atTurn3.slice(0, turn2DebateEnd)).toBe(atTurn2.slice(0, turn2DebateEnd));
     });
+  });
+});
+
+describe('buildDeltaPrompt', () => {
+  it('includes only turns since the speaker last responded', () => {
+    const state = stateWith({
+      currentDraft: { body: '# draft v2', proposer: 'codex' },
+      transcript: [
+        { speaker: 'claude', content: 'old claude turn', timestamp: 't1' },
+        { speaker: 'codex', content: 'codex reply', timestamp: 't2' },
+        { speaker: 'user', content: 'human constraint', timestamp: 't3' },
+      ],
+    });
+
+    const out = buildDeltaPrompt('design auth', state, 'claude', 'collab');
+    expect(out).toContain('design auth');
+    expect(out).toContain('codex reply');
+    expect(out).toContain('human constraint');
+    expect(out).toContain('# draft v2');
+    expect(out).not.toContain('old claude turn');
+    expect(out).not.toContain('Debate so far');
   });
 });

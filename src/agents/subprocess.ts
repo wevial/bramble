@@ -39,7 +39,7 @@ export async function* streamProcessLines(
 
   let stderr = '';
   let exitCode: number | null = null;
-  let spawnError: Error | null = null;
+  let spawnErrorMessage: string | null = null;
 
   let buffer = '';
   child.stdout.setEncoding('utf8');
@@ -65,7 +65,7 @@ export async function* streamProcessLines(
     wake();
   });
   child.on('error', err => {
-    spawnError = err as Error;
+    spawnErrorMessage = (err as Error).message;
     queue.push(null);
     wake();
   });
@@ -82,9 +82,9 @@ export async function* streamProcessLines(
       if (next === null) break;
       yield next;
     }
-    if (spawnError) {
+    if (spawnErrorMessage) {
       throw new Error(
-        `failed to spawn \`${spec.cmd}\`: ${spawnError.message}`,
+        `failed to spawn \`${spec.cmd}\`: ${spawnErrorMessage}`,
       );
     }
     if (!signal.aborted && exitCode !== null && exitCode !== 0) {
