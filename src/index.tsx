@@ -26,6 +26,7 @@ if (argv.includes('--help') || argv.includes('-h')) {
 let rounds = 3;
 let real = false;
 let claudeModel: string | undefined;
+let claudeEffort: string | undefined;
 let codexModel: string | undefined;
 let codexEffort: string | undefined;
 let sessionName: string | undefined;
@@ -59,6 +60,9 @@ for (let i = 0; i < argv.length; i++) {
     i++;
   } else if (a === '--codex-effort' && argv[i + 1]) {
     codexEffort = argv[i + 1];
+    i++;
+  } else if (a === '--claude-effort' && argv[i + 1]) {
+    claudeEffort = argv[i + 1];
     i++;
   } else if (a === '--name' && argv[i + 1]) {
     sessionName = argv[i + 1];
@@ -162,7 +166,11 @@ if (real) {
   // Isolate agents by spawning them in throwaway tmpdirs so repo-local
   // CLAUDE.md / AGENTS.md don't leak into the debate.
   const isoCwd = isolated ? mkdtempSync(join(tmpdir(), 'bramble-iso-')) : undefined;
-  claude = new ClaudeAgent({ model: claudeModel, cwd: isoCwd });
+  claude = new ClaudeAgent({
+    model: claudeModel,
+    reasoningEffort: claudeEffort,
+    cwd: isoCwd,
+  });
   codex = new CodexAgent({
     model: codexModel,
     reasoningEffort: codexEffort,

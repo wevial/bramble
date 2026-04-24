@@ -27,6 +27,12 @@ describe('claudeSpawnSpec', () => {
     const spec = claudeSpawnSpec('x', { cwd: '/tmp/iso-abc' });
     expect(spec.cwd).toBe('/tmp/iso-abc');
   });
+
+  it('appends --effort for reasoning tier', () => {
+    const spec = claudeSpawnSpec('x', { reasoningEffort: 'high' });
+    expect(spec.args).toContain('--effort');
+    expect(spec.args).toContain('high');
+  });
 });
 
 describe('codexSpawnSpec', () => {

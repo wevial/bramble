@@ -38,12 +38,17 @@ export type AppProps = {
   exportPath: string;
   onDone?: () => void;
   onQuit?: () => void;
+  /** Test-only: skip prompt-entry view even when no initialState is set. */
+  skipPromptEntry?: boolean;
 };
 
 export function App(props: AppProps) {
   const initialPrompt = (props.prompt ?? '').trim();
+  const isResume =
+    (props.initialState?.transcript?.length ?? 0) > 0 ||
+    (props.initialState?.currentDraft ?? null) !== null;
   const [phase, setPhase] = useState<'prompt' | 'debate'>(
-    initialPrompt.length > 0 ? 'debate' : 'prompt',
+    isResume || props.skipPromptEntry ? 'debate' : 'prompt',
   );
   const [prompt, setPrompt] = useState(initialPrompt);
   const [state, setState] = useState<State>(

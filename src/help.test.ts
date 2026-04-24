@@ -17,6 +17,7 @@ describe('helpText', () => {
       '--real',
       '--test',
       '--claude-model',
+      '--claude-effort',
       '--codex-model',
       '--codex-effort',
       '--isolated',

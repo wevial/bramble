@@ -39,7 +39,7 @@ describe('App smoke', () => {
       <App
         agents={{ claude, codex }}
         prompt="test prompt"
-        rounds={1} sessionName="test-session"
+        rounds={1} sessionName="test-session" skipPromptEntry
         {...p}
         onDone={() => {
           done = true;
@@ -88,7 +88,7 @@ describe('App smoke', () => {
       <App
         agents={{ claude, codex }}
         prompt="x"
-        rounds={1} sessionName="test-session"
+        rounds={1} sessionName="test-session" skipPromptEntry
         {...p}
         onDone={() => {
           done = true;
@@ -116,7 +116,7 @@ describe('App smoke', () => {
       <App
         agents={{ claude, codex }}
         prompt="test prompt"
-        rounds={1} sessionName="test-session"
+        rounds={1} sessionName="test-session" skipPromptEntry
         {...p}
         onDone={() => {
           done = true;

@@ -10,6 +10,8 @@ export type ClaudeAgentOptions = {
   systemInstructions?: string;
   /** Pinned model id (e.g. "claude-sonnet-4-6"). Default uses the CLI default. */
   model?: string;
+  /** Reasoning effort: "low" | "medium" | "high" | "xhigh" | "max". */
+  reasoningEffort?: string;
   /**
    * Working directory for the spawned `claude` subprocess. When set, CLAUDE.md
    * and other repo-local context in the parent project won't leak into the
@@ -20,7 +22,7 @@ export type ClaudeAgentOptions = {
 
 export function claudeSpawnSpec(
   prompt: string,
-  opts: { model?: string; cwd?: string } = {},
+  opts: { model?: string; reasoningEffort?: string; cwd?: string } = {},
 ): SpawnSpec {
   const args = [
     '-p',
@@ -31,6 +33,7 @@ export function claudeSpawnSpec(
     '--include-partial-messages',
   ];
   if (opts.model) args.push('--model', opts.model);
+  if (opts.reasoningEffort) args.push('--effort', opts.reasoningEffort);
   const spec: SpawnSpec = { cmd: 'claude', args };
   if (opts.cwd) spec.cwd = opts.cwd;
   return spec;
@@ -55,9 +58,13 @@ function defaultSpawn(
   prompt: string,
   signal: AbortSignal,
   model: string | undefined,
+  reasoningEffort: string | undefined,
   cwd: string | undefined,
 ): AsyncIterable<string> {
-  return streamProcessLines(claudeSpawnSpec(prompt, { model, cwd }), signal);
+  return streamProcessLines(
+    claudeSpawnSpec(prompt, { model, reasoningEffort, cwd }),
+    signal,
+  );
 }
 
 export class ClaudeAgent implements Agent {
@@ -70,7 +77,9 @@ export class ClaudeAgent implements Agent {
 
   constructor(opts: ClaudeAgentOptions = {}) {
     this.streamLines =
-      opts.streamLines ?? ((p, s) => defaultSpawn(p, s, opts.model, opts.cwd));
+      opts.streamLines ??
+      ((p, s) =>
+        defaultSpawn(p, s, opts.model, opts.reasoningEffort, opts.cwd));
     this.systemInstructions = opts.systemInstructions ?? DEFAULT_PROTOCOL;
   }
 
