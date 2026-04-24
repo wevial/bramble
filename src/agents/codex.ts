@@ -1,5 +1,5 @@
 import type { Agent, AgentName, StreamTail, Token, TurnContext } from './agent.js';
-import { streamProcessLines } from './subprocess.js';
+import { streamProcessLines, type SpawnSpec } from './subprocess.js';
 import { parseCodexEvent } from './codex-events.js';
 import { buildAgentOutputFromModel } from '../protocol/patchBlock.js';
 
@@ -11,7 +11,28 @@ export type CodexAgentOptions = {
   model?: string;
   /** Reasoning effort override, e.g. "low" | "medium" | "high". */
   reasoningEffort?: string;
+  /**
+   * Working directory for the spawned `codex` subprocess. When set, AGENTS.md
+   * and other repo-local context in the parent project won't leak into the
+   * debate. Used by the --isolated flag.
+   */
+  cwd?: string;
 };
+
+export function codexSpawnSpec(
+  prompt: string,
+  opts: { model?: string; reasoningEffort?: string; cwd?: string } = {},
+): SpawnSpec {
+  const args = ['exec', '--json'];
+  if (opts.model) args.push('-m', opts.model);
+  if (opts.reasoningEffort) {
+    args.push('-c', `model_reasoning_effort=${opts.reasoningEffort}`);
+  }
+  args.push(prompt);
+  const spec: SpawnSpec = { cmd: 'codex', args };
+  if (opts.cwd) spec.cwd = opts.cwd;
+  return spec;
+}
 
 const DEFAULT_PROTOCOL = `You are one of two agents in an adversarial-but-constructive debate to produce the best possible spec for the user's goal. The other agent will critique, counter-propose, and push back on you — and you should do the same to them. The point is to converge on a genuinely good spec, not to be agreeable. Disagree when you have a real reason; only accept when the spec is actually solid.
 
@@ -33,14 +54,12 @@ function defaultSpawn(
   signal: AbortSignal,
   model: string | undefined,
   reasoningEffort: string | undefined,
+  cwd: string | undefined,
 ): AsyncIterable<string> {
-  const args = ['exec', '--json'];
-  if (model) args.push('-m', model);
-  if (reasoningEffort) {
-    args.push('-c', `model_reasoning_effort=${reasoningEffort}`);
-  }
-  args.push(prompt);
-  return streamProcessLines({ cmd: 'codex', args }, signal);
+  return streamProcessLines(
+    codexSpawnSpec(prompt, { model, reasoningEffort, cwd }),
+    signal,
+  );
 }
 
 export class CodexAgent implements Agent {
@@ -54,7 +73,8 @@ export class CodexAgent implements Agent {
   constructor(opts: CodexAgentOptions = {}) {
     this.streamLines =
       opts.streamLines ??
-      ((p, s) => defaultSpawn(p, s, opts.model, opts.reasoningEffort));
+      ((p, s) =>
+        defaultSpawn(p, s, opts.model, opts.reasoningEffort, opts.cwd));
     this.systemInstructions = opts.systemInstructions ?? DEFAULT_PROTOCOL;
   }
 

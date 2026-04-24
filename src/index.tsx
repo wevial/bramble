@@ -11,7 +11,8 @@ import { generateSessionName } from './util/name.js';
 import { readTranscript } from './docs/transcript.js';
 import { rehydrateState } from './orchestrator/replay.js';
 import { listSessions, sessionPaths } from './sessions/list.js';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 
 const argv = process.argv.slice(2);
@@ -25,6 +26,7 @@ let resumeName: string | undefined;
 let mode: 'auto' | 'collab' = 'auto';
 let listMode = false;
 let dirFlag: string | undefined;
+let isolated = false;
 const positional: string[] = [];
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
@@ -64,6 +66,8 @@ for (let i = 0; i < argv.length; i++) {
   } else if (a === '--dir' && argv[i + 1]) {
     dirFlag = argv[i + 1];
     i++;
+  } else if (a === '--isolated') {
+    isolated = true;
   } else {
     positional.push(a!);
   }
@@ -147,8 +151,15 @@ if (real) {
 let claude: Agent;
 let codex: Agent;
 if (real) {
-  claude = new ClaudeAgent({ model: claudeModel });
-  codex = new CodexAgent({ model: codexModel, reasoningEffort: codexEffort });
+  // Isolate agents by spawning them in throwaway tmpdirs so repo-local
+  // CLAUDE.md / AGENTS.md don't leak into the debate.
+  const isoCwd = isolated ? mkdtempSync(join(tmpdir(), 'bramble-iso-')) : undefined;
+  claude = new ClaudeAgent({ model: claudeModel, cwd: isoCwd });
+  codex = new CodexAgent({
+    model: codexModel,
+    reasoningEffort: codexEffort,
+    cwd: isoCwd,
+  });
 } else {
   const fClaude = new FakeAgent('claude');
   const fCodex = new FakeAgent('codex');

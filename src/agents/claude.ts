@@ -1,5 +1,5 @@
 import type { Agent, AgentName, StreamTail, Token, TurnContext } from './agent.js';
-import { streamProcessLines } from './subprocess.js';
+import { streamProcessLines, type SpawnSpec } from './subprocess.js';
 import { parseClaudeEvent } from './claude-events.js';
 import { buildAgentOutputFromModel } from '../protocol/patchBlock.js';
 
@@ -10,7 +10,31 @@ export type ClaudeAgentOptions = {
   systemInstructions?: string;
   /** Pinned model id (e.g. "claude-sonnet-4-6"). Default uses the CLI default. */
   model?: string;
+  /**
+   * Working directory for the spawned `claude` subprocess. When set, CLAUDE.md
+   * and other repo-local context in the parent project won't leak into the
+   * debate. Used by the --isolated flag.
+   */
+  cwd?: string;
 };
+
+export function claudeSpawnSpec(
+  prompt: string,
+  opts: { model?: string; cwd?: string } = {},
+): SpawnSpec {
+  const args = [
+    '-p',
+    prompt,
+    '--output-format',
+    'stream-json',
+    '--verbose',
+    '--include-partial-messages',
+  ];
+  if (opts.model) args.push('--model', opts.model);
+  const spec: SpawnSpec = { cmd: 'claude', args };
+  if (opts.cwd) spec.cwd = opts.cwd;
+  return spec;
+}
 
 const DEFAULT_PROTOCOL = `You are one of two agents in an adversarial-but-constructive debate to produce the best possible spec for the user's goal. The other agent will critique, counter-propose, and push back on you — and you should do the same to them. The point is to converge on a genuinely good spec, not to be agreeable. Disagree when you have a real reason; only accept when the spec is actually solid.
 
@@ -31,17 +55,9 @@ function defaultSpawn(
   prompt: string,
   signal: AbortSignal,
   model: string | undefined,
+  cwd: string | undefined,
 ): AsyncIterable<string> {
-  const args = [
-    '-p',
-    prompt,
-    '--output-format',
-    'stream-json',
-    '--verbose',
-    '--include-partial-messages',
-  ];
-  if (model) args.push('--model', model);
-  return streamProcessLines({ cmd: 'claude', args }, signal);
+  return streamProcessLines(claudeSpawnSpec(prompt, { model, cwd }), signal);
 }
 
 export class ClaudeAgent implements Agent {
@@ -54,7 +70,7 @@ export class ClaudeAgent implements Agent {
 
   constructor(opts: ClaudeAgentOptions = {}) {
     this.streamLines =
-      opts.streamLines ?? ((p, s) => defaultSpawn(p, s, opts.model));
+      opts.streamLines ?? ((p, s) => defaultSpawn(p, s, opts.model, opts.cwd));
     this.systemInstructions = opts.systemInstructions ?? DEFAULT_PROTOCOL;
   }
 
