@@ -18,8 +18,9 @@ import { parseAgentOutput, type AgentOutput } from '../protocol/patch.js';
 import { InputBox } from './InputBox.js';
 import { parseSlashCommand } from './commands.js';
 import { MarkdownLine, InlineText, visibleLength } from './markdown.js';
-import { ModelPicker } from './ModelPicker.js';
 import type { ModelConfig } from './models.js';
+import { SetupScreen } from './SetupScreen.js';
+import { saveSetup } from './setup-store.js';
 
 export type AppProps = {
   agents: { claude: Agent; codex: Agent };
@@ -49,8 +50,14 @@ export type AppProps = {
    * initial agents for the rest of the session.
    */
   buildAgents?: (config: ModelConfig) => { claude: Agent; codex: Agent };
-  /** Defaults for the picker (from CLI flags); ignored if buildAgents unset. */
+  /** Defaults for the setup screen's Models field (from CLI flags + saved disk). */
   initialModelConfig?: ModelConfig;
+  /**
+   * Where to persist the setup-screen selection (mode + models). Omit to
+   * disable persistence (tests). Also omitted in fake mode? No — we still
+   * save so the next session remembers the user's preferences.
+   */
+  setupStorePath?: string;
 };
 
 export function App(props: AppProps) {
@@ -58,9 +65,9 @@ export function App(props: AppProps) {
   const isResume =
     (props.initialState?.transcript?.length ?? 0) > 0 ||
     (props.initialState?.currentDraft ?? null) !== null;
-  const pickerEnabled = !!props.buildAgents && !isResume && !props.skipPromptEntry;
-  const [phase, setPhase] = useState<'prompt' | 'picker' | 'debate'>(
-    isResume || props.skipPromptEntry ? 'debate' : 'prompt',
+  const showSetup = !isResume && !props.skipPromptEntry;
+  const [phase, setPhase] = useState<'setup' | 'debate'>(
+    showSetup ? 'setup' : 'debate',
   );
   const [activeAgents, setActiveAgents] = useState(props.agents);
   const [prompt, setPrompt] = useState(initialPrompt);
@@ -85,7 +92,7 @@ export function App(props: AppProps) {
     promptTokens: 0,
     cacheReadTokens: 0,
   });
-  const mode: DebateMode = props.mode ?? 'auto';
+  const [mode, setMode] = useState<DebateMode>(props.mode ?? 'auto');
   // Vim-style modal: start in scroll mode. Press `i` to enter insert/input.
   const [focusMode, setFocusMode] = useState<'input' | 'chat' | 'spec'>('chat');
   const [chatScroll, setChatScroll] = useState(0); // lines from tail; 0 = latest
@@ -319,29 +326,13 @@ export function App(props: AppProps) {
 
   const proposals = collectProposals(state);
 
-  if (phase === 'prompt') {
+  if (phase === 'setup') {
     return (
-      <PromptEntry
+      <SetupScreen
         sessionName={props.sessionName}
-        initialValue={initialPrompt}
-        onSubmit={p => {
-          setPrompt(p);
-          if (pickerEnabled) {
-            setPhase('picker');
-          } else {
-            setStatus('starting…');
-            setPhase('debate');
-          }
-        }}
-        onQuit={() => props.onQuit?.()}
-      />
-    );
-  }
-
-  if (phase === 'picker') {
-    return (
-      <ModelPicker
-        initial={
+        initialPrompt={initialPrompt}
+        initialMode={mode}
+        initialModels={
           props.initialModelConfig ?? {
             claudeModel: null,
             claudeEffort: null,
@@ -349,14 +340,28 @@ export function App(props: AppProps) {
             codexEffort: null,
           }
         }
-        onSubmit={config => {
+        onSubmit={({ prompt: p, mode: m, models }) => {
+          setPrompt(p);
+          setMode(m);
           if (props.buildAgents) {
-            setActiveAgents(props.buildAgents(config));
+            setActiveAgents(props.buildAgents(models));
+          }
+          if (props.setupStorePath) {
+            try {
+              saveSetup(props.setupStorePath, {
+                mode: m,
+                claudeModel: models.claudeModel,
+                claudeEffort: models.claudeEffort,
+                codexModel: models.codexModel,
+                codexEffort: models.codexEffort,
+              });
+            } catch {
+              /* best-effort; never block session start on persistence */
+            }
           }
           setStatus('starting…');
           setPhase('debate');
         }}
-        onCancel={() => setPhase('prompt')}
         onQuit={() => props.onQuit?.()}
       />
     );
@@ -1040,81 +1045,6 @@ function SpecSidebar({
       <Text dimColor>
         {transcript.length} turn{transcript.length === 1 ? '' : 's'}
       </Text>
-    </Box>
-  );
-}
-
-const BRAMBLE_BANNER = [
-  '    ▄▄▄                            ▄▄       ',
-  '   ██▀▀█▄                     █▄    ██      ',
-  '   ██ ▄█▀ ▄          ▄        ██    ██      ',
-  '   ██▀▀█▄ ████▄▄▀▀█▄ ███▄███▄ ████▄ ██ ▄█▀█▄',
-  ' ▄ ██  ▄█ ██   ▄█▀██ ██ ██ ██ ██ ██ ██ ██▄█▀',
-  ' ▀██████▀▄█▀  ▄▀█▄██▄██ ██ ▀█▄████▀▄██▄▀█▄▄▄',
-];
-
-function PromptEntry({
-  sessionName,
-  initialValue,
-  onSubmit,
-  onQuit,
-}: {
-  sessionName: string;
-  initialValue?: string;
-  onSubmit: (prompt: string) => void;
-  onQuit: () => void;
-}) {
-  const { stdout } = useStdout();
-  const cols = stdout?.columns ?? 80;
-  const rows = stdout?.rows ?? 24;
-  const cardWidth = Math.max(52, Math.min(72, cols - 8));
-
-  return (
-    <Box
-      flexDirection="column"
-      width={cols}
-      height={rows}
-      justifyContent="center"
-      alignItems="center"
-    >
-      <Box
-        flexDirection="column"
-        borderStyle="round"
-        paddingX={3}
-        paddingY={1}
-        width={cardWidth}
-      >
-        {BRAMBLE_BANNER.map((line, i) => (
-          <Box key={i} justifyContent="center">
-            <Text color="green">{line}</Text>
-          </Box>
-        ))}
-        <Text> </Text>
-        <Box justifyContent="center">
-          <Text dimColor>session: {sessionName}</Text>
-        </Box>
-        <Text> </Text>
-        <Text>Two agents will debate and draft a spec together.</Text>
-        <Text> </Text>
-        <Text bold>What do you want to design?</Text>
-        <Text dimColor>
-          e.g. "design tic-tac-toe" or "a URL shortener"
-        </Text>
-        <Text> </Text>
-        <Box borderStyle="single" paddingX={1}>
-          <InputBox
-            initialValue={initialValue}
-            onSubmit={line => {
-              if (line.trim().length > 0) onSubmit(line.trim());
-            }}
-            onQuit={onQuit}
-          />
-        </Box>
-        <Text> </Text>
-        <Box justifyContent="center">
-          <Text dimColor>enter to start · /quit to exit</Text>
-        </Box>
-      </Box>
     </Box>
   );
 }

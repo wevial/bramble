@@ -15,6 +15,7 @@ import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { helpText } from './help.js';
+import { loadSavedSetup, defaultSetupPath } from './ui/setup-store.js';
 
 const argv = process.argv.slice(2);
 
@@ -31,7 +32,7 @@ let codexModel: string | undefined;
 let codexEffort: string | undefined;
 let sessionName: string | undefined;
 let resumeName: string | undefined;
-let mode: 'auto' | 'collab' = 'auto';
+let cliMode: 'auto' | 'collab' | undefined;
 let listMode = false;
 let dirFlag: string | undefined;
 let isolated = false;
@@ -71,9 +72,9 @@ for (let i = 0; i < argv.length; i++) {
     resumeName = argv[i + 1];
     i++;
   } else if (a === '--collab') {
-    mode = 'collab';
+    cliMode = 'collab';
   } else if (a === '--auto') {
-    mode = 'auto';
+    cliMode = 'auto';
   } else if (a === '--dir' && argv[i + 1]) {
     dirFlag = argv[i + 1];
     i++;
@@ -86,6 +87,16 @@ for (let i = 0; i < argv.length; i++) {
 
 const prompt = positional.join(' ');
 const cwd = process.cwd();
+// Load the last setup-screen selection (mode + models) from disk so the
+// setup screen opens with the user's most recent choices. CLI flags still
+// win when provided.
+const savedSetupPath = defaultSetupPath();
+const savedSetup = loadSavedSetup(savedSetupPath) ?? {};
+const mode: 'auto' | 'collab' = cliMode ?? savedSetup.mode ?? 'auto';
+claudeModel = claudeModel ?? savedSetup.claudeModel ?? undefined;
+claudeEffort = claudeEffort ?? savedSetup.claudeEffort ?? undefined;
+codexModel = codexModel ?? savedSetup.codexModel ?? undefined;
+codexEffort = codexEffort ?? savedSetup.codexEffort ?? undefined;
 const storeRoot = dirFlag
   ? (dirFlag.startsWith('/') ? dirFlag : join(cwd, dirFlag))
   : join(cwd, '.bramble');
@@ -291,6 +302,7 @@ const { waitUntilExit } = render(
       codexModel: codexModel ?? null,
       codexEffort: codexEffort ?? null,
     }}
+    setupStorePath={savedSetupPath}
     onQuit={() => process.exit(0)}
   />,
 );
