@@ -333,7 +333,11 @@ export function App(props: AppProps) {
         />
       </Box>
 
-      <Box borderStyle="single" paddingX={1}>
+      <Box
+        borderStyle="single"
+        borderColor={focusMode === 'input' ? 'magentaBright' : undefined}
+        paddingX={1}
+      >
         <InputBox
           disabled={focusMode !== 'input'}
           allowEmptySubmit={mode === 'collab'}
