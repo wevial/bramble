@@ -65,6 +65,7 @@ export function App(props: AppProps) {
   const [maxSpecScroll, setMaxSpecScroll] = useState(0);
   const [expandAll, setExpandAll] = useState(false);
   const pendingGRef = useRef(false); // two-key "gg" handler
+  const lastScrollPaneRef = useRef<'chat' | 'spec'>('chat');
   const activeStartRef = useRef<number | null>(null);
   const handleRef = useRef<DebateHandle | null>(null);
   const { stdout } = useStdout();
@@ -82,11 +83,14 @@ export function App(props: AppProps) {
     };
   }, [stdout]);
 
-  // Tab rotates focus: input → chat → spec → input.
+  // Tab toggles between input and scroll (returning to whichever pane was
+  // last focused in scroll mode). h/l hops between chat and spec while
+  // already in scroll mode.
   useInput((input, key) => {
     if (key.tab) {
-      setFocusMode(f => (f === 'input' ? 'chat' : f === 'chat' ? 'spec' : 'input'));
+      setFocusMode(f => (f === 'input' ? lastScrollPaneRef.current : 'input'));
       pendingGRef.current = false;
+      return;
     }
     // Ctrl+O toggles expand-all for superseded proposals, regardless of mode.
     if (key.ctrl && input === 'o') {
@@ -101,6 +105,19 @@ export function App(props: AppProps) {
     (input, key) => {
       if (input === 'i') {
         setFocusMode('input');
+        pendingGRef.current = false;
+        return;
+      }
+      // h/l (or left/right arrows) hops panes within scroll mode.
+      if (input === 'h' || key.leftArrow) {
+        lastScrollPaneRef.current = 'chat';
+        setFocusMode('chat');
+        pendingGRef.current = false;
+        return;
+      }
+      if (input === 'l' || key.rightArrow) {
+        lastScrollPaneRef.current = 'spec';
+        setFocusMode('spec');
         pendingGRef.current = false;
         return;
       }
@@ -159,16 +176,23 @@ export function App(props: AppProps) {
     { isActive: focusMode === 'chat' || focusMode === 'spec' },
   );
 
-  // Esc exits input mode back to scroll. Only active in input mode so it
-  // doesn't fire for other esc-initiated sequences in scroll mode.
+  // Esc exits input mode back to the last-used scroll pane.
   useInput(
     (input, key) => {
       if (key.escape) {
-        setFocusMode('chat');
+        setFocusMode(lastScrollPaneRef.current);
       }
     },
-    { isActive: focusMode === 'input' || focusMode === 'spec' },
+    { isActive: focusMode === 'input' },
   );
+
+  // Keep the "last scroll pane" memory in sync whenever the user lands on
+  // one via any path (tab, h/l, startup).
+  useEffect(() => {
+    if (focusMode === 'chat' || focusMode === 'spec') {
+      lastScrollPaneRef.current = focusMode;
+    }
+  }, [focusMode]);
 
   // Tick a timer only while an agent is active, so the "thinking Ns" indicator updates.
   useEffect(() => {
@@ -390,10 +414,10 @@ export function App(props: AppProps) {
       <Box paddingX={1}>
         <Text>
           {focusMode === 'input' ? (
-            <Text color="green">-- INSERT --  esc: scroll · tab: switch pane</Text>
+            <Text color="green">-- INSERT --  esc/tab: scroll</Text>
           ) : (
             <Text color="cyanBright">
-              -- SCROLL {focusMode.toUpperCase()} --  j/k · gg/G · ctrl+d/u · tab: switch pane · i: type
+              -- SCROLL {focusMode.toUpperCase()} --  j/k · gg/G · ctrl+d/u · h/l: swap pane · i/tab: type
             </Text>
           )}
         </Text>
