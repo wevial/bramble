@@ -78,6 +78,10 @@ export function App(props: AppProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [now, setNow] = useState(Date.now());
   const [paused, setPaused] = useState(false);
+  const [usageTotals, setUsageTotals] = useState({
+    inputTokens: 0,
+    cacheReadTokens: 0,
+  });
   const mode: DebateMode = props.mode ?? 'auto';
   // Vim-style modal: start in scroll mode. Press `i` to enter insert/input.
   const [focusMode, setFocusMode] = useState<'input' | 'chat' | 'spec'>('chat');
@@ -230,6 +234,16 @@ export function App(props: AppProps) {
       transcriptPath: props.transcriptPath,
       initialState: props.initialState,
       onPauseChange: p => setPaused(p),
+      onUsage: (_speaker, u) => {
+        // Running totals across all turns this session. cacheReadTokens / (input
+        // prompt tokens that *could* have been cached) is our rough cache-hit
+        // gauge. `input_tokens` in the claude result is NEW (uncached) input —
+        // so cached+uncached is the denominator.
+        setUsageTotals(prev => ({
+          inputTokens: prev.inputTokens + u.inputTokens + u.cacheReadTokens,
+          cacheReadTokens: prev.cacheReadTokens + u.cacheReadTokens,
+        }));
+      },
       onState: next => {
         setState(next);
         const writes: Array<Promise<unknown>> = [
@@ -363,6 +377,14 @@ export function App(props: AppProps) {
           <Text>
             round {currentRound}/{rounds}
           </Text>
+          {usageTotals.inputTokens > 0 && (
+            <>
+              <Text dimColor> · </Text>
+              <Text dimColor>
+                cache {Math.round((usageTotals.cacheReadTokens / usageTotals.inputTokens) * 100)}%
+              </Text>
+            </>
+          )}
           <Text dimColor> · </Text>
           <Text dimColor>{status}</Text>
         </Text>

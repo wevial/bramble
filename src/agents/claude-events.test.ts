@@ -31,6 +31,34 @@ describe('parseClaudeEvent', () => {
       kind: 'result',
       result: 'Hi! How can I help?',
       isError: false,
+      usage: undefined,
+    });
+  });
+
+  it('surfaces cache-aware usage on the result when present', () => {
+    const line = JSON.stringify({
+      type: 'result',
+      subtype: 'success',
+      is_error: false,
+      result: 'hi',
+      usage: {
+        input_tokens: 20,
+        output_tokens: 5,
+        cache_read_input_tokens: 1200,
+        cache_creation_input_tokens: 300,
+      },
+    });
+    const evt = parseClaudeEvent(line);
+    expect(evt).toEqual({
+      kind: 'result',
+      result: 'hi',
+      isError: false,
+      usage: {
+        inputTokens: 20,
+        outputTokens: 5,
+        cacheReadTokens: 1200,
+        cacheCreationTokens: 300,
+      },
     });
   });
 

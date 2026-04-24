@@ -15,12 +15,29 @@ describe('parseCodexEvent', () => {
     expect(parseCodexEvent(line)).toEqual({ kind: 'message', text: 'Hi!' });
   });
 
-  it('flags turn.completed (end of response)', () => {
+  it('flags turn.completed (end of response) without usage', () => {
+    const line = JSON.stringify({ type: 'turn.completed' });
+    expect(parseCodexEvent(line)).toEqual({ kind: 'turnDone', usage: undefined });
+  });
+
+  it('surfaces cache-aware usage on turn.completed when present', () => {
     const line = JSON.stringify({
       type: 'turn.completed',
-      usage: { input_tokens: 100 },
+      usage: {
+        input_tokens: 1500,
+        cached_input_tokens: 1200,
+        output_tokens: 42,
+      },
     });
-    expect(parseCodexEvent(line)).toEqual({ kind: 'turnDone' });
+    expect(parseCodexEvent(line)).toEqual({
+      kind: 'turnDone',
+      usage: {
+        inputTokens: 1500,
+        outputTokens: 42,
+        cacheReadTokens: 1200,
+        cacheCreationTokens: 0,
+      },
+    });
   });
 
   it('skips other event types', () => {

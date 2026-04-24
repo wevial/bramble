@@ -1,4 +1,4 @@
-import type { Agent, AgentName, StreamTail, Token, TurnContext } from './agent.js';
+import type { Agent, AgentName, StreamTail, Token, TurnContext, TurnUsage } from './agent.js';
 import { streamProcessLines, type SpawnSpec } from './subprocess.js';
 import { parseClaudeEvent } from './claude-events.js';
 import { buildAgentOutputFromModel } from '../protocol/patchBlock.js';
@@ -90,6 +90,7 @@ export class ClaudeAgent implements Agent {
     const prompt = `${this.systemInstructions}\n\n---\n\n${ctx.prompt}`;
     let accumulated = '';
     let finalResult: string | null = null;
+    let usage: TurnUsage | undefined;
     let subprocessError: string | null = null;
 
     try {
@@ -102,6 +103,7 @@ export class ClaudeAgent implements Agent {
           yield { text: evt.text };
         } else {
           finalResult = evt.result;
+          usage = evt.usage;
         }
       }
     } catch (err) {
@@ -121,6 +123,6 @@ export class ClaudeAgent implements Agent {
     const value = built.ok
       ? built.value
       : { commentary: fullText, proposal: null, verdict: null };
-    return { raw: JSON.stringify(value) };
+    return { raw: JSON.stringify(value), usage };
   }
 }
