@@ -45,6 +45,41 @@ describe('CodexAgent', () => {
     const agent = new CodexAgent({ streamLines: () => (async function* () {})() });
     expect(agent.name).toBe('codex');
   });
+
+  // Reviewer concern: the promptMode / *PromptChars fields on TurnUsage model
+  // claude's full-vs-delta transport semantics. Codex spawns per turn and has
+  // no such distinction, so it must not emit them (or the gauge reads them as
+  // meaningful signal when they aren't).
+  it('does not emit claude-only full/delta debug fields on usage', async () => {
+    const fakeLines = [
+      JSON.stringify({
+        type: 'item.completed',
+        item: { id: 'i0', type: 'agent_message', text: 'hi' },
+      }),
+      JSON.stringify({
+        type: 'turn.completed',
+        usage: { input_tokens: 100, cached_input_tokens: 30, output_tokens: 5 },
+      }),
+    ];
+    async function* fake() {
+      for (const l of fakeLines) yield l;
+    }
+    const agent = new CodexAgent({ streamLines: () => fake() });
+    const iter = agent.stream({ prompt: 'x' }, new AbortController().signal);
+    let tail: { usage?: Record<string, unknown> } | undefined;
+    while (true) {
+      const r = await iter.next();
+      if (r.done) {
+        if (r.value) tail = r.value as typeof tail;
+        break;
+      }
+    }
+    expect(tail?.usage).toBeDefined();
+    expect(tail?.usage?.promptMode).toBeUndefined();
+    expect(tail?.usage?.promptChars).toBeUndefined();
+    expect(tail?.usage?.fullPromptChars).toBeUndefined();
+    expect(tail?.usage?.deltaPromptChars).toBeUndefined();
+  });
 });
 
 runAgentContract('CodexAgent', () => {

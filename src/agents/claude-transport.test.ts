@@ -40,9 +40,12 @@ describe('claude-transport helpers', () => {
 function makeRecordingTransport() {
   const prompts: string[] = [];
   let disposed = false;
+  let generation = 0;
+  let turnGeneration = 0;
   const transport: ClaudeTransport = {
     runTurn(prompt) {
       prompts.push(prompt);
+      turnGeneration = generation;
       const text = `response to ${prompt}`;
       return (async function* () {
         yield JSON.stringify({
@@ -66,6 +69,12 @@ function makeRecordingTransport() {
         });
       })();
     },
+    sessionGeneration() {
+      return generation;
+    },
+    lastTurnGeneration() {
+      return turnGeneration;
+    },
     dispose() {
       disposed = true;
     },
@@ -74,6 +83,10 @@ function makeRecordingTransport() {
     transport,
     prompts,
     isDisposed: () => disposed,
+    /** Simulate the child dying between turns (the transport would respawn). */
+    bumpGeneration() {
+      generation++;
+    },
   };
 }
 
@@ -139,6 +152,40 @@ describe('ClaudeAgent with a long-lived transport', () => {
     await drain(agent, 'full second', 'delta second');
 
     expect(prompts).toEqual(['full first', 'full second']);
+  });
+
+  // Reviewer-identified bug: if Claude exits after a successful turn but
+  // before the next one, the transport silently respawns. hasSessionContext
+  // mustn't stay "true" into a blank conversation.
+  it('falls back to the full prompt if the transport respawned between turns', async () => {
+    const recorder = makeRecordingTransport();
+    const agent = new ClaudeAgent({ transport: recorder.transport });
+
+    await drain(agent, 'full first', 'delta first');
+    // Child died off-camera and will be respawned on the next runTurn.
+    recorder.bumpGeneration();
+    await drain(agent, 'full second', 'delta second');
+
+    expect(recorder.prompts).toEqual(['full first', 'full second']);
+  });
+
+  // Reviewer-identified race: the child can exit cleanly right after the
+  // successful `result` line; in the real transport the `close` handler
+  // bumps `sessionGeneration()` before the agent records what it saw. The
+  // agent must remember the generation the *turn* ran under, not whatever
+  // the counter reads post-close, or the next turn sends a delta into a
+  // freshly spawned blank process.
+  it('falls back to full after a clean exit that bumps generation between turns', async () => {
+    const recorder = makeRecordingTransport();
+    const agent = new ClaudeAgent({ transport: recorder.transport });
+
+    await drain(agent, 'full first', 'delta first');
+    // Simulate the close-handler bump: turn ran at generation 0, then the
+    // child exited cleanly and generation moved to 1 before the next turn.
+    recorder.bumpGeneration();
+    await drain(agent, 'full second', 'delta second');
+
+    expect(recorder.prompts).toEqual(['full first', 'full second']);
   });
 
   it('dispose() releases the transport', () => {

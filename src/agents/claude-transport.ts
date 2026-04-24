@@ -17,6 +17,20 @@ export interface ClaudeTransport {
    * turn's terminating `type: "result"` line (inclusive).
    */
   runTurn(promptText: string, signal: AbortSignal): AsyncIterable<string>;
+  /**
+   * Generation counter for the underlying child process. Increments every
+   * time a new child is spawned (including silent respawns after crashes
+   * between turns). ClaudeAgent uses this to detect session loss and fall
+   * back to a full prompt instead of a delta.
+   */
+  sessionGeneration(): number;
+  /**
+   * The generation under which the most recently started turn ran. Captured
+   * at turn start so it isn't affected by a `close` bump that fires after
+   * the turn's `result` but before the caller reads back. Returns the same
+   * value as `sessionGeneration()` before any turn has started.
+   */
+  lastTurnGeneration(): number;
   /** Kill the underlying process (if any) and release resources. */
   dispose(): void;
 }
@@ -92,6 +106,8 @@ export function createClaudeTransport(
 
   let child: ChildProcessWithoutNullStreams | null = null;
   let disposed = false;
+  let generation = 0;
+  let turnGeneration = 0;
   let turnLock: Promise<void> = Promise.resolve();
 
   let queue: QueueItem[] = [];
@@ -106,6 +122,7 @@ export function createClaudeTransport(
 
   const ensureChild = () => {
     if (child && !child.killed && child.exitCode === null) return;
+    generation++;
     queue = [];
     const args = claudeTransportArgs(opts);
     const c = spawn('claude', args, {
@@ -148,6 +165,9 @@ export function createClaudeTransport(
             );
       queue.push({ kind: 'end', error: err });
       child = null;
+      // Bump generation now — not just when the next child spawns — so that
+      // ClaudeAgent's pre-runTurn check already sees the session as lost.
+      generation++;
       wake();
     });
     c.on('error', spawnErr => {
@@ -156,6 +176,7 @@ export function createClaudeTransport(
         error: new Error(`failed to spawn \`claude\`: ${(spawnErr as Error).message}`),
       });
       child = null;
+      generation++;
       wake();
     });
     child = c;
@@ -182,6 +203,10 @@ export function createClaudeTransport(
         ensureChild();
         const active = child;
         if (!active) return;
+        // Snapshot the generation this turn is running under, before any
+        // `close` handler could bump the counter. ClaudeAgent reads this
+        // back after the turn to decide whether its session is still alive.
+        turnGeneration = generation;
 
         const onAbort = () => {
           // Kill the process — the next turn will spawn a fresh one.
@@ -223,6 +248,12 @@ export function createClaudeTransport(
 
   return {
     runTurn,
+    sessionGeneration() {
+      return generation;
+    },
+    lastTurnGeneration() {
+      return turnGeneration;
+    },
     dispose() {
       disposed = true;
       const c = child;

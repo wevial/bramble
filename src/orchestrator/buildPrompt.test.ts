@@ -185,4 +185,20 @@ describe('buildDeltaPrompt', () => {
     expect(out).not.toContain('old claude turn');
     expect(out).not.toContain('Debate so far');
   });
+
+  // Reviewer concern: if Claude's persistent session dropped any earlier
+  // user-side context (a quietly restarted subprocess, a CLI-side truncation,
+  // etc.), the delta prompt needs to re-assert the role framing on every turn
+  // so the agent can't drift into a different stance.
+  it('reasserts the role framing on every delta', () => {
+    const state = stateWith({
+      transcript: [
+        { speaker: 'claude', content: 'old', timestamp: 't1' },
+        { speaker: 'codex', content: 'new', timestamp: 't2' },
+      ],
+    });
+    const out = buildDeltaPrompt('design auth', state, 'claude', 'auto');
+    expect(out).toContain('You are claude');
+    expect(out).toMatch(/debat/i);
+  });
 });

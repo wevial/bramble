@@ -66,9 +66,18 @@ Do not wrap the JSON in code fences. The block must be literally <patch>...</pat
 function perTurnTransport(
   streamLines: (prompt: string, signal: AbortSignal) => AsyncIterable<string>,
 ): ClaudeTransport {
+  let gen = 0;
   return {
     runTurn(prompt, signal) {
+      // Each turn is its own ephemeral "session" in the legacy path.
+      gen++;
       return streamLines(prompt, signal);
+    },
+    sessionGeneration() {
+      return gen;
+    },
+    lastTurnGeneration() {
+      return gen;
     },
     dispose() {
       /* nothing to tear down per turn */
@@ -81,6 +90,12 @@ export class ClaudeAgent implements Agent {
   private readonly transport: ClaudeTransport;
   private readonly supportsDeltaPrompts: boolean;
   private hasSessionContext = false;
+  /**
+   * The transport generation under which `hasSessionContext` was last set.
+   * If the transport silently respawned its child (generation moved), the
+   * stored conversation history was lost and we must send a full prompt.
+   */
+  private seededGeneration = -1;
 
   constructor(opts: ClaudeAgentOptions = {}) {
     const systemInstructions = opts.systemInstructions ?? DEFAULT_PROTOCOL;
@@ -107,8 +122,15 @@ export class ClaudeAgent implements Agent {
     // session). Once the persistent Claude session has been seeded with one
     // full prompt, send only the new debate delta so we don't duplicate the
     // whole transcript inside every subsequent user message.
+    //
+    // If the transport's child died between turns, generation will have moved
+    // past seededGeneration — the stored conversation is gone, so we can't
+    // rely on Claude having prior context. Fall back to a full prompt.
+    const generation = this.transport.sessionGeneration();
+    const sessionStillAlive =
+      this.hasSessionContext && generation === this.seededGeneration;
     const useDelta =
-      this.supportsDeltaPrompts && this.hasSessionContext && ctx.deltaPrompt;
+      this.supportsDeltaPrompts && sessionStillAlive && !!ctx.deltaPrompt;
     const prompt = useDelta ? ctx.deltaPrompt! : ctx.prompt;
     const promptMode = useDelta ? 'delta' : 'full';
     let accumulated = '';
@@ -133,6 +155,10 @@ export class ClaudeAgent implements Agent {
       subprocessError = (err as Error)?.message ?? String(err);
     }
     this.hasSessionContext = !signal.aborted && subprocessError === null;
+    // Record the generation the turn actually ran under — snapshotted by the
+    // transport at turn start, so a `close` bump that fires after the result
+    // but before we read here doesn't poison seededGeneration.
+    this.seededGeneration = this.transport.lastTurnGeneration();
     if (usage) {
       usage = {
         ...usage,

@@ -102,15 +102,8 @@ export class CodexAgent implements Agent {
     } catch (err) {
       subprocessError = (err as Error)?.message ?? String(err);
     }
-    if (usage) {
-      usage = {
-        ...usage,
-        promptMode: 'full',
-        promptChars: prompt.length,
-        fullPromptChars: prompt.length,
-      };
-    }
-
+    // Codex spawns a fresh subprocess per turn, so there's no full-vs-delta
+    // distinction to report — leave the claude-only debug fields off.
     if (subprocessError && fullText.length === 0) {
       const errMsg = `⚠ codex subprocess failed: ${subprocessError}`;
       yield { text: errMsg };

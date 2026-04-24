@@ -246,6 +246,7 @@ export function buildDeltaPrompt(
   speaker: 'claude' | 'codex',
   mode: DebateMode,
 ): string {
+  const other = speaker === 'claude' ? 'codex' : 'claude';
   const parts: string[] = [];
   let lastOwnTurn = -1;
   for (let i = state.transcript.length - 1; i >= 0; i--) {
@@ -256,6 +257,12 @@ export function buildDeltaPrompt(
   }
   const newTurns =
     lastOwnTurn >= 0 ? state.transcript.slice(lastOwnTurn + 1) : state.transcript;
+
+  // Re-assert role framing on every delta — a respawn or silent truncation
+  // on the CLI side could otherwise leave the agent operating without it.
+  parts.push(
+    `# Your role\n\nYou are ${speaker}, debating ${other} to converge on the best possible spec for the goal below. This is an adversarial-but-constructive debate: disagree when you have a real reason, and don't rubber-stamp a draft just to be agreeable. When you eventually accept, it should be because the spec is genuinely solid.`,
+  );
 
   parts.push(
     `# Debate update\n\nContinue the existing debate for this goal:\n\n${basePrompt}`,
