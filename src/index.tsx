@@ -162,10 +162,30 @@ if (real) {
 
 let claude: Agent;
 let codex: Agent;
+// Isolate agents by spawning them in throwaway tmpdirs so repo-local
+// CLAUDE.md / AGENTS.md don't leak into the debate.
+const isoCwd =
+  real && isolated ? mkdtempSync(join(tmpdir(), 'bramble-iso-')) : undefined;
+const buildRealAgents = real
+  ? (config: {
+      claudeModel: string | null;
+      claudeEffort: string | null;
+      codexModel: string | null;
+      codexEffort: string | null;
+    }) => ({
+      claude: new ClaudeAgent({
+        model: config.claudeModel ?? undefined,
+        reasoningEffort: config.claudeEffort ?? undefined,
+        cwd: isoCwd,
+      }),
+      codex: new CodexAgent({
+        model: config.codexModel ?? undefined,
+        reasoningEffort: config.codexEffort ?? undefined,
+        cwd: isoCwd,
+      }),
+    })
+  : undefined;
 if (real) {
-  // Isolate agents by spawning them in throwaway tmpdirs so repo-local
-  // CLAUDE.md / AGENTS.md don't leak into the debate.
-  const isoCwd = isolated ? mkdtempSync(join(tmpdir(), 'bramble-iso-')) : undefined;
   claude = new ClaudeAgent({
     model: claudeModel,
     reasoningEffort: claudeEffort,
@@ -264,6 +284,13 @@ const { waitUntilExit } = render(
     draftPath={paths.draftPath}
     draftsPath={paths.draftsPath}
     exportPath={paths.exportPath}
+    buildAgents={buildRealAgents}
+    initialModelConfig={{
+      claudeModel: claudeModel ?? null,
+      claudeEffort: claudeEffort ?? null,
+      codexModel: codexModel ?? null,
+      codexEffort: codexEffort ?? null,
+    }}
     onQuit={() => process.exit(0)}
   />,
 );

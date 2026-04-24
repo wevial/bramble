@@ -7,6 +7,8 @@ export type InputBoxProps = {
   disabled?: boolean;
   /** When true, hitting enter on an empty buffer still fires onSubmit(''). */
   allowEmptySubmit?: boolean;
+  /** Seeds the input buffer. User can edit with backspace before submitting. */
+  initialValue?: string;
 };
 
 export function InputBox({
@@ -14,8 +16,9 @@ export function InputBox({
   onQuit,
   disabled,
   allowEmptySubmit,
+  initialValue,
 }: InputBoxProps) {
-  const [buffer, setBuffer] = useState('');
+  const [buffer, setBuffer] = useState(initialValue ?? '');
 
   useInput((input, key) => {
     if (disabled) return;

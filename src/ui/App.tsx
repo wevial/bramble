@@ -18,6 +18,8 @@ import { parseAgentOutput, type AgentOutput } from '../protocol/patch.js';
 import { InputBox } from './InputBox.js';
 import { parseSlashCommand } from './commands.js';
 import { MarkdownLine, InlineText, visibleLength } from './markdown.js';
+import { ModelPicker } from './ModelPicker.js';
+import type { ModelConfig } from './models.js';
 
 export type AppProps = {
   agents: { claude: Agent; codex: Agent };
@@ -40,6 +42,15 @@ export type AppProps = {
   onQuit?: () => void;
   /** Test-only: skip prompt-entry view even when no initialState is set. */
   skipPromptEntry?: boolean;
+  /**
+   * When set, a model-picker view sits between prompt-entry and the debate.
+   * Only relevant with real agent CLIs; fake mode skips the picker. The
+   * factory is called with the user's final selections and replaces the
+   * initial agents for the rest of the session.
+   */
+  buildAgents?: (config: ModelConfig) => { claude: Agent; codex: Agent };
+  /** Defaults for the picker (from CLI flags); ignored if buildAgents unset. */
+  initialModelConfig?: ModelConfig;
 };
 
 export function App(props: AppProps) {
@@ -47,9 +58,11 @@ export function App(props: AppProps) {
   const isResume =
     (props.initialState?.transcript?.length ?? 0) > 0 ||
     (props.initialState?.currentDraft ?? null) !== null;
-  const [phase, setPhase] = useState<'prompt' | 'debate'>(
+  const pickerEnabled = !!props.buildAgents && !isResume && !props.skipPromptEntry;
+  const [phase, setPhase] = useState<'prompt' | 'picker' | 'debate'>(
     isResume || props.skipPromptEntry ? 'debate' : 'prompt',
   );
+  const [activeAgents, setActiveAgents] = useState(props.agents);
   const [prompt, setPrompt] = useState(initialPrompt);
   const [state, setState] = useState<State>(
     props.initialState ?? {
@@ -210,7 +223,7 @@ export function App(props: AppProps) {
         .catch(() => {});
     }
     const handle = startDebate({
-      agents: props.agents,
+      agents: activeAgents,
       prompt,
       rounds: props.rounds,
       mode,
@@ -275,11 +288,40 @@ export function App(props: AppProps) {
     return (
       <PromptEntry
         sessionName={props.sessionName}
+        initialValue={initialPrompt}
         onSubmit={p => {
           setPrompt(p);
+          if (pickerEnabled) {
+            setPhase('picker');
+          } else {
+            setStatus('starting…');
+            setPhase('debate');
+          }
+        }}
+        onQuit={() => props.onQuit?.()}
+      />
+    );
+  }
+
+  if (phase === 'picker') {
+    return (
+      <ModelPicker
+        initial={
+          props.initialModelConfig ?? {
+            claudeModel: null,
+            claudeEffort: null,
+            codexModel: null,
+            codexEffort: null,
+          }
+        }
+        onSubmit={config => {
+          if (props.buildAgents) {
+            setActiveAgents(props.buildAgents(config));
+          }
           setStatus('starting…');
           setPhase('debate');
         }}
+        onCancel={() => setPhase('prompt')}
         onQuit={() => props.onQuit?.()}
       />
     );
@@ -970,10 +1012,12 @@ const BRAMBLE_BANNER = [
 
 function PromptEntry({
   sessionName,
+  initialValue,
   onSubmit,
   onQuit,
 }: {
   sessionName: string;
+  initialValue?: string;
   onSubmit: (prompt: string) => void;
   onQuit: () => void;
 }) {
@@ -1016,6 +1060,7 @@ function PromptEntry({
         <Text> </Text>
         <Box borderStyle="single" paddingX={1}>
           <InputBox
+            initialValue={initialValue}
             onSubmit={line => {
               if (line.trim().length > 0) onSubmit(line.trim());
             }}
