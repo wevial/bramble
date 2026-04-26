@@ -39,7 +39,7 @@ describe('ClaudeAgent', () => {
     const tokens: string[] = [];
     let tail: { raw: string } | undefined;
 
-    const iter = agent.stream({ prompt: 'test' }, new AbortController().signal);
+    const iter = agent.stream({ phase: 'debate', prompt: 'test' }, new AbortController().signal);
     while (true) {
       const r = await iter.next();
       if (r.done) {
@@ -53,10 +53,9 @@ describe('ClaudeAgent', () => {
     // that's what the model streams before the <patch> block.
     expect(tokens.join('')).toContain('Proposing auth.');
     expect(tokens.join('')).toContain('<patch>');
-    expect(tail?.raw).toBeDefined();
-    const parsed = JSON.parse(tail!.raw);
-    expect(parsed.commentary).toBe('Proposing auth.');
-    expect(parsed.proposal.body).toBe('X');
+    // Raw is the agent's full final result text — runner parses it per-phase.
+    expect(tail?.raw).toContain('Proposing auth.');
+    expect(tail?.raw).toContain('<patch>');
   });
 
   it('aborts when the signal fires', async () => {
@@ -77,7 +76,7 @@ describe('ClaudeAgent', () => {
 
     const agent = new ClaudeAgent({ streamLines: () => slow() });
     const tokens: string[] = [];
-    const iter = agent.stream({ prompt: 'test' }, ac.signal);
+    const iter = agent.stream({ phase: 'debate', prompt: 'test' }, ac.signal);
     setTimeout(() => ac.abort(), 30);
     while (true) {
       const r = await iter.next();

@@ -26,7 +26,7 @@ describe('CodexAgent', () => {
     const agent = new CodexAgent({ streamLines: () => fake() });
     const tokens: string[] = [];
     let tail: { raw: string } | undefined;
-    const iter = agent.stream({ prompt: 'x' }, new AbortController().signal);
+    const iter = agent.stream({ phase: 'debate', prompt: 'x' }, new AbortController().signal);
     while (true) {
       const r = await iter.next();
       if (r.done) {
@@ -36,9 +36,7 @@ describe('CodexAgent', () => {
       tokens.push(r.value.text);
     }
     expect(tokens.join('')).toContain('LGTM with a nit.');
-    const parsed = JSON.parse(tail!.raw);
-    expect(parsed.commentary).toBe('LGTM with a nit.');
-    expect(parsed.verdict).toBe('LGTM');
+    expect(tail?.raw).toContain('LGTM with a nit.');
   });
 
   it('has name "codex"', () => {
@@ -65,7 +63,7 @@ describe('CodexAgent', () => {
       for (const l of fakeLines) yield l;
     }
     const agent = new CodexAgent({ streamLines: () => fake() });
-    const iter = agent.stream({ prompt: 'x' }, new AbortController().signal);
+    const iter = agent.stream({ phase: 'debate', prompt: 'x' }, new AbortController().signal);
     let tail: { usage?: Record<string, unknown> } | undefined;
     while (true) {
       const r = await iter.next();

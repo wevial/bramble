@@ -21,7 +21,7 @@ export function runAgentContract(name: string, factory: AgentFactory) {
       setResponse('hello world');
       const controller = new AbortController();
       let combined = '';
-      for await (const tok of agent.stream({ prompt: 'hi' }, controller.signal)) {
+      for await (const tok of agent.stream({ phase: 'debate', prompt: 'hi' }, controller.signal)) {
         combined += tok.text;
       }
       expect(combined).toBe('hello world');
@@ -35,7 +35,7 @@ export function runAgentContract(name: string, factory: AgentFactory) {
       let collected = '';
       const done = (async () => {
         try {
-          for await (const tok of agent.stream({ prompt: 'x' }, controller.signal)) {
+          for await (const tok of agent.stream({ phase: 'debate', prompt: 'x' }, controller.signal)) {
             collected += tok.text;
             if (collected.length >= 2) controller.abort();
           }
@@ -55,7 +55,7 @@ export function runAgentContract(name: string, factory: AgentFactory) {
       const controller = new AbortController();
       let collected = '';
       try {
-        for await (const tok of agent.stream({ prompt: 'x' }, controller.signal)) {
+        for await (const tok of agent.stream({ phase: 'debate', prompt: 'x' }, controller.signal)) {
           collected += tok.text;
           if (tok.text === 'c') controller.abort();
         }

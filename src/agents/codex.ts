@@ -1,7 +1,7 @@
 import type { Agent, AgentName, StreamTail, Token, TurnContext, TurnUsage } from './agent.js';
 import { streamProcessLines, type SpawnSpec } from './subprocess.js';
 import { parseCodexEvent } from './codex-events.js';
-import { buildAgentOutputFromModel } from '../protocol/patchBlock.js';
+import { systemInstructions } from '../prompts/system.js';
 
 export type CodexAgentOptions = {
   /** Override the line-stream source for testing. Default spawns `codex`. */
@@ -34,20 +34,7 @@ export function codexSpawnSpec(
   return spec;
 }
 
-const DEFAULT_PROTOCOL = `You are one of two agents in an adversarial-but-constructive debate to produce the best possible spec for the user's goal. The other agent will critique, counter-propose, and push back on you — and you should do the same to them. The point is to converge on a genuinely good spec, not to be agreeable. Disagree when you have a real reason; only accept when the spec is actually solid.
-
-Respond in two parts:
-1. Free-form commentary explaining your thinking — react to the current draft, call out specific weaknesses, defend or revise.
-2. Followed by a <patch> block containing a JSON object with optional fields: { "proposal": { "body": "<full spec markdown>" }, "verdict": "LGTM" | "counter" }.
-
-If there is no current draft yet, open with your own proposal — do NOT ask the user for one. The whole point of this turn is to move the spec forward. Emit a concrete <patch> with a proposal body.
-
-If there is a current draft, either accept it (verdict "LGTM"), counter-propose with a revised body, or critique it as commentary. You MAY NOT "LGTM" a draft you proposed yourself — only the other agent can accept your proposal.
-
-When the debate transcript includes turns from "user", those are hard constraints from the human driving this session. Incorporate them directly into the draft, not just as things to discuss.
-
-Emit <patch>...</patch> only if you have a concrete proposal or a verdict. No <patch> block means commentary-only.
-Do not wrap the JSON in code fences. The block must be literally <patch>...</patch>.`;
+const DEFAULT_PROTOCOL = systemInstructions('codex');
 
 function defaultSpawn(
   prompt: string,
@@ -108,14 +95,10 @@ export class CodexAgent implements Agent {
       const errMsg = `⚠ codex subprocess failed: ${subprocessError}`;
       yield { text: errMsg };
       return {
-        raw: JSON.stringify({ commentary: errMsg, proposal: null, verdict: null }),
+        raw: JSON.stringify({ commentary: errMsg }),
+        usage,
       };
     }
-
-    const built = buildAgentOutputFromModel(fullText);
-    const value = built.ok
-      ? built.value
-      : { commentary: fullText, proposal: null, verdict: null };
-    return { raw: JSON.stringify(value), usage };
+    return { raw: fullText, usage };
   }
 }

@@ -1,10 +1,9 @@
 export type SlashCommand =
   | { kind: 'quit' }
+  | { kind: 'done' }
   | { kind: 'rounds'; value: number | null }
-  | { kind: 'drafts' }
-  | { kind: 'export'; filename: string | null }
-  | { kind: 'copy' }
-  | { kind: 'expand'; id: string }
+  | { kind: 'threshold'; value: number }
+  | { kind: 'decay'; value: number }
   | { kind: 'unknown'; raw: string; hint: string };
 
 export function parseSlashCommand(input: string): SlashCommand | null {
@@ -18,49 +17,38 @@ export function parseSlashCommand(input: string): SlashCommand | null {
     case 'quit':
     case 'q':
       return { kind: 'quit' };
+    case 'done':
+      return { kind: 'done' };
     case 'rounds': {
       if (arg === '') return { kind: 'rounds', value: null };
-      if (!/^\d+$/.test(arg)) {
-        return {
-          kind: 'unknown',
-          raw: trimmed,
-          hint: '/rounds expects a positive integer',
-        };
-      }
-      const n = Number(arg);
-      if (n < 1) {
-        return {
-          kind: 'unknown',
-          raw: trimmed,
-          hint: '/rounds expects a positive integer',
-        };
-      }
-      return { kind: 'rounds', value: n };
+      const n = parsePositiveInt(arg);
+      return n === null
+        ? unknown(trimmed, '/rounds expects a positive integer')
+        : { kind: 'rounds', value: n };
     }
-    case 'drafts':
-      return { kind: 'drafts' };
-    case 'export': {
-      if (arg === '') return { kind: 'export', filename: null };
-      const filename = arg.endsWith('.md') ? arg : `${arg}.md`;
-      return { kind: 'export', filename };
+    case 'threshold': {
+      const n = parsePositiveInt(arg);
+      return n === null
+        ? unknown(trimmed, '/threshold expects a positive integer')
+        : { kind: 'threshold', value: n };
     }
-    case 'copy':
-      return { kind: 'copy' };
-    case 'expand': {
-      if (!/^(claude|codex)-\d+$/.test(arg)) {
-        return {
-          kind: 'unknown',
-          raw: trimmed,
-          hint: '/expand expects <claude|codex>-<n>, e.g. /expand claude-1',
-        };
-      }
-      return { kind: 'expand', id: arg };
+    case 'decay': {
+      const n = parsePositiveInt(arg);
+      return n === null
+        ? unknown(trimmed, '/decay expects a positive integer')
+        : { kind: 'decay', value: n };
     }
     default:
-      return {
-        kind: 'unknown',
-        raw: trimmed,
-        hint: `unknown command: ${trimmed}`,
-      };
+      return unknown(trimmed, `unknown command: ${trimmed}`);
   }
+}
+
+function parsePositiveInt(s: string): number | null {
+  if (!/^\d+$/.test(s)) return null;
+  const n = Number(s);
+  return n >= 1 ? n : null;
+}
+
+function unknown(raw: string, hint: string): SlashCommand {
+  return { kind: 'unknown', raw, hint };
 }

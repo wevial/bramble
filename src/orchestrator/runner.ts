@@ -1,121 +1,183 @@
-import type { Agent, TurnUsage } from '../agents/agent.js';
-import { appendTurn } from '../docs/transcript.js';
-import { parseAgentOutput } from '../protocol/patch.js';
-import { reducer } from './reducer.js';
+import type { Agent, AgentName, TurnUsage } from '../agents/agent.js';
+import {
+  parseDebateMessage,
+  parseInterviewMessage,
+} from '../protocol/messages.js';
+import { interviewPrompt } from '../prompts/interview.js';
+import { debatePrompt } from '../prompts/debate.js';
+import { reducer, type State, type DebateConfig, initialState } from './state.js';
 import { nextSpeaker } from './scheduler.js';
-import { initialState, type State } from './types.js';
+import { appendEntry } from '../docs/transcript.js';
 
 export type DebateMode = 'auto' | 'collab';
 
-export type RunDebateOptions = {
+export type RunOptions = {
   agents: { claude: Agent; codex: Agent };
   prompt: string;
-  rounds: number;
+  /**
+   * Override the default debate config (rounds cap, decay threshold/window).
+   * Saved into state.config and replayable via the transcript.
+   */
+  config?: Partial<DebateConfig>;
   transcriptPath: string;
-  /** Optional starting state — used for --resume. Defaults to initialState. */
+  /** When provided, skips writing the initial 'session' transcript entry. */
   initialState?: State;
-  /** Debate cadence: "auto" runs turns back-to-back, "collab" pauses between. */
   mode?: DebateMode;
-  onToken?: (speaker: 'claude' | 'codex', text: string) => void;
+  onToken?: (speaker: AgentName, text: string) => void;
   onState?: (state: State) => void;
-  /** Fired at the end of each agent turn with the CLI-reported token usage. */
-  onUsage?: (speaker: 'claude' | 'codex', usage: TurnUsage) => void;
-  /** Fired whenever the collab-mode pause state changes. */
+  onUsage?: (speaker: AgentName, usage: TurnUsage) => void;
   onPauseChange?: (paused: boolean) => void;
   signal?: AbortSignal;
 };
 
-export type DebateHandle = {
-  /** Resolves with the final state when the debate ends. */
+export type RunHandle = {
   done: Promise<State>;
-  /** Cancel an in-flight turn and record a user turn; next agent sees it in context. */
+  /** During interview: feeds the user's answer to the next agent. During debate: appends as a constraint and aborts current turn. */
   interject(content: string): void;
-  /** Abort the whole debate. */
   abort(): void;
-  /** Update the round cap at runtime; takes effect on the next loop iteration. */
-  setRounds(n: number): void;
-  /** Current round cap. */
-  getRounds(): number;
-  /** In collab mode, advance past the current between-turns pause. No-op in auto mode. */
+  /** Force the interview phase to end and start the debate. */
+  done_interview(): void;
+  /** Live tweak to debate config. */
+  updateConfig(patch: Partial<DebateConfig>): void;
+  /** In collab mode, advance past a between-turns pause. */
   continue(): void;
 };
 
-export function startDebate(opts: RunDebateOptions): DebateHandle {
-  let state: State = opts.initialState ?? { ...initialState };
-  let turnController: AbortController | null = null;
-  let rounds = Math.max(1, Math.floor(opts.rounds));
+export function startDebate(opts: RunOptions): RunHandle {
+  let state: State =
+    opts.initialState ?? initialState(opts.prompt, opts.config);
   const mode: DebateMode = opts.mode ?? 'auto';
-  let continueResolver: (() => void) | null = null;
   const outer = new AbortController();
   opts.signal?.addEventListener('abort', () => outer.abort(), { once: true });
+
+  let turnController: AbortController | null = null;
+  let userAnswerResolver: ((content: string | null) => void) | null = null;
+  let collabPauseResolver: (() => void) | null = null;
 
   let disposed = false;
   const disposeAgents = () => {
     if (disposed) return;
     disposed = true;
-    try {
-      opts.agents.claude.dispose?.();
-    } catch {
-      /* ignore */
-    }
-    try {
-      opts.agents.codex.dispose?.();
-    } catch {
-      /* ignore */
-    }
+    try { opts.agents.claude.dispose?.(); } catch { /* ignore */ }
+    try { opts.agents.codex.dispose?.(); } catch { /* ignore */ }
   };
   outer.signal.addEventListener('abort', disposeAgents, { once: true });
 
-  const resumePause = () => {
-    if (continueResolver) {
-      const r = continueResolver;
-      continueResolver = null;
+  // Serialize all transcript writes through a chain so the order on disk
+  // matches the order events were emitted. appendEntry itself is async and
+  // fire-and-forget would let later events land on disk before the initial
+  // 'session' entry, breaking rehydrateState().
+  let transcriptWrites: Promise<void> = Promise.resolve();
+  const queueAppend = (entry: Parameters<typeof appendEntry>[1]): void => {
+    transcriptWrites = transcriptWrites.then(() =>
+      appendEntry(opts.transcriptPath, entry).catch(() => {}),
+    );
+  };
+
+  if (!opts.initialState) {
+    queueAppend({
+      type: 'session',
+      prompt: state.prompt,
+      config: state.config,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  const dispatch = (action: Parameters<typeof reducer>[1]): void => {
+    state = reducer(state, action);
+    opts.onState?.(state);
+  };
+
+  const interject = (content: string): void => {
+    // Interview waiting: deliver answer, dispatch userAnswer.
+    if (state.phase === 'interview' && userAnswerResolver) {
+      const r = userAnswerResolver;
+      userAnswerResolver = null;
+      const ts = new Date().toISOString();
+      dispatch({ type: 'userAnswer', content, timestamp: ts });
+      queueAppend({
+        type: 'user_answer',
+        content,
+        timestamp: ts,
+      });
+      r(content);
+      return;
+    }
+    // Debate: log the constraint and abort the active turn so the next agent
+    // sees it. (Resolver-less interjection in interview phase falls here too,
+    // so a user typing before the first turn finishes still records.)
+    const ts = new Date().toISOString();
+    dispatch({ type: 'userAnswer', content, timestamp: ts });
+    queueAppend({
+      type: 'user_answer',
+      content,
+      timestamp: ts,
+    });
+    turnController?.abort();
+    if (collabPauseResolver) {
+      const r = collabPauseResolver;
+      collabPauseResolver = null;
       opts.onPauseChange?.(false);
       r();
     }
   };
 
-  const interject = (content: string) => {
-    const timestamp = new Date().toISOString();
-    state = reducer(state, { type: 'userInterjection', content, timestamp });
-    opts.onState?.(state);
-    void appendTurn(opts.transcriptPath, { speaker: 'user', content, timestamp });
-    turnController?.abort();
-    // In collab mode, a user interjection also wakes the between-turns pause
-    // so the next agent picks up the new context immediately.
-    resumePause();
+  const doneInterview = (): void => {
+    if (state.phase !== 'interview') return;
+    dispatch({ type: 'userDone' });
+    queueAppend({
+      type: 'user_done',
+      timestamp: new Date().toISOString(),
+    });
+    if (userAnswerResolver) {
+      const r = userAnswerResolver;
+      userAnswerResolver = null;
+      r(null);
+    }
+  };
+
+  const updateConfig = (patch: Partial<DebateConfig>): void => {
+    dispatch({ type: 'updateConfig', patch });
+    queueAppend({
+      type: 'config_update',
+      patch,
+      timestamp: new Date().toISOString(),
+    });
+  };
+
+  const continueCollab = (): void => {
+    if (collabPauseResolver) {
+      const r = collabPauseResolver;
+      collabPauseResolver = null;
+      opts.onPauseChange?.(false);
+      r();
+    }
   };
 
   const done = (async () => {
-    // Surface any resumed state so the UI renders the prior transcript
-    // before the first new turn begins.
-    if (state.transcript.length > 0 || state.currentDraft !== null) {
-      opts.onState?.(state);
-    }
-    let i = 0;
-    // Accept short-circuit for already-accepted resumes: no more turns needed.
-    if (state.accepted) {
-      disposeAgents();
-      return state;
-    }
+    opts.onState?.(state);
     try {
-      while (i < rounds * 2) {
-        if (outer.signal.aborted) break;
+      while (state.phase !== 'done' && !outer.signal.aborted) {
         const speaker = nextSpeaker(state);
-        const agent = opts.agents[speaker];
-        state = reducer(state, { type: 'turnStarted', speaker });
-        opts.onState?.(state);
+        dispatch({ type: 'turnStarted', speaker });
 
         turnController = new AbortController();
-        outer.signal.addEventListener('abort', () => turnController?.abort(), { once: true });
+        outer.signal.addEventListener(
+          'abort',
+          () => turnController?.abort(),
+          { once: true },
+        );
 
-        const prompt = buildPrompt(opts.prompt, state, speaker, mode);
-        const deltaPrompt = buildDeltaPrompt(opts.prompt, state, speaker, mode);
+        const ctx =
+          state.phase === 'interview'
+            ? { phase: 'interview' as const, prompt: interviewPrompt({ state, speaker }) }
+            : { phase: 'debate' as const, prompt: debatePrompt({ state, speaker }) };
+
         let displayed = '';
         let rawTail: string | undefined;
         let usageTail: TurnUsage | undefined;
         try {
-          const iter = agent.stream({ prompt, deltaPrompt }, turnController.signal);
+          const iter = opts.agents[speaker].stream(ctx, turnController.signal);
           while (true) {
             const r = await iter.next();
             if (r.done) {
@@ -129,55 +191,93 @@ export function startDebate(opts: RunDebateOptions): DebateHandle {
             opts.onToken?.(speaker, r.value.text);
           }
         } catch {
-          // aborts may throw; treat whatever we collected as the turn's content
+          /* aborts may throw — fine */
         }
         if (usageTail) opts.onUsage?.(speaker, usageTail);
-        // Wire content is the structured raw tail when the agent provides one
-        // (e.g. JSON patch); otherwise whatever streamed.
-        const content = rawTail ?? displayed;
+        const raw = rawTail ?? displayed;
+        const ts = new Date().toISOString();
 
-        const timestamp = new Date().toISOString();
-        state = reducer(state, { type: 'turnCompleted', speaker, content, timestamp });
-        opts.onState?.(state);
-        await appendTurn(opts.transcriptPath, { speaker, content, timestamp });
+        if (state.phase === 'interview') {
+          const parsed = parseInterviewMessage(raw);
+          const turnPayload = parsed.ok
+            ? parsed.value
+            : { commentary: raw, question: null, ready: false };
+          dispatch({
+            type: 'interviewTurn',
+            timestamp: ts,
+            turn: { speaker, ...turnPayload },
+          });
+          queueAppend({
+            type: 'interview_turn',
+            turn: { speaker, ...turnPayload, timestamp: ts },
+          });
+          // After phase transitions to debate, don't block for an answer.
+          if (state.phase !== 'interview') continue;
 
-        // Parse structured output and dispatch proposal/verdict if present.
-        const parsed = parseAgentOutput(content, { fallbackToCommentary: true });
-        if (parsed.ok) {
-          if (parsed.value.proposal) {
-            state = reducer(state, {
-              type: 'proposalReceived',
-              speaker,
-              body: parsed.value.proposal.body,
-            });
-            opts.onState?.(state);
-          }
-          if (parsed.value.verdict) {
-            state = reducer(state, {
-              type: 'verdictReceived',
-              speaker,
-              verdict: parsed.value.verdict,
-            });
-            opts.onState?.(state);
-            if (state.accepted) break;
-          }
+          // Wait for the user to answer (or /done) before the next turn.
+          await new Promise<string | null>(resolve => {
+            userAnswerResolver = resolve;
+            outer.signal.addEventListener(
+              'abort',
+              () => {
+                if (userAnswerResolver) {
+                  userAnswerResolver = null;
+                  resolve(null);
+                }
+              },
+              { once: true },
+            );
+          });
+          continue;
         }
-        i++;
-        // Collab mode: pause between turns (unless this was the final turn or
-        // a terminal verdict landed).
-        if (
-          mode === 'collab' &&
-          i < rounds * 2 &&
-          !state.accepted &&
-          !outer.signal.aborted
-        ) {
+
+        // debate phase
+        const parsed = parseDebateMessage(raw);
+        const turnPayload = parsed.ok
+          ? parsed.value
+          : { commentary: raw, edits: [], verdict: 'continue' as const };
+        dispatch({
+          type: 'debateTurn',
+          speaker,
+          commentary: turnPayload.commentary,
+          edits: turnPayload.edits,
+          verdict: turnPayload.verdict,
+          timestamp: ts,
+        });
+        const debateTurn = state.debate[state.debate.length - 1];
+        if (debateTurn) {
+          queueAppend({
+            type: 'debate_turn',
+            turn: debateTurn,
+          });
+        }
+        if ((state.phase as string) === 'done') break;
+
+        if (mode === 'collab' && !outer.signal.aborted) {
           opts.onPauseChange?.(true);
           await new Promise<void>(resolve => {
-            continueResolver = resolve;
-            outer.signal.addEventListener('abort', () => resolve(), { once: true });
+            collabPauseResolver = resolve;
+            outer.signal.addEventListener(
+              'abort',
+              () => {
+                if (collabPauseResolver) {
+                  collabPauseResolver = null;
+                  resolve();
+                }
+              },
+              { once: true },
+            );
           });
           opts.onPauseChange?.(false);
         }
+      }
+      if (state.phase === 'done' && state.endReason) {
+        queueAppend({
+          type: 'done',
+          reason: state.endReason,
+          finalSpec: state.spec,
+          timestamp: new Date().toISOString(),
+        });
       }
     } finally {
       disposeAgents();
@@ -189,135 +289,12 @@ export function startDebate(opts: RunDebateOptions): DebateHandle {
     done,
     interject,
     abort: () => outer.abort(),
-    setRounds: (n: number) => {
-      rounds = Math.max(1, Math.floor(n));
-    },
-    getRounds: () => rounds,
-    continue: resumePause,
+    done_interview: doneInterview,
+    updateConfig,
+    continue: continueCollab,
   };
 }
 
-export async function runDebate(opts: RunDebateOptions): Promise<State> {
+export async function runDebate(opts: RunOptions): Promise<State> {
   return startDebate(opts).done;
-}
-
-export function buildPrompt(
-  basePrompt: string,
-  state: State,
-  speaker: 'claude' | 'codex',
-  mode: DebateMode,
-): string {
-  const other = speaker === 'claude' ? 'codex' : 'claude';
-  const parts: string[] = [];
-
-  parts.push(
-    `# Your role\n\nYou are ${speaker}, debating ${other} to converge on the best possible spec for the goal below. This is an adversarial-but-constructive debate: disagree when you have a real reason, and don't rubber-stamp a draft just to be agreeable. When you eventually accept, it should be because the spec is genuinely solid.`,
-  );
-
-  parts.push(`# Goal\n\n${basePrompt}`);
-
-  // Render the full transcript (agents + user interjections) in chronological
-  // order. Keeping everything append-only here — including user turns, which
-  // the agents should treat as hard constraints — means consecutive same-
-  // speaker turns share the longest possible token prefix. The "hard
-  // constraints" framing lives in each agent's system instructions, so we
-  // don't need a separate re-rendered guidance section that would shift when
-  // the user interjects. See buildPrompt.test.ts ("stable prefix").
-  if (state.transcript.length > 0) {
-    const lines = state.transcript.map(t => `## ${t.speaker}\n\n${t.content}`);
-    parts.push(`# Debate so far\n\n${lines.join('\n\n')}`);
-  }
-
-  if (state.currentDraft) {
-    const authorTag =
-      state.currentDraft.proposer === speaker ? ' — yours' : '';
-    parts.push(
-      `# Current draft (by ${state.currentDraft.proposer}${authorTag})\n\n${state.currentDraft.body}`,
-    );
-  }
-
-  parts.push(`# Your turn\n\n${turnGuidance(state, speaker, mode)}`);
-  return parts.join('\n\n');
-}
-
-export function buildDeltaPrompt(
-  basePrompt: string,
-  state: State,
-  speaker: 'claude' | 'codex',
-  mode: DebateMode,
-): string {
-  const other = speaker === 'claude' ? 'codex' : 'claude';
-  const parts: string[] = [];
-  let lastOwnTurn = -1;
-  for (let i = state.transcript.length - 1; i >= 0; i--) {
-    if (state.transcript[i]!.speaker === speaker) {
-      lastOwnTurn = i;
-      break;
-    }
-  }
-  const newTurns =
-    lastOwnTurn >= 0 ? state.transcript.slice(lastOwnTurn + 1) : state.transcript;
-
-  // Re-assert role framing on every delta — a respawn or silent truncation
-  // on the CLI side could otherwise leave the agent operating without it.
-  parts.push(
-    `# Your role\n\nYou are ${speaker}, debating ${other} to converge on the best possible spec for the goal below. This is an adversarial-but-constructive debate: disagree when you have a real reason, and don't rubber-stamp a draft just to be agreeable. When you eventually accept, it should be because the spec is genuinely solid.`,
-  );
-
-  parts.push(
-    `# Debate update\n\nContinue the existing debate for this goal:\n\n${basePrompt}`,
-  );
-
-  if (newTurns.length > 0) {
-    const lines = newTurns.map(t => `## ${t.speaker}\n\n${t.content}`);
-    parts.push(`# New turns since your last response\n\n${lines.join('\n\n')}`);
-  } else {
-    parts.push(`# New turns since your last response\n\nNone.`);
-  }
-
-  if (state.currentDraft) {
-    const authorTag =
-      state.currentDraft.proposer === speaker ? ' — yours' : '';
-    parts.push(
-      `# Current draft (by ${state.currentDraft.proposer}${authorTag})\n\n${state.currentDraft.body}`,
-    );
-  }
-
-  parts.push(`# Your turn\n\n${turnGuidance(state, speaker, mode)}`);
-  return parts.join('\n\n');
-}
-
-function turnGuidance(
-  state: State,
-  speaker: 'claude' | 'codex',
-  mode: DebateMode,
-): string {
-  const other = speaker === 'claude' ? 'codex' : 'claude';
-  const draft = state.currentDraft;
-  const sections: string[] = [];
-
-  if (!draft) {
-    sections.push(
-      `No draft exists yet. Open with a concrete proposal — emit a <patch> with a full spec body. Don't critique in the abstract; show the shape you want.`,
-    );
-  } else if (draft.proposer === speaker) {
-    sections.push(
-      `The current draft is yours, so you can't LGTM it — only ${other} can accept your proposal. React to ${other}'s latest critique: either revise with a new <patch> body that addresses it, or defend your design in commentary if you think they're wrong.`,
-    );
-  } else {
-    sections.push(
-      `${other} proposed the current draft. Pick one:
-- LGTM if it's genuinely solid (verdict "LGTM" — this ends the debate).
-- Counter-propose with a revised body via a <patch> (verdict "counter").
-- Critique it as commentary without a <patch> if you want to push back before rewriting.`,
-    );
-  }
-
-  if (mode === 'collab') {
-    sections.push(
-      `This session is in collab mode: a human is reviewing between turns and may interject with constraints or redirects. If any turns from "user" appear in the debate transcript or latest update, reflect them directly in your response — don't wait for the next turn.`,
-    );
-  }
-
-  return sections.join('\n\n');
 }

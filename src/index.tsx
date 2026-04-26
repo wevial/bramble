@@ -24,7 +24,7 @@ if (argv.includes('--help') || argv.includes('-h')) {
   process.exit(0);
 }
 
-let rounds = 3;
+let maxRounds = 8;
 let real = false;
 let claudeModel: string | undefined;
 let claudeEffort: string | undefined;
@@ -43,12 +43,11 @@ for (let i = 0; i < argv.length; i++) {
     listMode = true;
   } else if (a === '--rounds' && argv[i + 1]) {
     const n = Number(argv[i + 1]);
-    if (Number.isInteger(n) && n >= 1) rounds = n;
+    if (Number.isInteger(n) && n >= 1) maxRounds = n;
     i++;
   } else if (a === '--real') {
     real = true;
   } else if (a === '--test') {
-    // Fast-path: real agents pinned to cheap/fast models, low reasoning effort.
     real = true;
     claudeModel = claudeModel ?? 'claude-haiku-4-5';
     codexModel = codexModel ?? 'gpt-5.4-mini';
@@ -87,9 +86,6 @@ for (let i = 0; i < argv.length; i++) {
 
 const prompt = positional.join(' ');
 const cwd = process.cwd();
-// Load the last setup-screen selection (mode + models) from disk so the
-// setup screen opens with the user's most recent choices. CLI flags still
-// win when provided.
 const savedSetupPath = defaultSetupPath();
 const savedSetup = loadSavedSetup(savedSetupPath) ?? {};
 const mode: 'auto' | 'collab' = cliMode ?? savedSetup.mode ?? 'auto';
@@ -126,19 +122,13 @@ function pad(s: string, w: number): string {
   return s.length >= w ? s : s + ' '.repeat(w - s.length);
 }
 
-
-// --resume <name> takes over the session name; --name overrides otherwise.
 const name = resumeName ?? sessionName ?? generateSessionName();
 const paths = sessionPaths(storeRoot, name);
 mkdirSync(paths.dir, { recursive: true });
 
-const resumedTurns = resumeName ? await readTranscript(paths.transcriptPath) : [];
+const resumedEntries = resumeName ? await readTranscript(paths.transcriptPath) : [];
 const resumedState =
-  resumedTurns.length > 0 ? rehydrateState(resumedTurns) : undefined;
-// If resuming, the original prompt lives in a sidecar file so we can rebuild
-// the per-turn context. If not present, fall back to a short placeholder —
-// the user can see the transcript but any new turns will have a weaker
-// "goal" context.
+  resumedEntries.length > 0 ? rehydrateState(resumedEntries) : undefined;
 let resumedPrompt: string | undefined;
 if (resumeName) {
   try {
@@ -162,19 +152,12 @@ if (real) {
     console.error(
       `bramble --real needs these CLIs on PATH: ${missing.join(', ')}`,
     );
-    console.error(
-      'install + auth them first:\n' +
-        '  claude: https://claude.ai/code → claude /login\n' +
-        '  codex:  https://openai.com/codex → codex login',
-    );
     process.exit(1);
   }
 }
 
 let claude: Agent;
 let codex: Agent;
-// Isolate agents by spawning them in throwaway tmpdirs so repo-local
-// CLAUDE.md / AGENTS.md don't leak into the debate.
 const isoCwd =
   real && isolated ? mkdtempSync(join(tmpdir(), 'bramble-iso-')) : undefined;
 const buildRealAgents = real
@@ -212,66 +195,56 @@ if (real) {
   const fCodex = new FakeAgent('codex');
   fClaude.setResponses([
     {
-      commentary:
-        'Proposing a minimal auth spec to start. Email+password core, OAuth deferred.',
-      proposal: {
-        body:
-          '# Authentication\n\n' +
-          '## Signup\n\n' +
-          '- Email + password\n' +
-          '- **bcrypt** password hashing (cost 12)\n' +
-          '- 30-day session tokens, rotated on each request\n\n' +
-          '## Example request\n\n' +
-          '```json\n' +
-          '{\n' +
-          '  "email": "a@b.com",\n' +
-          '  "password": "hunter2"\n' +
-          '}\n' +
-          '```\n\n' +
-          '## Rate limits\n\n' +
-          '- 5 attempts / 15 min per IP',
-      },
+      kind: 'interview',
+      commentary: 'Want to scope users first.',
+      question: 'Internal users only, or external signups too?',
     },
     {
-      commentary:
-        'Fair points on rotation and 2FA. Revising to pin token rotation and add a TOTP hook.',
-      proposal: {
-        body:
-          '# Authentication\n\n' +
-          '## Signup\n\n' +
-          '- Email + password\n' +
-          '- **bcrypt** password hashing (cost 12)\n' +
-          '- Session tokens rotate on privilege change; sliding 30-day idle expiry\n' +
-          '- Optional **TOTP** second factor (RFC 6238, 30s window)\n\n' +
-          '## Example request\n\n' +
-          '```json\n' +
-          '{\n' +
-          '  "email": "a@b.com",\n' +
-          '  "password": "hunter2",\n' +
-          '  "totp": "123456"\n' +
-          '}\n' +
-          '```\n\n' +
-          '## Rate limits\n\n' +
-          '- 5 attempts / 15 min per IP\n' +
-          '- Lockout escalates to 1h after 3 consecutive trip-ups',
-      },
+      kind: 'interview',
+      commentary: 'Got it.',
+      ready: true,
     },
     {
-      commentary:
-        'Codex is right that the revised draft is tighter. LGTM.',
-      verdict: 'LGTM',
+      kind: 'debate',
+      commentary: 'Seeding the spec with a goals + auth skeleton.',
+      edits: [
+        {
+          find: '',
+          replace:
+            '# Spec\n\n## Goals\nA simple authentication system.\n\n## Auth\n- Email + password\n- bcrypt hashing\n',
+        },
+      ],
+    },
+    {
+      kind: 'debate',
+      commentary: 'Tightened the goals line per codex.',
+      edits: [
+        { find: 'A simple authentication system.', replace: 'A minimal email + password auth system for internal tools.' },
+      ],
+      verdict: 'lgtm',
     },
   ]);
   fCodex.setResponses([
     {
-      commentary:
-        'Solid skeleton. Two concerns: *rotate on every request* is chatty, and no 2FA path. Countering.',
-      verdict: 'counter',
+      kind: 'interview',
+      commentary: 'Need to know the deployment target.',
+      question: 'Web app? Mobile? CLI?',
     },
     {
-      commentary:
-        'The revised draft addresses both points cleanly. Happy to accept.',
-      verdict: 'LGTM',
+      kind: 'interview',
+      commentary: 'I have enough.',
+      ready: true,
+    },
+    {
+      kind: 'debate',
+      commentary: '"Goals" is too vague — recommend tightening to internal tools.',
+      edits: [],
+    },
+    {
+      kind: 'debate',
+      commentary: 'Looks good.',
+      edits: [],
+      verdict: 'lgtm',
     },
   ]);
   fClaude.setTokenDelayMs(15);
@@ -285,16 +258,14 @@ const { waitUntilExit } = render(
     agents={{ claude, codex }}
     prompt={prompt || resumedPrompt}
     sessionName={name}
-    rounds={rounds}
+    config={{ maxRounds }}
     mode={mode}
-    initialState={resumedState}
+    initialState={resumedState ?? undefined}
     promptSidecarPath={paths.promptPath}
     transcriptPath={paths.transcriptPath}
     specPath={paths.specPath}
     debatePath={paths.debatePath}
-    draftPath={paths.draftPath}
-    draftsPath={paths.draftsPath}
-    exportPath={paths.exportPath}
+    interviewPath={paths.interviewPath}
     buildAgents={buildRealAgents}
     initialModelConfig={{
       claudeModel: claudeModel ?? null,

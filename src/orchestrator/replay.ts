@@ -1,43 +1,65 @@
-import { parseAgentOutput } from '../protocol/patch.js';
-import { reducer } from './reducer.js';
-import { initialState, type State, type TurnRecord } from './types.js';
+import { initialState, reducer, type State } from './state.js';
+import type { TranscriptEntry } from '../docs/transcript.js';
 
 /**
- * Rebuild a State by replaying the reducer over a transcript. Used for
- * --resume: reads transcript-<name>.jsonl, rebuilds state, then continues
- * the debate from the next speaker's turn.
+ * Rebuild State by feeding a transcript through the reducer. The first entry
+ * MUST be of type 'session' — it carries the prompt + initial config.
  *
- * Replays the same action sequence the live runner would have dispatched:
- *   turnCompleted  → always
- *   proposalReceived / verdictReceived → when the content parses as our
- *     AgentOutput wire format (plain-text turns just become commentary).
+ * Returns null if the transcript is empty or malformed (no session entry).
  */
-export function rehydrateState(turns: TurnRecord[]): State {
-  let state: State = { ...initialState };
-  for (const t of turns) {
-    state = reducer(state, {
-      type: 'turnCompleted',
-      speaker: t.speaker,
-      content: t.content,
-      timestamp: t.timestamp,
-    });
-    if (t.speaker !== 'claude' && t.speaker !== 'codex') continue;
-    const parsed = parseAgentOutput(t.content, { fallbackToCommentary: true });
-    if (!parsed.ok) continue;
-    if (parsed.value.proposal) {
-      state = reducer(state, {
-        type: 'proposalReceived',
-        speaker: t.speaker,
-        body: parsed.value.proposal.body,
-      });
-    }
-    if (parsed.value.verdict) {
-      state = reducer(state, {
-        type: 'verdictReceived',
-        speaker: t.speaker,
-        verdict: parsed.value.verdict,
-      });
-    }
+export function rehydrateState(entries: TranscriptEntry[]): State | null {
+  const first = entries[0];
+  if (!first || first.type !== 'session') return null;
+
+  let state = initialState(first.prompt, first.config);
+  for (let i = 1; i < entries.length; i++) {
+    const e = entries[i]!;
+    state = applyEntry(state, e);
   }
   return state;
 }
+
+function applyEntry(state: State, e: TranscriptEntry): State {
+  switch (e.type) {
+    case 'session':
+      // Should only appear at index 0; ignore duplicates.
+      return state;
+    case 'interview_turn':
+      return reducer(state, {
+        type: 'interviewTurn',
+        timestamp: e.turn.timestamp,
+        turn: {
+          speaker: e.turn.speaker,
+          commentary: e.turn.commentary,
+          question: e.turn.question,
+          ready: e.turn.ready,
+        },
+      });
+    case 'user_answer':
+      return reducer(state, {
+        type: 'userAnswer',
+        content: e.content,
+        timestamp: e.timestamp,
+      });
+    case 'user_done':
+      return reducer(state, { type: 'userDone' });
+    case 'debate_turn':
+      return reducer(state, {
+        type: 'debateTurn',
+        speaker: e.turn.speaker,
+        commentary: e.turn.commentary,
+        edits: e.turn.edits,
+        verdict: e.turn.verdict,
+        timestamp: e.turn.timestamp,
+      });
+    case 'user_edit':
+      return reducer(state, { type: 'userEdit', newSpec: e.newSpec });
+    case 'config_update':
+      return reducer(state, { type: 'updateConfig', patch: e.patch });
+    case 'phase_change':
+    case 'done':
+      // Informational — current state already reflects these.
+      return state;
+  }
+}
+

@@ -14,6 +14,10 @@ describe('parseSlashCommand', () => {
     expect(parseSlashCommand('  /quit  ')).toEqual({ kind: 'quit' });
   });
 
+  it('parses /done', () => {
+    expect(parseSlashCommand('/done')).toEqual({ kind: 'done' });
+  });
+
   it('parses /rounds N with a valid positive integer', () => {
     expect(parseSlashCommand('/rounds 5')).toEqual({ kind: 'rounds', value: 5 });
     expect(parseSlashCommand('/rounds 1')).toEqual({ kind: 'rounds', value: 1 });
@@ -25,55 +29,24 @@ describe('parseSlashCommand', () => {
   });
 
   it('rejects /rounds with non-positive or non-integer values', () => {
-    expect(parseSlashCommand('/rounds 0')).toEqual({
-      kind: 'unknown',
-      raw: '/rounds 0',
-      hint: expect.stringContaining('positive integer'),
-    });
+    expect(parseSlashCommand('/rounds 0')).toMatchObject({ kind: 'unknown' });
     expect(parseSlashCommand('/rounds -1')).toMatchObject({ kind: 'unknown' });
     expect(parseSlashCommand('/rounds abc')).toMatchObject({ kind: 'unknown' });
     expect(parseSlashCommand('/rounds 1.5')).toMatchObject({ kind: 'unknown' });
   });
 
-  it('parses /drafts', () => {
-    expect(parseSlashCommand('/drafts')).toEqual({ kind: 'drafts' });
-  });
-
-  it('parses /expand <id> for toggling a proposal', () => {
-    expect(parseSlashCommand('/expand claude-1')).toEqual({
-      kind: 'expand',
-      id: 'claude-1',
+  it('parses /threshold N', () => {
+    expect(parseSlashCommand('/threshold 100')).toEqual({
+      kind: 'threshold',
+      value: 100,
     });
-    expect(parseSlashCommand('/expand codex-2')).toEqual({
-      kind: 'expand',
-      id: 'codex-2',
-    });
+    expect(parseSlashCommand('/threshold 0')).toMatchObject({ kind: 'unknown' });
+    expect(parseSlashCommand('/threshold')).toMatchObject({ kind: 'unknown' });
   });
 
-  it('rejects /expand without an id', () => {
-    expect(parseSlashCommand('/expand')).toMatchObject({ kind: 'unknown' });
-  });
-
-  it('rejects /expand with malformed id', () => {
-    expect(parseSlashCommand('/expand foo')).toMatchObject({ kind: 'unknown' });
-    expect(parseSlashCommand('/expand claude')).toMatchObject({ kind: 'unknown' });
-    expect(parseSlashCommand('/expand claude-x')).toMatchObject({ kind: 'unknown' });
-  });
-
-  it('parses /export with optional filename', () => {
-    expect(parseSlashCommand('/export')).toEqual({ kind: 'export', filename: null });
-    expect(parseSlashCommand('/export my-plan')).toEqual({
-      kind: 'export',
-      filename: 'my-plan.md',
-    });
-    expect(parseSlashCommand('/export my-plan.md')).toEqual({
-      kind: 'export',
-      filename: 'my-plan.md',
-    });
-  });
-
-  it('parses /copy', () => {
-    expect(parseSlashCommand('/copy')).toEqual({ kind: 'copy' });
+  it('parses /decay N', () => {
+    expect(parseSlashCommand('/decay 3')).toEqual({ kind: 'decay', value: 3 });
+    expect(parseSlashCommand('/decay 0')).toMatchObject({ kind: 'unknown' });
   });
 
   it('returns unknown for unrecognised slash commands', () => {

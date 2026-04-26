@@ -2,6 +2,7 @@ import type { AgentName } from '../agents/agent.js';
 import type { Edit, RejectedEdit } from '../protocol/messages.js';
 import { applyEdits } from '../protocol/messages.js';
 import { checkTermination, type EndReason } from './termination.js';
+export type { EndReason } from './termination.js';
 
 export type Phase = 'interview' | 'debate' | 'done';
 
@@ -23,6 +24,8 @@ export type UserAnswer = {
 export type DebateTurn = {
   speaker: AgentName;
   commentary: string;
+  /** Original edit list as the agent submitted it, in submission order. */
+  edits: Edit[];
   /** Edits that successfully applied to the spec on this turn. */
   applied: Edit[];
   /** Edits the agent emitted that did not apply (fed back next turn). */
@@ -162,6 +165,7 @@ export function reducer(state: State, action: Action): State {
       const turn: DebateTurn = {
         speaker: action.speaker,
         commentary: action.commentary,
+        edits: action.edits,
         applied,
         rejected,
         verdict: action.verdict,

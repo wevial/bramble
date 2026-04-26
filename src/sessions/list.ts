@@ -15,10 +15,8 @@ export type SessionPaths = {
   transcriptPath: string;
   specPath: string;
   debatePath: string;
-  draftPath: string;
-  draftsPath: string;
+  interviewPath: string;
   promptPath: string;
-  exportPath: string;
 };
 
 /**
@@ -34,10 +32,8 @@ export function sessionPaths(root: string, name: string): SessionPaths {
     transcriptPath: join(dir, 'transcript.jsonl'),
     specPath: join(dir, 'spec.md'),
     debatePath: join(dir, 'debate.md'),
-    draftPath: join(dir, 'draft.md'),
-    draftsPath: join(dir, 'drafts.md'),
+    interviewPath: join(dir, 'interview.md'),
     promptPath: join(dir, 'prompt.txt'),
-    exportPath: join(dir, 'export.md'),
   };
 }
 

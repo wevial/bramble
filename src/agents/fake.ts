@@ -1,14 +1,28 @@
 import type { Agent, AgentName, StreamTail, Token, TurnContext } from './agent.js';
 
-export type StructuredResponse = {
+export type FakeInterviewResponse = {
+  kind: 'interview';
   commentary: string;
-  proposal?: { body: string };
-  verdict?: 'LGTM' | 'counter';
+  question?: string | null;
+  ready?: boolean;
 };
+
+export type FakeDebateResponse = {
+  kind: 'debate';
+  commentary: string;
+  edits?: Array<{ find: string; replace: string }>;
+  verdict?: 'continue' | 'lgtm';
+};
+
+/** Plain string responses are treated as raw output (commentary-only). */
+export type FakeResponse =
+  | string
+  | FakeInterviewResponse
+  | FakeDebateResponse;
 
 export class FakeAgent implements Agent {
   readonly name: AgentName;
-  private responses: Array<string | StructuredResponse> = [''];
+  private responses: FakeResponse[] = [''];
   private turnIdx = 0;
   private tokenDelayMs = 0;
 
@@ -16,13 +30,13 @@ export class FakeAgent implements Agent {
     this.name = name;
   }
 
-  setResponse(text: string | StructuredResponse): void {
+  setResponse(text: FakeResponse): void {
     this.responses = [text];
     this.turnIdx = 0;
   }
 
   /** Cycle through this list, one entry per turn. The last entry repeats. */
-  setResponses(list: Array<string | StructuredResponse>): void {
+  setResponses(list: FakeResponse[]): void {
     if (list.length === 0) throw new Error('setResponses: empty list');
     this.responses = list;
     this.turnIdx = 0;
@@ -39,10 +53,8 @@ export class FakeAgent implements Agent {
     const response =
       this.responses[Math.min(this.turnIdx, this.responses.length - 1)]!;
     this.turnIdx += 1;
-    const isStructured = typeof response !== 'string';
-    const displayText = isStructured
-      ? (response as StructuredResponse).commentary
-      : (response as string);
+
+    const { displayText, raw } = renderFakeResponse(response);
 
     for (const ch of displayText) {
       if (signal.aborted) return;
@@ -53,16 +65,30 @@ export class FakeAgent implements Agent {
       yield { text: ch };
     }
 
-    if (isStructured) {
-      const r = response as StructuredResponse;
-      const raw = JSON.stringify({
-        commentary: r.commentary,
-        proposal: r.proposal ?? null,
-        verdict: r.verdict ?? null,
-      });
-      return { raw };
-    }
+    if (raw !== null) return { raw };
   }
+}
+
+function renderFakeResponse(r: FakeResponse): {
+  displayText: string;
+  raw: string | null;
+} {
+  if (typeof r === 'string') return { displayText: r, raw: null };
+  if (r.kind === 'interview') {
+    const body = {
+      commentary: r.commentary,
+      question: r.question ?? null,
+      ready: r.ready ?? false,
+    };
+    return { displayText: r.commentary, raw: JSON.stringify(body) };
+  }
+  // debate
+  const body = {
+    commentary: r.commentary,
+    edits: r.edits ?? [],
+    verdict: r.verdict ?? 'continue',
+  };
+  return { displayText: r.commentary, raw: JSON.stringify(body) };
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
