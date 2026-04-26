@@ -63,6 +63,32 @@ describe('startDebate — interview → debate → done', () => {
     expect(finalState.interview).toHaveLength(4);
   });
 
+  it('still blocks for a user answer when the agent emits a malformed turn (no ready, no question)', async () => {
+    // Regression: gating the interview fast-path on `question === null`
+    // alone would let an empty/parse-failed response advance straight to
+    // the next agent. Gate on `ready` instead.
+    const claude = new FakeAgent('claude');
+    const codex = new FakeAgent('codex');
+    // Plain string — no JSON at all → parseInterviewMessage falls back to
+    // {commentary: raw, question: null, ready: false}.
+    claude.setResponse('not a json response at all');
+    codex.setResponse({ kind: 'interview', commentary: '', question: 'q', ready: false });
+
+    const handle = startDebate({
+      agents: { claude, codex },
+      prompt: 'x',
+      ...paths(),
+    });
+    // Give claude's turn time to land. With the bug, the runner would
+    // immediately call codex too. Without the bug, it waits.
+    await tick(80);
+    handle.abort();
+    const finalState = await handle.done;
+    // Claude spoke once; codex did NOT speak (runner was waiting).
+    expect(finalState.interview.filter(t => t.speaker === 'claude')).toHaveLength(1);
+    expect(finalState.interview.filter(t => t.speaker === 'codex')).toHaveLength(0);
+  });
+
   it('user_done force-skips the rest of the interview', async () => {
     const claude = new FakeAgent('claude');
     const codex = new FakeAgent('codex');

@@ -213,9 +213,12 @@ export function startDebate(opts: RunOptions): RunHandle {
           });
           // After phase transitions to debate, don't block for an answer.
           if (state.phase !== 'interview') continue;
-          // If the agent signaled ready without asking a question, there's
-          // nothing for the user to answer — go straight to the next agent.
-          if (turnPayload.question === null) continue;
+          // Skip the wait ONLY if the agent explicitly signaled ready —
+          // gating on `question === null` alone would also skip the wait
+          // for malformed/empty responses (the parse-failure fallback uses
+          // {question: null, ready: false}), which would let the interview
+          // spin without ever collecting user input.
+          if (turnPayload.ready) continue;
 
           // Wait for the user to answer (or /done) before the next turn.
           await new Promise<string | null>(resolve => {
