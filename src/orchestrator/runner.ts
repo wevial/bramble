@@ -213,6 +213,9 @@ export function startDebate(opts: RunOptions): RunHandle {
           });
           // After phase transitions to debate, don't block for an answer.
           if (state.phase !== 'interview') continue;
+          // If the agent signaled ready without asking a question, there's
+          // nothing for the user to answer — go straight to the next agent.
+          if (turnPayload.question === null) continue;
 
           // Wait for the user to answer (or /done) before the next turn.
           await new Promise<string | null>(resolve => {
