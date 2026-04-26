@@ -1,5 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Box, Text, useStdout } from 'ink';
+import { Box, Text, useInput, useStdin, useStdout } from 'ink';
+import { spawnSync } from 'node:child_process';
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { Agent } from '../agents/agent.js';
 import {
   startDebate,
@@ -55,6 +59,8 @@ export function App(props: AppProps) {
   const handleRef = useRef<RunHandle | null>(null);
   const writesRef = useRef<Promise<void>>(Promise.resolve());
   const { stdout } = useStdout();
+  const stdinCtx = useStdin();
+  const [editorBusy, setEditorBusy] = useState(false);
   const [dims, setDims] = useState({
     rows: stdout?.rows ?? 24,
     columns: stdout?.columns ?? 80,
@@ -112,6 +118,50 @@ export function App(props: AppProps) {
       handle.abort();
     };
   }, [phase]);
+
+  useInput((input, key) => {
+    if (phase !== 'running' || !state) return;
+    if (state.phase !== 'debate') return;
+    if (editorBusy) return;
+    // Ctrl+G — open the spec in $EDITOR. On exit, dispatch the new body.
+    if (key.ctrl && input === 'g') {
+      openSpecInEditor();
+    }
+  });
+
+  const openSpecInEditor = (): void => {
+    if (!state || state.phase !== 'debate') return;
+    const editor = process.env.EDITOR || process.env.VISUAL || 'vim';
+    const dir = mkdtempSync(join(tmpdir(), 'bramble-edit-'));
+    const file = join(dir, 'spec.md');
+    const before = state.spec;
+    setEditorBusy(true);
+    setStatus(`opening ${editor}…`);
+    try {
+      writeFileSync(file, before, 'utf8');
+      try {
+        stdinCtx.setRawMode?.(false);
+      } catch { /* ignore */ }
+      stdinCtx.stdin?.pause?.();
+      spawnSync(editor, [file], { stdio: 'inherit' });
+      try {
+        stdinCtx.setRawMode?.(true);
+      } catch { /* ignore */ }
+      stdinCtx.stdin?.resume?.();
+      const after = readFileSync(file, 'utf8');
+      if (after !== before) {
+        handleRef.current?.userEdit(after);
+        setStatus(`spec edited (${after.length - before.length >= 0 ? '+' : ''}${after.length - before.length}c)`);
+      } else {
+        setStatus('spec unchanged');
+      }
+    } catch (e) {
+      setStatus(`edit failed: ${(e as Error).message}`);
+    } finally {
+      try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+      setEditorBusy(false);
+    }
+  };
 
   if (phase === 'setup') {
     return (
@@ -305,8 +355,8 @@ export function App(props: AppProps) {
           {state.phase === 'interview'
             ? 'answer the question, or /done to skip ahead · /quit to exit'
             : state.awaitingSignoff
-              ? 'type to revise · /done to finalize · /quit to exit'
-              : '/rounds N · /threshold N · /decay N · /quit'}
+              ? 'type to revise · ^G edit spec · /done to finalize · /quit'
+              : '^G edit spec · /rounds N · /threshold N · /decay N · /quit'}
         </Text>
       </Box>
     </Box>

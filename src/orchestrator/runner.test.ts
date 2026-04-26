@@ -264,6 +264,90 @@ describe('startDebate — interview → debate → done', () => {
     expect(finalState.endReason).toBe('mutual_lgtm');
   });
 
+  it('userEdit during signoff replaces the spec, re-opens debate, and logs user_edit', async () => {
+    const claude = new FakeAgent('claude');
+    const codex = new FakeAgent('codex');
+    // After the user edits the spec mid-signoff, the next agent turn lands.
+    // We give claude one more debate turn to consume; codex never speaks
+    // again before we abort.
+    claude.setResponse({
+      kind: 'debate',
+      commentary: 'reacting to user edit',
+      edits: [],
+      verdict: 'continue',
+    });
+    codex.setResponse({
+      kind: 'debate',
+      commentary: 'unused',
+      edits: [],
+      verdict: 'continue',
+    });
+
+    const T = new Date().toISOString();
+    const initialState: State = {
+      phase: 'debate',
+      speaker: 'idle',
+      prompt: 'design x',
+      interview: [],
+      userAnswers: [],
+      readyAgents: ['claude', 'codex'],
+      debate: [
+        {
+          speaker: 'claude',
+          commentary: '',
+          edits: [{ find: '', replace: '# Spec' }],
+          applied: [{ find: '', replace: '# Spec' }],
+          rejected: [],
+          verdict: 'lgtm',
+          charsChanged: 6,
+          round: 1,
+          timestamp: T,
+        },
+        {
+          speaker: 'codex',
+          commentary: '',
+          edits: [],
+          applied: [],
+          rejected: [],
+          verdict: 'lgtm',
+          charsChanged: 0,
+          round: 1,
+          timestamp: T,
+        },
+      ],
+      spec: '# Spec',
+      round: 1,
+      roundVolumes: [6],
+      lgtmThisRound: [],
+      config: { maxRounds: 8, decayThreshold: 50, decayWindow: 2 },
+      awaitingSignoff: true,
+    };
+
+    const handle = startDebate({
+      agents: { claude, codex },
+      prompt: 'design x',
+      initialState,
+      ...paths(),
+    });
+
+    await tick(40);
+    handle.userEdit('# Spec\n\n## Risks\nadded by user');
+    await tick(80);
+    handle.abort();
+    const finalState = await handle.done;
+    expect(finalState.spec).toBe('# Spec\n\n## Risks\nadded by user');
+    expect(finalState.awaitingSignoff).toBeFalsy();
+    expect(finalState.lgtmThisRound).toEqual([]);
+
+    const { readFile } = await import('node:fs/promises');
+    const raw = await readFile(paths().transcriptPath, 'utf8');
+    const types = raw
+      .split('\n')
+      .filter(Boolean)
+      .map(l => JSON.parse(l).type);
+    expect(types).toContain('user_edit');
+  });
+
 });
 
 afterEach(() => {

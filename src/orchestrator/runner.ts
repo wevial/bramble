@@ -39,6 +39,8 @@ export type RunHandle = {
   done_interview(): void;
   /** Live tweak to debate config. */
   updateConfig(patch: Partial<DebateConfig>): void;
+  /** Replace the spec body wholesale (e.g., after an external editor session). */
+  userEdit(newSpec: string): void;
   /** In collab mode, advance past a between-turns pause. */
   continue(): void;
 };
@@ -167,6 +169,25 @@ export function startDebate(opts: RunOptions): RunHandle {
       patch,
       timestamp: new Date().toISOString(),
     });
+  };
+
+  const userEdit = (newSpec: string): void => {
+    if (state.phase !== 'debate') return;
+    const wasAwaitingSignoff = state.awaitingSignoff;
+    const ts = new Date().toISOString();
+    dispatch({ type: 'userEdit', newSpec });
+    queueAppend({
+      type: 'user_edit',
+      newSpec,
+      timestamp: ts,
+    });
+    // If we were paused for signoff, the reducer cleared the flag — release
+    // the runner so the agents react to the new spec.
+    if (wasAwaitingSignoff && signoffResolver) {
+      const r = signoffResolver;
+      signoffResolver = null;
+      r();
+    }
   };
 
   const continueCollab = (): void => {
@@ -361,6 +382,7 @@ export function startDebate(opts: RunOptions): RunHandle {
     abort: () => outer.abort(),
     done_interview: doneInterview,
     updateConfig,
+    userEdit,
     continue: continueCollab,
   };
 }

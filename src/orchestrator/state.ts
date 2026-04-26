@@ -261,7 +261,15 @@ export function reducer(state: State, action: Action): State {
       if (state.phase !== 'debate') return state;
       // Manual user edit resets the decay signal — the spec just changed, so
       // the next agent turns shouldn't be counted as "stable" off old volumes.
-      return { ...state, spec: action.newSpec, roundVolumes: [] };
+      // Also re-opens the debate if we were paused for signoff: the user just
+      // changed the deliverable, so prior LGTMs no longer apply.
+      return {
+        ...state,
+        spec: action.newSpec,
+        roundVolumes: [],
+        awaitingSignoff: false,
+        lgtmThisRound: state.awaitingSignoff ? [] : state.lgtmThisRound,
+      };
     }
 
     case 'updateConfig':
