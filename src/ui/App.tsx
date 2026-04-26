@@ -179,6 +179,12 @@ export function App(props: AppProps) {
               <Text dimColor> · </Text>
               {state.lgtmThisRound.length}/2 LGTM
               <Text dimColor> · </Text>
+              vol{' '}
+              {state.roundVolumes.length === 0
+                ? '—'
+                : state.roundVolumes[state.roundVolumes.length - 1]}
+              <Text dimColor>/{state.config.decayThreshold}</Text>
+              <Text dimColor> · </Text>
             </Text>
           )}
           {state.endReason && (
