@@ -101,6 +101,8 @@ describe('rehydrateState', () => {
           timestamp: T,
         },
       },
+      // The user signs off → final 'done'.
+      { type: 'user_done', timestamp: T },
     ])!;
     expect(s.phase).toBe('done');
     expect(s.endReason).toBe('mutual_lgtm');

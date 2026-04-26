@@ -56,6 +56,9 @@ describe('startDebate — interview → debate → done', () => {
     await tick(50);
     // codex.interview turn 2 will signal ready and flip phase. No user
     // answer is needed afterward — debate begins.
+    // Both agents lgtm in debate → awaiting user signoff. /done finalizes.
+    await tick(50);
+    handle.done_interview();
     const finalState = await handle.done;
     expect(finalState.phase).toBe('done');
     expect(finalState.endReason).toBe('mutual_lgtm');
@@ -113,6 +116,9 @@ describe('startDebate — interview → debate → done', () => {
       ...paths(),
     });
 
+    await tick(50);
+    handle.done_interview();
+    // After interview /done both agents lgtm → signoff pause; /done again finalizes.
     await tick(50);
     handle.done_interview();
     const finalState = await handle.done;
@@ -174,6 +180,9 @@ describe('startDebate — interview → debate → done', () => {
     handle.updateConfig({ maxRounds: 16, decayThreshold: 99 });
     await tick(20);
     expect(observedMax).toBe(16);
+    // Mutual LGTM lands → signoff pause; /done finalizes.
+    await tick(20);
+    handle.done_interview();
     await handle.done;
   });
 

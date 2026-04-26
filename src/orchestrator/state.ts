@@ -75,6 +75,13 @@ export type State = {
   lgtmThisRound: AgentName[];
   config: DebateConfig;
   endReason?: EndReason;
+  /**
+   * Set after both agents reach mutual LGTM in the same round, before the
+   * runner finalizes the session. While true the loop pauses so the user
+   * can either revise (any user input clears the flag and re-opens the
+   * debate) or confirm via `/done` (which flips phase to 'done').
+   */
+  awaitingSignoff?: boolean;
 };
 
 export function initialState(
@@ -134,18 +141,38 @@ export function reducer(state: State, action: Action): State {
       };
     }
 
-    case 'userAnswer':
-      return {
-        ...state,
-        userAnswers: [
-          ...state.userAnswers,
-          { content: action.content, timestamp: action.timestamp },
-        ],
-      };
+    case 'userAnswer': {
+      const userAnswers = [
+        ...state.userAnswers,
+        { content: action.content, timestamp: action.timestamp },
+      ];
+      // A user message during the post-LGTM signoff pause is implicitly a
+      // revision request: clear awaitingSignoff and the round's LGTM votes
+      // so the debate re-opens for another round.
+      if (state.awaitingSignoff) {
+        return {
+          ...state,
+          userAnswers,
+          awaitingSignoff: false,
+          lgtmThisRound: [],
+        };
+      }
+      return { ...state, userAnswers };
+    }
 
     case 'userDone':
-      if (state.phase !== 'interview') return state;
-      return { ...state, phase: 'debate' };
+      if (state.phase === 'interview') {
+        return { ...state, phase: 'debate' };
+      }
+      if (state.awaitingSignoff) {
+        return {
+          ...state,
+          phase: 'done',
+          endReason: 'mutual_lgtm',
+          awaitingSignoff: false,
+        };
+      }
+      return state;
 
     case 'debateTurn': {
       if (state.phase !== 'debate') return state;
@@ -220,7 +247,10 @@ export function reducer(state: State, action: Action): State {
           // starts fresh — agents can change their minds.
           lgtmThisRound: [],
         };
-        if (reason !== null) {
+        if (reason === 'mutual_lgtm') {
+          // Hold short of 'done' so the user can sign off (or push back).
+          next = { ...next, awaitingSignoff: true };
+        } else if (reason !== null) {
           next = { ...next, phase: 'done', endReason: reason };
         }
       }

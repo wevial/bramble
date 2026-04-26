@@ -191,8 +191,44 @@ describe('reducer — debate phase', () => {
       verdict: 'lgtm',
       timestamp: T,
     });
+    // Mutual LGTM holds short of 'done' so the user can sign off.
+    expect(s.phase).toBe('debate');
+    expect(s.awaitingSignoff).toBe(true);
+    expect(s.endReason).toBeUndefined();
+    // /done finalizes.
+    s = reducer(s, { type: 'userDone' });
     expect(s.phase).toBe('done');
     expect(s.endReason).toBe('mutual_lgtm');
+    expect(s.awaitingSignoff).toBe(false);
+  });
+
+  it('user revision during signoff re-opens the debate', () => {
+    let s = debating();
+    s = reducer(s, {
+      type: 'debateTurn',
+      speaker: 'claude',
+      commentary: '',
+      edits: [{ find: '', replace: '# Spec' }],
+      verdict: 'lgtm',
+      timestamp: T,
+    });
+    s = reducer(s, {
+      type: 'debateTurn',
+      speaker: 'codex',
+      commentary: '',
+      edits: [],
+      verdict: 'lgtm',
+      timestamp: T,
+    });
+    expect(s.awaitingSignoff).toBe(true);
+    s = reducer(s, {
+      type: 'userAnswer',
+      content: 'one more thing — add a Risks section',
+      timestamp: T,
+    });
+    expect(s.awaitingSignoff).toBe(false);
+    expect(s.phase).toBe('debate');
+    expect(s.lgtmThisRound).toEqual([]);
   });
 
   it('does NOT terminate when only one agent has lgtmd at round close', () => {

@@ -191,7 +191,10 @@ export function App(props: AppProps) {
           {state.endReason && (
             <Text color="green">{`ended: ${state.endReason}`}</Text>
           )}
-          {!state.endReason && (
+          {!state.endReason && state.awaitingSignoff && (
+            <Text color="yellow" bold>awaiting signoff</Text>
+          )}
+          {!state.endReason && !state.awaitingSignoff && (
             <Text>
               <Text dimColor>speaker </Text>
               <Text>{state.speaker}</Text>
@@ -265,7 +268,11 @@ export function App(props: AppProps) {
             }
             if (cmd.kind === 'done') {
               handleRef.current?.done_interview();
-              setStatus('skipping ahead to debate');
+              setStatus(
+                state.awaitingSignoff
+                  ? 'finalizing'
+                  : 'skipping ahead to debate',
+              );
               return;
             }
             if (cmd.kind === 'rounds') {
@@ -297,7 +304,9 @@ export function App(props: AppProps) {
         <Text dimColor>
           {state.phase === 'interview'
             ? 'answer the question, or /done to skip ahead · /quit to exit'
-            : '/rounds N · /threshold N · /decay N · /quit'}
+            : state.awaitingSignoff
+              ? 'type to revise · /done to finalize · /quit to exit'
+              : '/rounds N · /threshold N · /decay N · /quit'}
         </Text>
       </Box>
     </Box>

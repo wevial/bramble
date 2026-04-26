@@ -53,6 +53,7 @@ export function startDebate(opts: RunOptions): RunHandle {
   let turnController: AbortController | null = null;
   let userAnswerResolver: ((content: string | null) => void) | null = null;
   let collabPauseResolver: (() => void) | null = null;
+  let signoffResolver: (() => void) | null = null;
 
   let disposed = false;
   const disposeAgents = () => {
@@ -120,19 +121,42 @@ export function startDebate(opts: RunOptions): RunHandle {
       opts.onPauseChange?.(false);
       r();
     }
+    // Any user input during the post-LGTM signoff pause re-opens the debate.
+    // The reducer cleared awaitingSignoff above; release the runner's wait.
+    if (signoffResolver) {
+      const r = signoffResolver;
+      signoffResolver = null;
+      r();
+    }
   };
 
   const doneInterview = (): void => {
-    if (state.phase !== 'interview') return;
-    dispatch({ type: 'userDone' });
-    queueAppend({
-      type: 'user_done',
-      timestamp: new Date().toISOString(),
-    });
-    if (userAnswerResolver) {
-      const r = userAnswerResolver;
-      userAnswerResolver = null;
-      r(null);
+    // Reused for /done: ends the interview, OR finalizes the signoff pause
+    // after mutual LGTM.
+    if (state.phase === 'interview') {
+      dispatch({ type: 'userDone' });
+      queueAppend({
+        type: 'user_done',
+        timestamp: new Date().toISOString(),
+      });
+      if (userAnswerResolver) {
+        const r = userAnswerResolver;
+        userAnswerResolver = null;
+        r(null);
+      }
+      return;
+    }
+    if (state.phase === 'debate' && state.awaitingSignoff) {
+      dispatch({ type: 'userDone' });
+      queueAppend({
+        type: 'user_done',
+        timestamp: new Date().toISOString(),
+      });
+      if (signoffResolver) {
+        const r = signoffResolver;
+        signoffResolver = null;
+        r();
+      }
     }
   };
 
@@ -258,6 +282,25 @@ export function startDebate(opts: RunOptions): RunHandle {
           });
         }
         if ((state.phase as string) === 'done') break;
+
+        // Mutual LGTM landed — pause for user signoff before finalizing.
+        if (state.awaitingSignoff && !outer.signal.aborted) {
+          await new Promise<void>(resolve => {
+            signoffResolver = resolve;
+            outer.signal.addEventListener(
+              'abort',
+              () => {
+                if (signoffResolver) {
+                  signoffResolver = null;
+                  resolve();
+                }
+              },
+              { once: true },
+            );
+          });
+          if ((state.phase as string) === 'done') break;
+          // Otherwise the user revised — fall through and keep debating.
+        }
 
         if (mode === 'collab' && !outer.signal.aborted) {
           opts.onPauseChange?.(true);

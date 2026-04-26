@@ -81,6 +81,8 @@ const FIXTURE = [
       timestamp: T,
     },
   },
+  // User signs off after both LGTMs.
+  { type: 'user_done', timestamp: T },
   {
     type: 'done',
     reason: 'mutual_lgtm',
