@@ -59,6 +59,31 @@ export function InputBox({
         onQuit();
         return;
       }
+      // Some terminals (kitty, modern xterm with modifyOtherKeys) emit a
+      // CSI 27;<mod>;<code>~ sequence for modifier+key combos that the legacy
+      // VT input doesn't represent — Ink leaves these as raw input. The one
+      // we care about is Shift+Enter (mod 2, code 13) so the multiline prompt
+      // gets a newline instead of a literal "[27;2;13~" smeared into the buffer.
+      const modifyOther = input.match(/^\x1b?\[27;(\d+);(\d+)~$/);
+      if (modifyOther) {
+        const mod = Number(modifyOther[1]);
+        const code = Number(modifyOther[2]);
+        if (code === 13) {
+          // Enter pressed with a modifier (Shift=2, Alt=3, Ctrl=5, ...). In
+          // multiline mode, any modifier means "newline"; in single-line mode
+          // we treat it as a plain submit so users aren't surprised.
+          if (multiline && mod !== 1) {
+            setBuffer(b => b + '\n');
+            return;
+          }
+          const value = multiline ? buffer : buffer.trim();
+          if (!multiline) setBuffer('');
+          if (value.length > 0 || allowEmptySubmit) onSubmit(value);
+          return;
+        }
+        // Unrecognized modifyOtherKeys sequence — drop it instead of typing it.
+        return;
+      }
       // Tab is reserved for parent-level focus navigation.
       if (key.tab) return;
       if (key.return) {

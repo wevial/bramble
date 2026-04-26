@@ -158,6 +158,24 @@ describe('SetupScreen', () => {
     unmount();
   });
 
+  it('inserts a newline on the modifyOtherKeys Shift+Enter sequence', async () => {
+    const { stdin, lastFrame, unmount } = mount();
+    await tick();
+    stdin.write('first line');
+    await tick();
+    // CSI 27 ; 2 ; 13 ~ — the xterm modifyOtherKeys form of Shift+Enter that
+    // kitty/iTerm2/Ghostty etc. emit when the protocol is enabled.
+    stdin.write('\x1b[27;2;13~');
+    await tick();
+    stdin.write('second line');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('first line');
+    expect(frame).toContain('second line');
+    expect(frame).not.toContain('27;2;13');
+    unmount();
+  });
+
   it('preseeds the prompt, mode, and models from props', () => {
     const { lastFrame, unmount } = mount({
       initialPrompt: 'remembered',
