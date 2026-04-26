@@ -12,6 +12,7 @@ import { writeDebateLedger } from '../docs/debate.js';
 import { type State, type DebateConfig } from '../orchestrator/state.js';
 import { InputBox } from './InputBox.js';
 import { parseSlashCommand } from './commands.js';
+import { MarkdownLine } from './markdown.js';
 import type { ModelConfig } from './models.js';
 import { SetupScreen } from './SetupScreen.js';
 import { saveSetup } from './setup-store.js';
@@ -241,7 +242,13 @@ export function App(props: AppProps) {
             state.spec
               .split('\n')
               .slice(0, dims.rows - 8)
-              .map((l, i) => <Text key={i}>{l || ' '}</Text>)
+              .map((l, i) =>
+                l === '' ? (
+                  <Text key={i}> </Text>
+                ) : (
+                  <MarkdownLine key={i} line={l} />
+                ),
+              )
           )}
         </Box>
       </Box>
@@ -307,6 +314,16 @@ export function App(props: AppProps) {
 }
 
 function renderInterview(state: State) {
+  if (state.interview.length === 0) {
+    return (
+      <Text dimColor>
+        {state.speaker === 'idle' ? 'starting up…' : `${state.speaker} is thinking…`}
+      </Text>
+    );
+  }
+  // Build full Q&A interleaved, then keep the tail so older turns scroll off
+  // gracefully (Ink doesn't auto-scroll — without a tail the labels at the
+  // top get clipped first, leaving rows of bare text).
   const items: React.ReactNode[] = [];
   let answerIdx = 0;
   for (let i = 0; i < state.interview.length; i++) {
@@ -338,15 +355,18 @@ function renderInterview(state: State) {
       answerIdx++;
     }
   }
-  if (items.length === 0) {
-    return <Text dimColor>(no questions yet)</Text>;
-  }
-  return <>{items}</>;
+  return <>{items.slice(-6)}</>;
 }
 
 function renderDebate(state: State) {
   if (state.debate.length === 0) {
-    return <Text dimColor>(no debate turns yet)</Text>;
+    return (
+      <Text dimColor>
+        {state.speaker === 'idle'
+          ? 'starting up…'
+          : `${state.speaker} is thinking…`}
+      </Text>
+    );
   }
   // Show the last 8 turns.
   const slice = state.debate.slice(-8);
