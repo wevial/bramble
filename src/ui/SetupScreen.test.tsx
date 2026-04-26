@@ -190,8 +190,70 @@ describe('SetupScreen', () => {
     const frame = lastFrame() ?? '';
     expect(frame).toContain('remembered');
     expect(frame).toContain('[● collab]');
-    expect(frame).toContain('sonnet 4.6 · high');
-    expect(frame).toContain('gpt-5.4 · high');
+    // Each model row is now rendered inline with all its options visible,
+    // and the seeded values appear among them.
+    expect(frame).toContain('sonnet 4.6');
+    expect(frame).toContain('gpt-5.4');
+    expect(frame).toContain('high');
+    unmount();
+  });
+
+  it('cycles model row focus with ↑/↓ and changes options with ←/→', async () => {
+    const { stdin, lastFrame, submissions, unmount } = mount();
+    await tick();
+    stdin.write('design x');
+    await tick();
+    stdin.write(TAB); // → mode
+    await tick();
+    stdin.write(TAB); // → models
+    await tick();
+    // Default focus is on the first row (claude model). Right arrow advances
+    // claude model: default → opus 4.7.
+    stdin.write(RIGHT);
+    await tick();
+    expect(lastFrame()).toMatch(/›\s*claude model/);
+    // Move down to claude effort and pick "low".
+    stdin.write('\x1B[B'); // down
+    await tick();
+    stdin.write(RIGHT);
+    await tick();
+    expect(lastFrame()).toMatch(/›\s*claude effort/);
+    // Tab to Start and submit.
+    stdin.write(TAB); // → start
+    await tick();
+    stdin.write(ENTER);
+    await tick();
+    expect(submissions).toHaveLength(1);
+    expect(submissions[0]!.models.claudeModel).toBe('claude-opus-4-7');
+    expect(submissions[0]!.models.claudeEffort).toBe('low');
+    unmount();
+  });
+
+  it("opens custom-id editing with 'e' and saves on Enter", async () => {
+    const { stdin, submissions, unmount } = mount();
+    await tick();
+    stdin.write('design x');
+    await tick();
+    stdin.write(TAB); // mode
+    await tick();
+    stdin.write(TAB); // models (claude model row)
+    await tick();
+    // Cycle claude model all the way to "custom…" — there are 5 options;
+    // pressing left from index 0 wraps to the last option (custom).
+    stdin.write(LEFT);
+    await tick();
+    stdin.write('e'); // enter custom edit
+    await tick();
+    stdin.write('claude-future-model');
+    await tick();
+    stdin.write(ENTER); // confirm custom id
+    await tick();
+    stdin.write(TAB); // → start
+    await tick();
+    stdin.write(ENTER); // launch
+    await tick();
+    expect(submissions).toHaveLength(1);
+    expect(submissions[0]!.models.claudeModel).toBe('claude-future-model');
     unmount();
   });
 });

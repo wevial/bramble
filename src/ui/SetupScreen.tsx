@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput, useStdout } from 'ink';
 import { InputBox } from './InputBox.js';
-import { ModelPicker } from './ModelPicker.js';
+import { type ModelConfig } from './models.js';
 import {
-  CLAUDE_MODELS,
-  CODEX_MODELS,
-  type ModelConfig,
-} from './models.js';
+  buildRows,
+  resolveRows,
+  type RowState,
+} from './model-rows.js';
 import type { DebateMode } from '../orchestrator/runner.js';
 
 const BRAMBLE_BANNER = [
@@ -42,26 +42,6 @@ const EMPTY_MODELS: ModelConfig = {
   codexEffort: null,
 };
 
-function modelLabel(
-  list: { label: string; value: string | null | 'custom' }[],
-  value: string | null,
-): string {
-  const found = list.find(o => o.value === value);
-  if (found && found.value !== 'custom') return found.label;
-  return value ?? 'default';
-}
-
-function effortLabel(value: string | null): string {
-  return value ?? 'default';
-}
-
-function summarizeModels(c: ModelConfig): { claude: string; codex: string } {
-  return {
-    claude: `${modelLabel(CLAUDE_MODELS, c.claudeModel)} · ${effortLabel(c.claudeEffort)}`,
-    codex: `${modelLabel(CODEX_MODELS, c.codexModel)} · ${effortLabel(c.codexEffort)}`,
-  };
-}
-
 export function SetupScreen({
   sessionName,
   initialPrompt,
@@ -72,13 +52,16 @@ export function SetupScreen({
 }: SetupScreenProps) {
   const { stdout } = useStdout();
   const cols = stdout?.columns ?? 80;
-  const cardWidth = Math.max(58, Math.min(76, cols - 8));
+  const cardWidth = Math.max(64, Math.min(86, cols - 8));
 
   const [focus, setFocus] = useState<FieldIndex>(0);
   const [prompt, setPrompt] = useState(initialPrompt ?? '');
   const [mode, setMode] = useState<DebateMode>(initialMode ?? 'auto');
-  const [models, setModels] = useState<ModelConfig>(initialModels ?? EMPTY_MODELS);
-  const [picking, setPicking] = useState(false);
+  const [rows, setRows] = useState<RowState[]>(() =>
+    buildRows(initialModels ?? EMPTY_MODELS),
+  );
+  const [modelRowFocus, setModelRowFocus] = useState(0);
+  const [editingCustom, setEditingCustom] = useState(false);
 
   const advance = () =>
     setFocus(f => (f < 3 ? ((f + 1) as FieldIndex) : f));
@@ -91,11 +74,16 @@ export function SetupScreen({
       setFocus(0);
       return;
     }
-    onSubmit({ prompt: trimmed, mode, models });
+    onSubmit({ prompt: trimmed, mode, models: resolveRows(rows) });
   };
+
+  const focusedRow = rows[modelRowFocus]!;
+  const focusedOpt = focusedRow.options[focusedRow.index]!;
+  const needsCustomText = focusedOpt.value === 'custom';
 
   useInput(
     (input, key) => {
+      if (editingCustom) return; // InputBox owns the keyboard
       if (key.tab && key.shift) {
         retreat();
         return;
@@ -104,7 +92,7 @@ export function SetupScreen({
         advance();
         return;
       }
-      // Enter on prompt is handled by the InputBox itself (multiline + submit).
+      // Enter on prompt is handled inside the multiline InputBox.
       if (key.return && focus !== 0) {
         if (focus === 3) {
           tryStart();
@@ -119,41 +107,52 @@ export function SetupScreen({
         }
         return;
       }
-      if (focus === 2 && input === ' ') {
-        setPicking(true);
+      if (focus === 2) {
+        if (key.upArrow) {
+          setModelRowFocus(i => (i - 1 + rows.length) % rows.length);
+          return;
+        }
+        if (key.downArrow) {
+          setModelRowFocus(i => (i + 1) % rows.length);
+          return;
+        }
+        if (key.leftArrow) {
+          setRows(rs =>
+            rs.map((r, i) =>
+              i === modelRowFocus
+                ? { ...r, index: (r.index - 1 + r.options.length) % r.options.length }
+                : r,
+            ),
+          );
+          return;
+        }
+        if (key.rightArrow) {
+          setRows(rs =>
+            rs.map((r, i) =>
+              i === modelRowFocus
+                ? { ...r, index: (r.index + 1) % r.options.length }
+                : r,
+            ),
+          );
+          return;
+        }
+        if (input === 'e' && needsCustomText) {
+          setEditingCustom(true);
+          return;
+        }
         return;
       }
     },
-    { isActive: !picking },
+    { isActive: true },
   );
 
-  if (picking) {
-    return (
-      <ModelPicker
-        initial={models}
-        onSubmit={next => {
-          setModels(next);
-          setPicking(false);
-          setFocus(3);
-        }}
-        onCancel={() => setPicking(false)}
-        onQuit={onQuit}
-      />
-    );
-  }
-
-  const sum = summarizeModels(models);
   const focusColor = (target: FieldIndex): string | undefined =>
     focus === target ? 'green' : undefined;
   const focusMarker = (target: FieldIndex) =>
     focus === target ? '▸ ' : '  ';
 
   return (
-    <Box
-      flexDirection="column"
-      width={cols}
-      alignItems="center"
-    >
+    <Box flexDirection="column" width={cols} alignItems="center">
       <Box
         flexDirection="column"
         borderStyle="round"
@@ -217,16 +216,46 @@ export function SetupScreen({
             {focusMarker(2)}Models
           </Text>
         </Box>
-        <Box>
-          <Text>   claude: </Text>
-          <Text color="cyan">{sum.claude}</Text>
-        </Box>
-        <Box>
-          <Text>   codex:  </Text>
-          <Text color="magenta">{sum.codex}</Text>
-        </Box>
         {focus === 2 ? (
-          <Text dimColor>   space to customize</Text>
+          <Text dimColor>   ↑↓ row · ←→ option{needsCustomText ? " · 'e' edit custom id" : ''}</Text>
+        ) : null}
+        {rows.map((row, i) => (
+          <ModelRow
+            key={row.key}
+            row={row}
+            sectionFocused={focus === 2}
+            rowFocused={focus === 2 && modelRowFocus === i}
+          />
+        ))}
+        {focus === 2 && needsCustomText ? (
+          <Box flexDirection="column" marginTop={1}>
+            <Text dimColor>
+              {`   custom ${focusedRow.key.startsWith('claude') ? 'claude' : 'codex'} model id${
+                editingCustom ? ' (enter to confirm)' : " (press 'e' to edit)"
+              }:`}
+            </Text>
+            {editingCustom ? (
+              <Box marginLeft={3} borderStyle="single" paddingX={1}>
+                <InputBox
+                  allowEmptySubmit
+                  initialValue={focusedRow.custom}
+                  onSubmit={line => {
+                    setRows(rs =>
+                      rs.map((r, i) =>
+                        i === modelRowFocus ? { ...r, custom: line } : r,
+                      ),
+                    );
+                    setEditingCustom(false);
+                  }}
+                  onQuit={onQuit}
+                />
+              </Box>
+            ) : (
+              <Text color={focusedRow.custom ? 'white' : 'gray'}>
+                {`   ${focusedRow.custom || '(none — use default)'}`}
+              </Text>
+            )}
+          </Box>
         ) : null}
         <Text> </Text>
 
@@ -267,4 +296,50 @@ function ModeOption({
     );
   }
   return <Text dimColor>[  {label}]</Text>;
+}
+
+function ModelRow({
+  row,
+  sectionFocused,
+  rowFocused,
+}: {
+  row: RowState;
+  sectionFocused: boolean;
+  rowFocused: boolean;
+}) {
+  return (
+    <Box>
+      <Box width={22}>
+        <Text color={rowFocused ? 'cyanBright' : undefined}>
+          {rowFocused ? '   › ' : '     '}
+          {row.label}
+        </Text>
+      </Box>
+      <Box>
+        {row.options.map((opt, i) => {
+          const selected = i === row.index;
+          const display =
+            opt.value === 'custom' && selected && row.custom
+              ? `custom: ${row.custom}`
+              : opt.label;
+          return (
+            <Text key={opt.label}>
+              {i === 0 ? '' : '  '}
+              {selected ? (
+                <Text
+                  color={rowFocused ? 'cyanBright' : sectionFocused ? 'white' : undefined}
+                  bold={rowFocused}
+                  underline={rowFocused}
+                >
+                  {display}
+                </Text>
+              ) : (
+                <Text dimColor>{display}</Text>
+              )}
+            </Text>
+          );
+        })}
+      </Box>
+    </Box>
+  );
 }
