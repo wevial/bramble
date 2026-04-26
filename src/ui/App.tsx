@@ -12,7 +12,7 @@ import { writeDebateLedger } from '../docs/debate.js';
 import { type State, type DebateConfig } from '../orchestrator/state.js';
 import { InputBox } from './InputBox.js';
 import { parseSlashCommand } from './commands.js';
-import { MarkdownLine } from './markdown.js';
+import { MarkdownBlock } from './markdown.js';
 import type { ModelConfig } from './models.js';
 import { SetupScreen } from './SetupScreen.js';
 import { saveSetup } from './setup-store.js';
@@ -239,16 +239,7 @@ export function App(props: AppProps) {
           {state.spec.length === 0 ? (
             <Text dimColor>(empty — no edits yet)</Text>
           ) : (
-            state.spec
-              .split('\n')
-              .slice(0, dims.rows - 8)
-              .map((l, i) =>
-                l === '' ? (
-                  <Text key={i}> </Text>
-                ) : (
-                  <MarkdownLine key={i} line={l} />
-                ),
-              )
+            <MarkdownBlock text={state.spec} maxLines={dims.rows - 8} />
           )}
         </Box>
       </Box>

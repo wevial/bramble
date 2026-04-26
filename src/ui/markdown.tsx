@@ -140,6 +140,48 @@ export function MarkdownLine({ line }: { line: string }) {
 }
 
 /**
+ * Render a multi-line markdown body with fenced code-block awareness. Lines
+ * inside a ```fence``` are rendered with a code style (no inline parsing,
+ * delimiters preserved); fence markers themselves are dimmed. Outside fences
+ * each line goes through MarkdownLine.
+ */
+export function MarkdownBlock({
+  text,
+  maxLines,
+}: {
+  text: string;
+  maxLines?: number;
+}) {
+  const lines = text.split('\n');
+  const sliced =
+    typeof maxLines === 'number' ? lines.slice(0, maxLines) : lines;
+  let inFence = false;
+  return (
+    <>
+      {sliced.map((line, i) => {
+        if (line.startsWith('```')) {
+          inFence = !inFence;
+          return (
+            <Text key={i} color="gray" dimColor>
+              {line}
+            </Text>
+          );
+        }
+        if (inFence) {
+          return (
+            <Text key={i} color="cyan">
+              {line || ' '}
+            </Text>
+          );
+        }
+        if (line === '') return <Text key={i}> </Text>;
+        return <MarkdownLine key={i} line={line} />;
+      })}
+    </>
+  );
+}
+
+/**
  * Inline-only markdown rendering: parses **bold**, *italic*, `code` but does
  * NOT interpret leading # or - as structural (use MarkdownLine for that).
  * Intended for chat commentary where the text may contain inline formatting
