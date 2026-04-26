@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 
 export type InputBoxProps = {
@@ -37,14 +37,16 @@ export function InputBox({
   isActive,
   onChange,
 }: InputBoxProps) {
-  const [buffer, setBufferState] = useState(initialValue ?? '');
-  const setBuffer = (next: string | ((prev: string) => string)) => {
-    setBufferState(prev => {
-      const value = typeof next === 'function' ? next(prev) : next;
-      if (value !== prev) onChange?.(value);
-      return value;
-    });
-  };
+  const [buffer, setBuffer] = useState(initialValue ?? '');
+  // Notify the parent of buffer changes via effect so the callback never fires
+  // mid-render — calling a parent setState inside a child updater triggers
+  // React's "Cannot update a component while rendering a different one" warning.
+  const lastReportedRef = useRef(buffer);
+  useEffect(() => {
+    if (lastReportedRef.current === buffer) return;
+    lastReportedRef.current = buffer;
+    onChange?.(buffer);
+  }, [buffer, onChange]);
 
   useInput(
     (input, key) => {
