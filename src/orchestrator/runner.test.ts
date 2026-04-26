@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { FakeAgent } from '../agents/fake.js';
 import { startDebate } from './runner.js';
+import type { State } from './state.js';
 
 let tmp: string;
 
@@ -184,6 +185,83 @@ describe('startDebate — interview → debate → done', () => {
     await tick(20);
     handle.done_interview();
     await handle.done;
+  });
+
+  it('resumes into the signoff pause without scheduling another agent turn', async () => {
+    // Regression: rehydrating a transcript that landed mid-signoff used to
+    // skip the wait at the top of the loop and immediately ask one of the
+    // agents for another turn.
+    const claude = new FakeAgent('claude');
+    const codex = new FakeAgent('codex');
+    // If the bug were present, whichever agent is asked first would speak
+    // a debate turn — assert neither does.
+    claude.setResponse({
+      kind: 'debate',
+      commentary: 'should never run',
+      edits: [],
+      verdict: 'continue',
+    });
+    codex.setResponse({
+      kind: 'debate',
+      commentary: 'should never run',
+      edits: [],
+      verdict: 'continue',
+    });
+
+    const T = new Date().toISOString();
+    const initialState: State = {
+      phase: 'debate',
+      speaker: 'idle',
+      prompt: 'design x',
+      interview: [],
+      userAnswers: [],
+      readyAgents: ['claude', 'codex'],
+      debate: [
+        {
+          speaker: 'claude',
+          commentary: '',
+          edits: [{ find: '', replace: '# Spec' }],
+          applied: [{ find: '', replace: '# Spec' }],
+          rejected: [],
+          verdict: 'lgtm',
+          charsChanged: 6,
+          round: 1,
+          timestamp: T,
+        },
+        {
+          speaker: 'codex',
+          commentary: '',
+          edits: [],
+          applied: [],
+          rejected: [],
+          verdict: 'lgtm',
+          charsChanged: 0,
+          round: 1,
+          timestamp: T,
+        },
+      ],
+      spec: '# Spec',
+      round: 1,
+      roundVolumes: [6],
+      lgtmThisRound: [],
+      config: { maxRounds: 8, decayThreshold: 50, decayWindow: 2 },
+      awaitingSignoff: true,
+    };
+
+    const handle = startDebate({
+      agents: { claude, codex },
+      prompt: 'design x',
+      initialState,
+      ...paths(),
+    });
+
+    await tick(80);
+    // Still paused — no new agent turn landed.
+    handle.done_interview();
+    const finalState = await handle.done;
+    expect(finalState.debate).toHaveLength(2);
+    expect(finalState.phase).toBe('done');
+    expect(finalState.endReason).toBe('mutual_lgtm');
   });
 
 });

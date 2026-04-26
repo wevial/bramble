@@ -182,6 +182,27 @@ export function startDebate(opts: RunOptions): RunHandle {
     opts.onState?.(state);
     try {
       while (state.phase !== 'done' && !outer.signal.aborted) {
+        // Resume case: if we boot into a rehydrated state that's already
+        // mid-signoff, hold here for the user before scheduling another
+        // agent turn. The mid-loop pause below covers the live path.
+        if (state.awaitingSignoff && !outer.signal.aborted) {
+          await new Promise<void>(resolve => {
+            signoffResolver = resolve;
+            outer.signal.addEventListener(
+              'abort',
+              () => {
+                if (signoffResolver) {
+                  signoffResolver = null;
+                  resolve();
+                }
+              },
+              { once: true },
+            );
+          });
+          if ((state.phase as string) === 'done') break;
+          if (outer.signal.aborted) break;
+        }
+
         const speaker = nextSpeaker(state);
         dispatch({ type: 'turnStarted', speaker });
 
