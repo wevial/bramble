@@ -193,62 +193,142 @@ if (real) {
 } else {
   const fClaude = new FakeAgent('claude');
   const fCodex = new FakeAgent('codex');
+  // Demo fixtures for an "auth system" goal — interview goes ~4 questions
+  // per agent before signaling ready, then a multi-round debate evolves the
+  // spec rather than rubber-stamping. Real runs use --real with live agents.
   fClaude.setResponses([
     {
       kind: 'interview',
-      commentary: 'Want to scope users first.',
-      question: 'Internal users only, or external signups too?',
+      commentary: 'Scoping users before mechanics.',
+      question:
+        'Who will use this? Internal employees only, public signups, or both with role-based access?',
     },
     {
       kind: 'interview',
-      commentary: 'Got it.',
+      commentary: "Now the threat model — that shapes the auth surface.",
+      question:
+        'What are the highest-risk attack scenarios you want to defend against (phishing, credential stuffing, session hijacking, insider threat)?',
+    },
+    {
+      kind: 'interview',
+      commentary: "Need to understand operational constraints.",
+      question:
+        'Is there an existing identity provider (Okta/Google Workspace/etc.) you want to integrate with, or should this be standalone?',
+    },
+    {
+      kind: 'interview',
+      commentary: 'Last one — recovery is usually where these systems break.',
+      question:
+        'How do users recover access if they lose their credentials? Email reset, admin-issued reset, recovery codes?',
+    },
+    {
+      kind: 'interview',
+      commentary: 'I have enough to start drafting.',
       ready: true,
     },
     {
       kind: 'debate',
-      commentary: 'Seeding the spec with a goals + auth skeleton.',
+      commentary:
+        'Seeding the spec with goals, threat model, auth flow, and recovery — based on the interview answers.',
       edits: [
         {
           find: '',
           replace:
-            '# Spec\n\n## Goals\nA simple authentication system.\n\n## Auth\n- Email + password\n- bcrypt hashing\n',
+            '# Authentication Spec\n\n' +
+            '## Goals\nA minimal email + password auth system for internal tools, integrated with the existing identity provider for SSO.\n\n' +
+            '## Threat Model\n- Credential stuffing: rate-limit + lockouts.\n- Session hijacking: short-lived tokens, rotated on privilege change.\n- Phishing: 2FA hooks (TOTP).\n\n' +
+            '## Auth Flow\n- Email + password fallback (bcrypt cost 12).\n- SSO via OIDC as primary path.\n- Optional TOTP second factor.\n\n' +
+            '## Recovery\n- Admin-issued reset link, time-boxed (15 min).\n- Recovery codes generated at signup.\n',
         },
       ],
     },
     {
       kind: 'debate',
-      commentary: 'Tightened the goals line per codex.',
+      commentary:
+        "Codex is right that 'short-lived' is hand-wavy. Pinning concrete numbers and adding a token-rotation clause.",
       edits: [
-        { find: 'A simple authentication system.', replace: 'A minimal email + password auth system for internal tools.' },
+        {
+          find: '- Session hijacking: short-lived tokens, rotated on privilege change.',
+          replace:
+            '- Session hijacking: 30-min idle expiry, sliding refresh up to 24h, hard rotation on privilege change.',
+        },
       ],
+    },
+    {
+      kind: 'debate',
+      commentary: 'Tightening "Goals" to make the SSO-primary stance explicit.',
+      edits: [
+        {
+          find: 'integrated with the existing identity provider for SSO.',
+          replace:
+            'with SSO (OIDC) as the primary path and email+password as a fallback only when SSO is unavailable.',
+        },
+      ],
+    },
+    {
+      kind: 'debate',
+      commentary: 'I think this is solid now. LGTM.',
+      edits: [],
       verdict: 'lgtm',
     },
   ]);
   fCodex.setResponses([
     {
       kind: 'interview',
-      commentary: 'Need to know the deployment target.',
-      question: 'Web app? Mobile? CLI?',
+      commentary: 'Echoing what claude is after — also need delivery surface.',
+      question:
+        'What clients consume this — web app, mobile, CLI, server-to-server, or some mix?',
     },
     {
       kind: 'interview',
-      commentary: 'I have enough.',
+      commentary: 'Compliance shapes a lot of the audit + retention surface.',
+      question:
+        'Are there compliance constraints (SOC 2, HIPAA, GDPR) that force specific audit logging or data-retention rules?',
+    },
+    {
+      kind: 'interview',
+      commentary: 'And the org context — that changes whether to over-invest in this.',
+      question:
+        'What scale are we designing for now (users, peak login rate), and is there a known 12-month growth target?',
+    },
+    {
+      kind: 'interview',
+      commentary: 'I have what I need.',
       ready: true,
     },
     {
       kind: 'debate',
-      commentary: '"Goals" is too vague — recommend tightening to internal tools.',
+      commentary:
+        '"Short-lived tokens" is too vague — propose tightening to concrete time windows.',
       edits: [],
     },
     {
       kind: 'debate',
-      commentary: 'Looks good.',
+      commentary:
+        "Good revision on session hijacking. Adding a non-functional rate-limit number to back the credential-stuffing line.",
+      edits: [
+        {
+          find: '- Credential stuffing: rate-limit + lockouts.',
+          replace:
+            '- Credential stuffing: 5 attempts / 15 min per IP, exponential lockouts after 3 trips.',
+        },
+      ],
+    },
+    {
+      kind: 'debate',
+      commentary: 'Goals reads cleanly now. Happy with this.',
+      edits: [],
+      verdict: 'lgtm',
+    },
+    {
+      kind: 'debate',
+      commentary: 'Holding lgtm.',
       edits: [],
       verdict: 'lgtm',
     },
   ]);
-  fClaude.setTokenDelayMs(15);
-  fCodex.setTokenDelayMs(15);
+  fClaude.setTokenDelayMs(8);
+  fCodex.setTokenDelayMs(8);
   claude = fClaude;
   codex = fCodex;
 }

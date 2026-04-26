@@ -4,26 +4,17 @@ import type { State } from './state.js';
 /**
  * Pick the next agent to speak in the current phase.
  *
- * Interview: alternate, claude first.
- *
- * Debate: alternate, but the agent who proposed the most-recent landed edit
- * gets reacted to first (so the OTHER agent gets the next turn). Falls back
- * to alternation by last speaker, or claude if the debate hasn't started.
+ * Both phases just alternate by the last speaker, claude first. Earlier
+ * versions tried to "make the other agent react to the last editor" but
+ * that locked into infinite loops if the responder didn't itself edit.
+ * Plain alternation keeps round bookkeeping sane and termination
+ * conditions reachable.
  */
 export function nextSpeaker(state: State): AgentName {
-  if (state.phase === 'interview') {
-    const last = state.interview[state.interview.length - 1];
-    if (!last) return 'claude';
-    return other(last.speaker);
-  }
-  // debate
-  const lastEditor = [...state.debate]
-    .reverse()
-    .find(t => t.applied.length > 0);
-  if (lastEditor) return other(lastEditor.speaker);
-  const lastSpeaker = state.debate[state.debate.length - 1];
-  if (!lastSpeaker) return 'claude';
-  return other(lastSpeaker.speaker);
+  const log = state.phase === 'interview' ? state.interview : state.debate;
+  const last = log[log.length - 1];
+  if (!last) return 'claude';
+  return other(last.speaker);
 }
 
 function other(a: AgentName): AgentName {

@@ -11,7 +11,7 @@ export function systemInstructions(speaker: AgentName): string {
 
 The session has two phases:
 
-1. **Interview** — both agents take turns asking the user clarifying questions to surface hidden assumptions. You are NOT writing the spec yet. The user answers between turns. When you genuinely have enough context to start drafting, signal "ready". The phase advances to debate once both agents are ready.
+1. **Interview** — both agents take turns asking the user clarifying questions to surface hidden assumptions. You are NOT writing the spec yet. The user answers between turns. Be deliberate: ask about *users*, *threat model / failure modes*, *constraints* (compliance, scale, integrations), *operational surface* (recovery, audit, observability), and *what the user is explicitly NOT building*. Aim for ~4–6 substantive questions before you signal "ready" — vague prompts almost never have enough context after 2 questions. Signal ready only when you genuinely could draft a tight spec from what you know. The phase advances once both agents signal ready.
 
 2. **Debate** — you and ${other} collaboratively edit a single shared spec.md by emitting structured find/replace patches. Each turn ships with commentary explaining what you changed and why. Vote "lgtm" only when the spec is genuinely solid; otherwise "continue".
 

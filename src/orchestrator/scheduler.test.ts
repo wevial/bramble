@@ -9,7 +9,7 @@ describe('nextSpeaker — interview phase', () => {
     expect(nextSpeaker(initialState('x'))).toBe('claude');
   });
 
-  it('alternates after the first interview turn', () => {
+  it('alternates after each interview turn', () => {
     let s = initialState('x');
     s = reducer(s, {
       type: 'interviewTurn',
@@ -35,20 +35,7 @@ describe('nextSpeaker — debate phase', () => {
     expect(nextSpeaker(debating())).toBe('claude');
   });
 
-  it('alternates by last speaker when no edits have landed yet', () => {
-    let s = debating();
-    s = reducer(s, {
-      type: 'debateTurn',
-      speaker: 'claude',
-      commentary: 'hmm',
-      edits: [],
-      verdict: 'continue',
-      timestamp: T,
-    });
-    expect(nextSpeaker(s)).toBe('codex');
-  });
-
-  it('hands the next turn to the agent who is NOT the most recent editor', () => {
+  it('alternates by last speaker regardless of who edited', () => {
     let s = debating();
     s = reducer(s, {
       type: 'debateTurn',
@@ -62,32 +49,14 @@ describe('nextSpeaker — debate phase', () => {
     s = reducer(s, {
       type: 'debateTurn',
       speaker: 'codex',
-      commentary: 'looking',
+      commentary: 'no edits this turn',
       edits: [],
       verdict: 'continue',
       timestamp: T,
     });
-    expect(nextSpeaker(s)).toBe('codex');
-  });
-
-  it('flips when the other agent edits next', () => {
-    let s = debating();
-    s = reducer(s, {
-      type: 'debateTurn',
-      speaker: 'claude',
-      commentary: '',
-      edits: [{ find: '', replace: '# Spec' }],
-      verdict: 'continue',
-      timestamp: T,
-    });
-    s = reducer(s, {
-      type: 'debateTurn',
-      speaker: 'codex',
-      commentary: '',
-      edits: [{ find: '# Spec', replace: '# Specification' }],
-      verdict: 'continue',
-      timestamp: T,
-    });
+    // Codex just spoke (no edits) — claude goes next, NOT codex again. The
+    // earlier "react to last editor" rule had this wrong and produced an
+    // infinite loop when one agent stopped editing.
     expect(nextSpeaker(s)).toBe('claude');
   });
 });
