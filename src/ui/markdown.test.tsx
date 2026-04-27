@@ -1,5 +1,12 @@
+import React from 'react';
 import { describe, it, expect } from 'vitest';
-import { classifyLine, parseInline } from './markdown.js';
+import { render } from 'ink-testing-library';
+import {
+  classifyLine,
+  MarkdownBlock,
+  parseInline,
+  visibleLength,
+} from './markdown.js';
 
 describe('classifyLine', () => {
   it('detects ATX headings at each level', () => {
@@ -52,5 +59,33 @@ describe('parseInline', () => {
 
   it('returns plain text for non-markdown', () => {
     expect(parseInline('plain words')).toEqual([{ text: 'plain words' }]);
+  });
+
+  it('drops an unmatched inline code delimiter and leaves the content plain', () => {
+    expect(parseInline('use `foo here')).toEqual([
+      { text: 'use foo here' },
+    ]);
+  });
+});
+
+describe('MarkdownBlock', () => {
+  it('hides fence marker lines and renders fenced content as code', () => {
+    const { lastFrame, unmount } = render(
+      <MarkdownBlock text={'before\n```ts\nconst x = 1;\n```\nafter'} />,
+    );
+
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('before');
+    expect(frame).toContain('const x = 1;');
+    expect(frame).toContain('after');
+    expect(frame).not.toContain('```');
+    unmount();
+  });
+});
+
+describe('visibleLength', () => {
+  it('treats fence marker lines as zero-width', () => {
+    expect(visibleLength('```ts')).toBe(0);
+    expect(visibleLength('```')).toBe(0);
   });
 });

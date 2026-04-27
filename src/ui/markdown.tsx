@@ -47,6 +47,8 @@ export function parseInline(text: string): InlineSpan[] {
         i = end + 1;
         continue;
       }
+      i++;
+      continue;
     }
     if (text[i] === '*' || text[i] === '_') {
       const delim = text[i]!;
@@ -101,6 +103,7 @@ function headingColor(level: number): string | undefined {
  * naive string-length padding produces misaligned borders.
  */
 export function visibleLength(line: string): number {
+  if (line.startsWith('```')) return 0;
   const cls = classifyLine(line);
   if (cls.kind === 'heading') {
     return inlineVisibleLength(cls.content);
@@ -142,7 +145,7 @@ export function MarkdownLine({ line }: { line: string }) {
 /**
  * Render a multi-line markdown body with fenced code-block awareness. Lines
  * inside a ```fence``` are rendered with a code style (no inline parsing,
- * delimiters preserved); fence markers themselves are dimmed. Outside fences
+ * delimiters preserved); fence markers themselves are hidden. Outside fences
  * each line goes through MarkdownLine.
  */
 export function MarkdownBlock({
@@ -161,11 +164,7 @@ export function MarkdownBlock({
       {sliced.map((line, i) => {
         if (line.startsWith('```')) {
           inFence = !inFence;
-          return (
-            <Text key={i} color="gray" dimColor>
-              {line}
-            </Text>
-          );
+          return <Text key={i}> </Text>;
         }
         if (inFence) {
           return (
