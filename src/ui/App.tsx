@@ -16,10 +16,13 @@ import { writeDebateLedger } from '../docs/debate.js';
 import { type State, type DebateConfig } from '../orchestrator/state.js';
 import { InputBox } from './InputBox.js';
 import { parseSlashCommand } from './commands.js';
-import { MarkdownBlock } from './markdown.js';
 import type { ModelConfig } from './models.js';
 import { SetupScreen } from './SetupScreen.js';
 import { saveSetup } from './setup-store.js';
+import { FlowSidebar } from './FlowSidebar.js';
+import { ConversationPane } from './ConversationPane.js';
+import { SpecPane } from './SpecPane.js';
+import { StatusStrip } from './StatusStrip.js';
 
 export type AppProps = {
   agents: { claude: Agent; codex: Agent };
@@ -212,88 +215,82 @@ export function App(props: AppProps) {
     );
   }
 
+  const wide = dims.columns >= 100;
+  const sidebarWidth = wide ? 26 : 0;
+  const remaining = Math.max(20, dims.columns - sidebarWidth);
+  const conversationWidth = Math.floor(remaining / 2);
+  const specMaxLines = Math.max(4, dims.rows - 10);
+  const modelConfig: ModelConfig = props.initialModelConfig ?? {
+    claudeModel: null,
+    claudeEffort: null,
+    codexModel: null,
+    codexEffort: null,
+  };
+
   return (
     <Box flexDirection="column" width={dims.columns} height={dims.rows}>
-      <Box paddingX={1} flexShrink={0}>
+      <Box paddingX={1} flexShrink={0} justifyContent="space-between">
         <Text>
-          <Text color="greenBright" bold>
-            ✦ bramble
-          </Text>
+          <Text color="greenBright" bold>✦ bramble</Text>
           <Text dimColor> · </Text>
           <Text>{props.sessionName}</Text>
-          <Text dimColor> · </Text>
-          <Text color={phaseColor(state.phase)}>{state.phase}</Text>
-          <Text dimColor> · </Text>
-          {state.phase === 'debate' && (
-            <Text>
-              round {state.round}/{state.config.maxRounds}
-              <Text dimColor> · </Text>
-              {state.lgtmThisRound.length}/2 LGTM
-              <Text dimColor> · </Text>
-              vol{' '}
-              {state.roundVolumes.length === 0
-                ? '—'
-                : state.roundVolumes[state.roundVolumes.length - 1]}
-              <Text dimColor>/{state.config.decayThreshold}</Text>
-              <Text dimColor> · </Text>
-            </Text>
-          )}
-          {state.endReason && (
-            <Text color="green">{`ended: ${state.endReason}`}</Text>
-          )}
-          {!state.endReason && state.awaitingSignoff && (
-            <Text color="yellow" bold>awaiting signoff</Text>
-          )}
-          {!state.endReason && !state.awaitingSignoff && (
-            <Text>
-              <Text dimColor>speaker </Text>
-              <Text>{state.speaker}</Text>
-            </Text>
-          )}
-          {paused && (
+          {state.prompt ? (
             <Text>
               <Text dimColor> · </Text>
-              <Text color="yellow">paused</Text>
+              <Text>{truncate(state.prompt, dims.columns - 40)}</Text>
             </Text>
-          )}
-          <Text dimColor> · </Text>
-          <Text dimColor>{status}</Text>
+          ) : null}
         </Text>
+        <Text dimColor>{status}</Text>
       </Box>
+      {!wide && (
+        <Box paddingX={1} flexShrink={0}>
+          <Text>
+            <Text color="greenBright">✦ </Text>
+            <Text bold>You</Text>
+            <Text dimColor> · </Text>
+            <Text color="cyan" bold>Claude</Text>
+            {state.speaker === 'claude' ? (
+              <Text color="yellow"> ⏳</Text>
+            ) : null}
+            <Text dimColor> · </Text>
+            <Text color="magenta" bold>Codex</Text>
+            {state.speaker === 'codex' ? (
+              <Text color="yellow"> ⏳</Text>
+            ) : null}
+            {paused ? <Text color="yellow"> · paused</Text> : null}
+          </Text>
+        </Box>
+      )}
 
       <Box flexGrow={1} flexDirection="row">
+        {wide && (
+          <Box
+            flexDirection="column"
+            borderStyle="single"
+            width={sidebarWidth}
+            flexShrink={0}
+            overflow="hidden"
+          >
+            <FlowSidebar state={state} />
+          </Box>
+        )}
         <Box
           flexDirection="column"
           borderStyle="single"
-          paddingX={1}
-          width={Math.floor(dims.columns / 2)}
+          width={conversationWidth}
           flexShrink={0}
           overflow="hidden"
         >
-          <Text bold color="cyan">
-            {state.phase === 'interview' ? 'interview' : 'debate log'}
-          </Text>
-          <Text dimColor>{'─'.repeat(Math.max(4, Math.floor(dims.columns / 2) - 4))}</Text>
-          {state.phase === 'interview'
-            ? renderInterview(state)
-            : renderDebate(state)}
+          <ConversationPane state={state} maxEntries={8} />
         </Box>
         <Box
           flexDirection="column"
           borderStyle="single"
-          paddingX={1}
           flexGrow={1}
           overflow="hidden"
         >
-          <Text bold color="green">
-            spec.md
-          </Text>
-          <Text dimColor>{'─'.repeat(Math.max(4, Math.floor(dims.columns / 2) - 4))}</Text>
-          {state.spec.length === 0 ? (
-            <Text dimColor>(empty — no edits yet)</Text>
-          ) : (
-            <MarkdownBlock text={state.spec} maxLines={dims.rows - 8} />
-          )}
+          <SpecPane text={state.spec} maxLines={specMaxLines} />
         </Box>
       </Box>
 
@@ -350,6 +347,7 @@ export function App(props: AppProps) {
           }}
         />
       </Box>
+      <StatusStrip state={state} models={modelConfig} />
       <Box paddingX={1}>
         <Text dimColor>
           {state.phase === 'interview'
@@ -363,86 +361,9 @@ export function App(props: AppProps) {
   );
 }
 
-function renderInterview(state: State) {
-  if (state.interview.length === 0) {
-    return (
-      <Text dimColor>
-        {state.speaker === 'idle' ? 'starting up…' : `${state.speaker} is thinking…`}
-      </Text>
-    );
-  }
-  // Build full Q&A interleaved, then keep the tail so older turns scroll off
-  // gracefully (Ink doesn't auto-scroll — without a tail the labels at the
-  // top get clipped first, leaving rows of bare text).
-  const items: React.ReactNode[] = [];
-  let answerIdx = 0;
-  for (let i = 0; i < state.interview.length; i++) {
-    const t = state.interview[i]!;
-    items.push(
-      <Box key={`t${i}`} flexDirection="column" marginBottom={1}>
-        <Text color={t.speaker === 'claude' ? 'cyan' : 'magenta'} bold>
-          {t.speaker}
-          {t.ready ? <Text color="green"> · ready</Text> : null}
-        </Text>
-        {t.commentary ? <Text>{t.commentary}</Text> : null}
-        {t.question ? (
-          <Text color="yellow">
-            ? {t.question}
-          </Text>
-        ) : null}
-      </Box>,
-    );
-    const ans = state.userAnswers[answerIdx];
-    if (ans && Date.parse(ans.timestamp) >= Date.parse(t.timestamp)) {
-      items.push(
-        <Box key={`a${i}`} flexDirection="column" marginBottom={1}>
-          <Text color="white" bold>
-            user
-          </Text>
-          <Text>{ans.content}</Text>
-        </Box>,
-      );
-      answerIdx++;
-    }
-  }
-  return <>{items.slice(-6)}</>;
+function truncate(s: string, max: number): string {
+  if (max <= 0) return '';
+  if (s.length <= max) return s;
+  return s.slice(0, Math.max(0, max - 1)) + '…';
 }
 
-function renderDebate(state: State) {
-  if (state.debate.length === 0) {
-    return (
-      <Text dimColor>
-        {state.speaker === 'idle'
-          ? 'starting up…'
-          : `${state.speaker} is thinking…`}
-      </Text>
-    );
-  }
-  // Show the last 8 turns.
-  const slice = state.debate.slice(-8);
-  return (
-    <>
-      {slice.map((t, i) => (
-        <Box key={i} flexDirection="column" marginBottom={1}>
-          <Text color={t.speaker === 'claude' ? 'cyan' : 'magenta'} bold>
-            {t.speaker} · r{t.round} ·{' '}
-            <Text color={t.verdict === 'lgtm' ? 'green' : 'yellow'}>
-              {t.verdict}
-            </Text>
-            {t.applied.length > 0 ? (
-              <Text dimColor> · {t.applied.length} edits ({t.charsChanged}c)</Text>
-            ) : null}
-            {t.rejected.length > 0 ? (
-              <Text color="red"> · {t.rejected.length} rejected</Text>
-            ) : null}
-          </Text>
-          {t.commentary ? <Text>{t.commentary}</Text> : null}
-        </Box>
-      ))}
-    </>
-  );
-}
-
-function phaseColor(p: 'interview' | 'debate' | 'done'): string {
-  return p === 'interview' ? 'yellow' : p === 'debate' ? 'cyan' : 'green';
-}
