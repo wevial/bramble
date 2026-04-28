@@ -90,31 +90,35 @@ export function ConversationPane({
         ? 'Waiting for the first turn…'
         : `${speakerLabel(speaker as 'claude' | 'codex')} is starting up…`;
     return (
-      <Box flexDirection="column" paddingX={1}>
+      <Box flexDirection="column" paddingX={1} flexGrow={1}>
         <Text bold color="cyan">CONVERSATION</Text>
         <Box height={1} />
-        <Text dimColor>{placeholder}</Text>
+        <Box flexDirection="column" flexGrow={1} justifyContent="flex-end">
+          <Text dimColor>{placeholder}</Text>
+        </Box>
       </Box>
     );
   }
 
   return (
-    <Box flexDirection="column" paddingX={1}>
+    <Box flexDirection="column" paddingX={1} flexGrow={1}>
       <Text bold color="cyan">CONVERSATION</Text>
       <Box height={1} />
-      {slice.map((e, i) => (
-        <Box key={i} flexDirection="column" marginBottom={1}>
-          {renderHeader(e)}
-          {renderBody(e)}
-        </Box>
-      ))}
-      {(state.speaker === 'claude' || state.speaker === 'codex') &&
-      !state.endReason ? (
-        <Text dimColor>
-          {speakerLabel(state.speaker)} is{' '}
-          {state.phase === 'interview' ? 'thinking…' : 'drafting…'}
-        </Text>
-      ) : null}
+      <Box flexDirection="column" flexGrow={1} justifyContent="flex-end">
+        {slice.map((e, i) => (
+          <Box key={i} flexDirection="column" marginBottom={1} flexShrink={0}>
+            {renderHeader(e)}
+            {renderBody(e)}
+          </Box>
+        ))}
+        {(state.speaker === 'claude' || state.speaker === 'codex') &&
+        !state.endReason ? (
+          <Text dimColor>
+            {speakerLabel(state.speaker)} is{' '}
+            {state.phase === 'interview' ? 'thinking…' : 'drafting…'}
+          </Text>
+        ) : null}
+      </Box>
     </Box>
   );
 }

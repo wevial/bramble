@@ -122,6 +122,81 @@ function pad(s: string, w: number): string {
   return s.length >= w ? s : s + ' '.repeat(w - s.length);
 }
 
+async function printSessionSummary(
+  p: ReturnType<typeof sessionPaths>,
+  sessionLabel: string,
+): Promise<void> {
+  const { stat } = await import('node:fs/promises');
+  let finalPhase = 'unknown';
+  let endReason: string | null = null;
+  let interviewTurns = 0;
+  let debateTurns = 0;
+  let rounds = 0;
+  let specChars = 0;
+  try {
+    const entries = await readTranscript(p.transcriptPath);
+    if (entries.length > 0) {
+      const s = rehydrateState(entries);
+      if (s) {
+        finalPhase = s.phase;
+        endReason = s.endReason ?? null;
+        interviewTurns = s.interview.length;
+        debateTurns = s.debate.length;
+        rounds = s.round;
+        specChars = s.spec.length;
+      }
+    }
+  } catch {
+    /* fall through with defaults */
+  }
+
+  const files: { label: string; path: string }[] = [
+    { label: 'spec.md', path: p.specPath },
+    { label: 'interview.md', path: p.interviewPath },
+    { label: 'debate.md', path: p.debatePath },
+    { label: 'transcript.jsonl', path: p.transcriptPath },
+    { label: 'prompt.md', path: p.promptPath },
+  ];
+  const sized: { label: string; path: string; size: number | null }[] = [];
+  for (const f of files) {
+    try {
+      const st = await stat(f.path);
+      sized.push({ ...f, size: st.size });
+    } catch {
+      sized.push({ ...f, size: null });
+    }
+  }
+
+  console.log(`\n✦ bramble — session "${sessionLabel}"`);
+  if (finalPhase === 'done') {
+    console.log(`  ended: done${endReason ? ` (${endReason})` : ''}`);
+  } else if (finalPhase === 'unknown') {
+    console.log(`  ended: no progress recorded`);
+  } else {
+    console.log(`  ended early in phase: ${finalPhase}`);
+  }
+  console.log(
+    `  interview: ${interviewTurns} turn${interviewTurns === 1 ? '' : 's'}` +
+      ` · debate: ${debateTurns} turn${debateTurns === 1 ? '' : 's'} across ${rounds} round${rounds === 1 ? '' : 's'}` +
+      ` · spec: ${specChars}c`,
+  );
+  console.log('\nFiles:');
+  const labelW = Math.max(...sized.map(f => f.label.length));
+  for (const f of sized) {
+    const sizeStr = f.size === null ? '   —' : formatSize(f.size);
+    console.log(`  ${pad(f.label, labelW)}  ${sizeStr.padStart(7)}  ${f.path}`);
+  }
+  if (finalPhase !== 'done') {
+    console.log(`\nResume with: bramble --resume ${sessionLabel}`);
+  }
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}K`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}M`;
+}
+
 const name = resumeName ?? sessionName ?? generateSessionName();
 const paths = sessionPaths(storeRoot, name);
 mkdirSync(paths.dir, { recursive: true });
@@ -333,7 +408,35 @@ if (real) {
   codex = fCodex;
 }
 
-const { waitUntilExit } = render(
+// Enter the alternate screen buffer so the TUI takes over the whole window
+// (like vim/less). On exit we restore the prior scrollback before printing
+// the summary.
+const enterAltScreen = (): void => {
+  process.stdout.write('\x1b[?1049h\x1b[H');
+};
+const exitAltScreen = (): void => {
+  process.stdout.write('\x1b[?1049l');
+};
+let altActive = false;
+const restoreScreen = (): void => {
+  if (!altActive) return;
+  altActive = false;
+  exitAltScreen();
+};
+process.on('exit', restoreScreen);
+process.on('SIGINT', () => {
+  restoreScreen();
+  process.exit(130);
+});
+process.on('SIGTERM', () => {
+  restoreScreen();
+  process.exit(143);
+});
+
+enterAltScreen();
+altActive = true;
+
+const ink = render(
   <App
     agents={{ claude, codex }}
     prompt={prompt || resumedPrompt}
@@ -354,8 +457,13 @@ const { waitUntilExit } = render(
       codexEffort: codexEffort ?? null,
     }}
     setupStorePath={savedSetupPath}
-    onQuit={() => process.exit(0)}
+    onQuit={() => ink.unmount()}
+    onDone={() => {
+      // Finalization happens; user can ctrl-c or we let App quit when ready.
+    }}
   />,
 );
 
-await waitUntilExit();
+await ink.waitUntilExit();
+restoreScreen();
+await printSessionSummary(paths, name);

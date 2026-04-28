@@ -4,6 +4,7 @@ export type SlashCommand =
   | { kind: 'rounds'; value: number | null }
   | { kind: 'threshold'; value: number }
   | { kind: 'decay'; value: number }
+  | { kind: 'context'; value: string }
   | { kind: 'unknown'; raw: string; hint: string };
 
 export function parseSlashCommand(input: string): SlashCommand | null {
@@ -37,6 +38,13 @@ export function parseSlashCommand(input: string): SlashCommand | null {
       return n === null
         ? unknown(trimmed, '/decay expects a positive integer')
         : { kind: 'decay', value: n };
+    }
+    case 'context':
+    case 'ctx':
+    case 'note': {
+      if (arg === '')
+        return unknown(trimmed, '/context <text> records context without unblocking the turn');
+      return { kind: 'context', value: arg };
     }
     default:
       return unknown(trimmed, `unknown command: ${trimmed}`);

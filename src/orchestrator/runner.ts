@@ -41,6 +41,13 @@ export type RunHandle = {
   updateConfig(patch: Partial<DebateConfig>): void;
   /** Replace the spec body wholesale (e.g., after an external editor session). */
   userEdit(newSpec: string): void;
+  /**
+   * Append user-supplied context without consuming the current wait or
+   * aborting an active turn. Useful for adding details mid-interview without
+   * "answering" the pending question, or noting constraints during debate
+   * without interrupting the speaker.
+   */
+  addContext(content: string): void;
   /** In collab mode, advance past a between-turns pause. */
   continue(): void;
 };
@@ -56,6 +63,10 @@ export function startDebate(opts: RunOptions): RunHandle {
   let userAnswerResolver: ((content: string | null) => void) | null = null;
   let collabPauseResolver: (() => void) | null = null;
   let signoffResolver: (() => void) | null = null;
+  // Buffer for user input that arrives during interview while the agent is
+  // mid-stream (no resolver waiting yet). Delivered at the next wait point so
+  // we don't abort the agent's in-flight question.
+  let pendingUserAnswer: string | null = null;
 
   let disposed = false;
   const disposeAgents = () => {
@@ -106,9 +117,22 @@ export function startDebate(opts: RunOptions): RunHandle {
       r(content);
       return;
     }
+    // Interview, but no resolver is waiting yet (agent still streaming). Queue
+    // the answer; the upcoming wait point will pick it up. Do NOT abort the
+    // turn — the agent is mid-question and aborting would lose its output.
+    if (state.phase === 'interview') {
+      const ts = new Date().toISOString();
+      pendingUserAnswer = content;
+      dispatch({ type: 'userAnswer', content, timestamp: ts });
+      queueAppend({
+        type: 'user_answer',
+        content,
+        timestamp: ts,
+      });
+      return;
+    }
     // Debate: log the constraint and abort the active turn so the next agent
-    // sees it. (Resolver-less interjection in interview phase falls here too,
-    // so a user typing before the first turn finishes still records.)
+    // sees it.
     const ts = new Date().toISOString();
     dispatch({ type: 'userAnswer', content, timestamp: ts });
     queueAppend({
@@ -188,6 +212,19 @@ export function startDebate(opts: RunOptions): RunHandle {
       signoffResolver = null;
       r();
     }
+  };
+
+  const addContext = (content: string): void => {
+    // Record as a userAnswer (the existing channel for "things the user said")
+    // but never resolve a wait or abort a turn. The next agent prompt picks it
+    // up via state.userAnswers like any other entry.
+    const ts = new Date().toISOString();
+    dispatch({ type: 'userAnswer', content, timestamp: ts });
+    queueAppend({
+      type: 'user_answer',
+      content,
+      timestamp: ts,
+    });
   };
 
   const continueCollab = (): void => {
@@ -284,7 +321,18 @@ export function startDebate(opts: RunOptions): RunHandle {
           // for malformed/empty responses (the parse-failure fallback uses
           // {question: null, ready: false}), which would let the interview
           // spin without ever collecting user input.
-          if (turnPayload.ready) continue;
+          if (turnPayload.ready) {
+            pendingUserAnswer = null;
+            continue;
+          }
+
+          // User typed while agent was streaming — their answer is already
+          // recorded in state.userAnswers; skip the wait and let the next
+          // agent see it via the interview prompt.
+          if (pendingUserAnswer !== null) {
+            pendingUserAnswer = null;
+            continue;
+          }
 
           // Wait for the user to answer (or /done) before the next turn.
           await new Promise<string | null>(resolve => {
@@ -383,6 +431,7 @@ export function startDebate(opts: RunOptions): RunHandle {
     done_interview: doneInterview,
     updateConfig,
     userEdit,
+    addContext,
     continue: continueCollab,
   };
 }

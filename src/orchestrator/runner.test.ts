@@ -348,6 +348,92 @@ describe('startDebate — interview → debate → done', () => {
     expect(types).toContain('user_edit');
   });
 
+  it('interject during a streaming interview turn does NOT abort the agent; the answer queues until the wait point', async () => {
+    // Regression: previously, typing while the interview agent was mid-stream
+    // fell through to the debate branch and aborted the turn, losing the
+    // agent's question. Fix: queue the user input in interview phase and
+    // deliver it at the next wait point.
+    const claude = new FakeAgent('claude');
+    const codex = new FakeAgent('codex');
+    claude.setTokenDelayMs(5); // make the stream long enough to interject mid-flight
+    claude.setResponses([
+      { kind: 'interview', commentary: 'asking about users…', question: 'who?', ready: false },
+      { kind: 'interview', commentary: '', ready: true },
+      {
+        kind: 'debate',
+        commentary: 'seed',
+        edits: [{ find: '', replace: '# Spec' }],
+        verdict: 'lgtm',
+      },
+    ]);
+    codex.setResponses([
+      { kind: 'interview', commentary: '', ready: true },
+      { kind: 'debate', commentary: 'agree', edits: [], verdict: 'lgtm' },
+    ]);
+
+    const handle = startDebate({
+      agents: { claude, codex },
+      prompt: 'design x',
+      ...paths(),
+    });
+
+    // Interject while claude is still streaming its first question.
+    await tick(15);
+    handle.interject('users are internal employees');
+    await tick(200);
+    handle.done_interview();
+    const finalState = await handle.done;
+
+    // Claude's full first turn landed (NOT aborted) — commentary intact.
+    const claudeTurn = finalState.interview.find(t => t.speaker === 'claude');
+    expect(claudeTurn?.commentary).toBe('asking about users…');
+    expect(claudeTurn?.question).toBe('who?');
+    // User's answer was recorded.
+    expect(finalState.userAnswers.map(a => a.content)).toContain(
+      'users are internal employees',
+    );
+  });
+
+  it('addContext records a userAnswer without resolving the interview wait', async () => {
+    const claude = new FakeAgent('claude');
+    const codex = new FakeAgent('codex');
+    claude.setResponses([
+      { kind: 'interview', commentary: 'asking', question: 'who?', ready: false },
+      { kind: 'interview', commentary: '', ready: true },
+      {
+        kind: 'debate',
+        commentary: 'seed',
+        edits: [{ find: '', replace: '# Spec' }],
+        verdict: 'lgtm',
+      },
+    ]);
+    codex.setResponses([
+      { kind: 'interview', commentary: 'should not run before answer', question: 'q2', ready: false },
+      { kind: 'debate', commentary: 'agree', edits: [], verdict: 'lgtm' },
+    ]);
+
+    const handle = startDebate({
+      agents: { claude, codex },
+      prompt: 'design x',
+      ...paths(),
+    });
+
+    // Wait for claude's question to land and the runner to enter the wait.
+    await tick(60);
+    handle.addContext('also: must run on linux');
+    // Give time for any (incorrect) follow-on turn to slip through.
+    await tick(60);
+    // Codex must NOT have spoken — the wait is still in effect.
+    expect(handle).toBeDefined();
+    handle.abort();
+    const finalState = await handle.done;
+    expect(finalState.userAnswers.map(a => a.content)).toContain(
+      'also: must run on linux',
+    );
+    // claude turn 1 only; codex never got scheduled.
+    expect(finalState.interview.filter(t => t.speaker === 'codex')).toHaveLength(0);
+  });
+
 });
 
 afterEach(() => {

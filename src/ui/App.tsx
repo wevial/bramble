@@ -146,7 +146,12 @@ export function App(props: AppProps) {
         stdinCtx.setRawMode?.(false);
       } catch { /* ignore */ }
       stdinCtx.stdin?.pause?.();
+      // Vim toggles its own alt screen, which can pop us out of bramble's on
+      // exit. Briefly leave our alt screen for the editor, then re-enter so
+      // the TUI re-takes the full window when control returns.
+      process.stdout.write('\x1b[?1049l');
       spawnSync(editor, [file], { stdio: 'inherit' });
+      process.stdout.write('\x1b[?1049h\x1b[H');
       try {
         stdinCtx.setRawMode?.(true);
       } catch { /* ignore */ }
@@ -310,9 +315,16 @@ export function App(props: AppProps) {
             paddingX={1}
           >
             <Text dimColor>
-              Your message (↵ to send, ⇧+↵ for newline)
+              {state.phase === 'interview' &&
+              (state.speaker === 'claude' || state.speaker === 'codex')
+                ? `${state.speaker === 'claude' ? 'Claude' : 'Codex'} is asking — input disabled until their question lands…`
+                : 'Your message (↵ to send, ⇧+↵ for newline)'}
             </Text>
             <InputBox
+          disabled={
+            state.phase === 'interview' &&
+            (state.speaker === 'claude' || state.speaker === 'codex')
+          }
           allowEmptySubmit={mode === 'collab'}
           onSubmit={line => {
             if (line === '' && mode === 'collab' && paused) {
@@ -356,6 +368,11 @@ export function App(props: AppProps) {
               setStatus(`decay window → ${cmd.value}`);
               return;
             }
+            if (cmd.kind === 'context') {
+              handleRef.current?.addContext(cmd.value);
+              setStatus(`context added (${cmd.value.length}c)`);
+              return;
+            }
             setStatus(cmd.hint ?? `unknown command`);
           }}
           onQuit={() => {
@@ -378,10 +395,10 @@ export function App(props: AppProps) {
       <Box paddingX={1}>
         <Text dimColor>
           {state.phase === 'interview'
-            ? 'answer the question, or /done to skip ahead · /quit to exit'
+            ? 'answer the question · /context <text> to add detail · /done to skip ahead · /quit'
             : state.awaitingSignoff
-              ? 'type to revise · ^G edit spec · /done to finalize · /quit'
-              : '^G edit spec · /rounds N · /threshold N · /decay N · /quit'}
+              ? 'type to revise · /context <text> · ^G edit spec · /done to finalize · /quit'
+              : '/context <text> · ^G edit spec · /rounds N · /threshold N · /decay N · /quit'}
         </Text>
       </Box>
     </Box>
