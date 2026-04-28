@@ -36,8 +36,13 @@ export function SpecPane({
         )}
       </Box>
       <Box marginTop={1}>
-        <Text dimColor>
-          Lines {stats.lines} · Words {stats.words} · Chars {stats.chars}
+        <Text>
+          <Text dimColor>Lines: </Text>
+          <Text>{stats.lines}</Text>
+          <Text dimColor>{'  Words: '}</Text>
+          <Text>{stats.words}</Text>
+          <Text dimColor>{'  Chars: '}</Text>
+          <Text>{stats.chars}</Text>
         </Text>
       </Box>
     </Box>

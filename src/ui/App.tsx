@@ -19,7 +19,7 @@ import { parseSlashCommand } from './commands.js';
 import type { ModelConfig } from './models.js';
 import { SetupScreen } from './SetupScreen.js';
 import { saveSetup } from './setup-store.js';
-import { FlowSidebar } from './FlowSidebar.js';
+import { FlowBox, ParticipantsBox } from './FlowSidebar.js';
 import { ConversationPane } from './ConversationPane.js';
 import { SpecPane } from './SpecPane.js';
 import { StatusStrip } from './StatusStrip.js';
@@ -227,21 +227,23 @@ export function App(props: AppProps) {
     codexEffort: null,
   };
 
+  const titleText = `Bramble: Collaborative spec creation with Claude & Codex`;
+
   return (
     <Box flexDirection="column" width={dims.columns} height={dims.rows}>
       <Box paddingX={1} flexShrink={0} justifyContent="space-between">
         <Text>
           <Text color="greenBright" bold>✦ bramble</Text>
-          <Text dimColor> · </Text>
-          <Text>{props.sessionName}</Text>
-          {state.prompt ? (
-            <Text>
-              <Text dimColor> · </Text>
-              <Text>{truncate(state.prompt, dims.columns - 40)}</Text>
-            </Text>
-          ) : null}
+          <Text dimColor>  v0.1.0</Text>
         </Text>
-        <Text dimColor>{status}</Text>
+        {dims.columns >= 110 ? (
+          <Text dimColor>{truncate(titleText, dims.columns - 60)}</Text>
+        ) : null}
+        <Text>
+          <Text dimColor>session: </Text>
+          <Text color="cyan">{props.sessionName}</Text>
+          <Text dimColor>  ·  {status}</Text>
+        </Text>
       </Box>
       {!wide && (
         <Box paddingX={1} flexShrink={0}>
@@ -267,35 +269,50 @@ export function App(props: AppProps) {
         {wide && (
           <Box
             flexDirection="column"
-            borderStyle="single"
             width={sidebarWidth}
             flexShrink={0}
-            overflow="hidden"
           >
-            <FlowSidebar state={state} />
+            <Box
+              flexDirection="column"
+              borderStyle="single"
+              flexGrow={1}
+              overflow="hidden"
+            >
+              <FlowBox state={state} />
+            </Box>
+            <Box
+              flexDirection="column"
+              borderStyle="single"
+              flexShrink={0}
+              overflow="hidden"
+            >
+              <ParticipantsBox state={state} />
+            </Box>
           </Box>
         )}
         <Box
           flexDirection="column"
-          borderStyle="single"
           width={conversationWidth}
           flexShrink={0}
-          overflow="hidden"
         >
-          <ConversationPane state={state} maxEntries={8} />
-        </Box>
-        <Box
-          flexDirection="column"
-          borderStyle="single"
-          flexGrow={1}
-          overflow="hidden"
-        >
-          <SpecPane text={state.spec} maxLines={specMaxLines} />
-        </Box>
-      </Box>
-
-      <Box borderStyle="single" paddingX={1}>
-        <InputBox
+          <Box
+            flexDirection="column"
+            borderStyle="single"
+            flexGrow={1}
+            overflow="hidden"
+          >
+            <ConversationPane state={state} maxEntries={8} />
+          </Box>
+          <Box
+            flexDirection="column"
+            borderStyle="single"
+            flexShrink={0}
+            paddingX={1}
+          >
+            <Text dimColor>
+              Your message (↵ to send, ⇧+↵ for newline)
+            </Text>
+            <InputBox
           allowEmptySubmit={mode === 'collab'}
           onSubmit={line => {
             if (line === '' && mode === 'collab' && paused) {
@@ -346,6 +363,16 @@ export function App(props: AppProps) {
             props.onQuit?.();
           }}
         />
+          </Box>
+        </Box>
+        <Box
+          flexDirection="column"
+          borderStyle="single"
+          flexGrow={1}
+          overflow="hidden"
+        >
+          <SpecPane text={state.spec} maxLines={specMaxLines} />
+        </Box>
       </Box>
       <StatusStrip state={state} models={modelConfig} />
       <Box paddingX={1}>

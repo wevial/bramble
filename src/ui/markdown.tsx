@@ -98,36 +98,24 @@ function headingColor(level: number): string | undefined {
 }
 
 /**
- * Visible length of a line after markdown rendering. Markdown delimiters
- * (**, *, _, `) are stripped on render but present in the raw string, so
- * naive string-length padding produces misaligned borders.
+ * Visible length of a line after markdown rendering. Inline delimiters
+ * (`code`, **bold**, *italic*) are preserved on render, so a line's
+ * visible length now matches its source length except for fence rows
+ * (which render as a single blank row regardless).
  */
 export function visibleLength(line: string): number {
   if (line.startsWith('```')) return 0;
-  const cls = classifyLine(line);
-  if (cls.kind === 'heading') {
-    return inlineVisibleLength(cls.content);
-  }
-  if (cls.kind === 'bullet') {
-    // renders as "<indent>• <content>" (• is 1 col, space is 1)
-    return cls.indent.length + 2 + inlineVisibleLength(cls.content);
-  }
-  return inlineVisibleLength(cls.content);
-}
-
-function inlineVisibleLength(s: string): number {
-  const spans = parseInline(s);
-  let n = 0;
-  for (const span of spans) n += span.text.length;
-  return n;
+  return line.length;
 }
 
 export function MarkdownLine({ line }: { line: string }) {
   const cls = classifyLine(line);
   if (cls.kind === 'heading') {
+    // Keep the leading `#` markers visible — the user reads markdown source.
+    const hashes = '#'.repeat(cls.level);
     return (
       <Text bold color={headingColor(cls.level)}>
-        {renderInline(cls.content)}
+        {hashes} {renderInline(cls.content)}
       </Text>
     );
   }
@@ -135,7 +123,7 @@ export function MarkdownLine({ line }: { line: string }) {
     return (
       <Text>
         {cls.indent}
-        <Text color="gray">•</Text> {renderInline(cls.content)}
+        <Text color="cyan">{cls.bullet}</Text> {renderInline(cls.content)}
       </Text>
     );
   }
@@ -196,17 +184,35 @@ function renderInline(text: string): React.ReactNode {
     <>
       {spans.map((s, i) => {
         if (s.code) {
+          // Keep the backticks visible — the user wants to see markdown
+          // source — but tint the content so it still reads as code.
           return (
-            <Text key={i} color="cyan">
-              {s.text}
+            <Text key={i}>
+              <Text dimColor>`</Text>
+              <Text color="cyan">{s.text}</Text>
+              <Text dimColor>`</Text>
             </Text>
           );
         }
-        return (
-          <Text key={i} bold={s.bold} italic={s.italic}>
-            {s.text}
-          </Text>
-        );
+        if (s.bold) {
+          return (
+            <Text key={i} bold>
+              <Text dimColor>**</Text>
+              {s.text}
+              <Text dimColor>**</Text>
+            </Text>
+          );
+        }
+        if (s.italic) {
+          return (
+            <Text key={i} italic>
+              <Text dimColor>*</Text>
+              {s.text}
+              <Text dimColor>*</Text>
+            </Text>
+          );
+        }
+        return <Text key={i}>{s.text}</Text>;
       })}
     </>
   );

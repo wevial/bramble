@@ -60,14 +60,16 @@ export function StatusStrip({
   return (
     <Box flexDirection="row" justifyContent="space-between" paddingX={1}>
       <Text>
+        <Text dimColor>Status: </Text>
+        <Text color="yellow">{statusLabel(state)}</Text>
+      </Text>
+      <Text>
         <Text dimColor>Model: </Text>
-        <Text>{modelLabel(state, models)}</Text>
-        <Text dimColor>  ·  Status: </Text>
-        <Text>{statusLabel(state)}</Text>
+        <Text color="cyan">{modelLabel(state, models)}</Text>
       </Text>
       <Text>
         <Text dimColor>Next: </Text>
-        <Text>{nextHint(state)}</Text>
+        <Text color="magenta">{nextHint(state)}</Text>
       </Text>
     </Box>
   );

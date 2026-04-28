@@ -66,10 +66,12 @@ describe('FlowSidebar', () => {
     // step 1 (Intent) and 2 (Clarify) are done; step 3 (Draft) is active
     expect(out).toMatch(/✓ 1\. Intent/);
     expect(out).toMatch(/✓ 2\. Clarify/);
-    expect(out).toMatch(/◉ 3\. Draft/);
+    expect(out).toMatch(/3\. Draft/);
     expect(out).toContain('IN PROGRESS');
-    expect(out).toMatch(/○ 4\. Refine/);
-    expect(out).toMatch(/○ 5\. Export/);
+    expect(out).toMatch(/4\. Refine/);
+    expect(out).toMatch(/5\. Export/);
+    expect(out).toContain('PENDING');
+    expect(out).toContain('COMPLETE');
   });
 
   it('shows Thinking next to the active speaker', () => {
