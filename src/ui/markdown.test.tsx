@@ -1,12 +1,12 @@
 import React from 'react';
 import { describe, it, expect } from 'vitest';
-import { render } from 'ink-testing-library';
 import {
   classifyLine,
   MarkdownBlock,
   parseInline,
   visibleLength,
 } from './markdown.js';
+import { renderFrame } from './test-renderer.js';
 
 describe('classifyLine', () => {
   it('detects ATX headings at each level', () => {
@@ -69,12 +69,11 @@ describe('parseInline', () => {
 });
 
 describe('MarkdownBlock', () => {
-  it('hides fence marker lines and renders fenced content as code', () => {
-    const { lastFrame, unmount } = render(
+  it('hides fence marker lines and renders fenced content as code', async () => {
+    const { frame, unmount } = await renderFrame(
       <MarkdownBlock text={'before\n```ts\nconst x = 1;\n```\nafter'} />,
     );
 
-    const frame = lastFrame() ?? '';
     expect(frame).toContain('before');
     expect(frame).toContain('const x = 1;');
     expect(frame).toContain('after');

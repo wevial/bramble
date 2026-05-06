@@ -1,5 +1,5 @@
-import React from 'react';
-import { Text } from 'ink';
+import type React from 'react';
+import { createTextAttributes } from '@opentui/core';
 
 type InlineSpan = {
   text: string;
@@ -7,6 +7,10 @@ type InlineSpan = {
   italic?: boolean;
   code?: boolean;
 };
+
+const BOLD = createTextAttributes({ bold: true });
+const ITALIC = createTextAttributes({ italic: true });
+const DIM = createTextAttributes({ dim: true });
 
 /**
  * Parse a single already-wrapped text line into styled spans. Handles
@@ -114,20 +118,22 @@ export function MarkdownLine({ line }: { line: string }) {
     // Keep the leading `#` markers visible — the user reads markdown source.
     const hashes = '#'.repeat(cls.level);
     return (
-      <Text bold color={headingColor(cls.level)}>
+      <text>
+        <span fg={headingColor(cls.level)} attributes={BOLD}>
         {hashes} {renderInline(cls.content)}
-      </Text>
+        </span>
+      </text>
     );
   }
   if (cls.kind === 'bullet') {
     return (
-      <Text>
+      <text>
         {cls.indent}
-        <Text color="cyan">{cls.bullet}</Text> {renderInline(cls.content)}
-      </Text>
+        <span fg="cyan">{cls.bullet}</span> {renderInline(cls.content)}
+      </text>
     );
   }
-  return <Text>{renderInline(cls.content)}</Text>;
+  return <text>{renderInline(cls.content)}</text>;
 }
 
 /**
@@ -152,16 +158,18 @@ export function MarkdownBlock({
       {sliced.map((line, i) => {
         if (line.startsWith('```')) {
           inFence = !inFence;
-          return <Text key={i}> </Text>;
+          return <text key={i}> </text>;
         }
         if (inFence) {
           return (
-            <Text key={i} color="cyan">
+            <text key={i}>
+              <span fg="cyan">
               {line || ' '}
-            </Text>
+              </span>
+            </text>
           );
         }
-        if (line === '') return <Text key={i}> </Text>;
+        if (line === '') return <text key={i}> </text>;
         return <MarkdownLine key={i} line={line} />;
       })}
     </>
@@ -187,32 +195,32 @@ function renderInline(text: string): React.ReactNode {
           // Keep the backticks visible — the user wants to see markdown
           // source — but tint the content so it still reads as code.
           return (
-            <Text key={i}>
-              <Text dimColor>`</Text>
-              <Text color="cyan">{s.text}</Text>
-              <Text dimColor>`</Text>
-            </Text>
+            <span key={i}>
+              <span attributes={DIM}>`</span>
+              <span fg="cyan">{s.text}</span>
+              <span attributes={DIM}>`</span>
+            </span>
           );
         }
         if (s.bold) {
           return (
-            <Text key={i} bold>
-              <Text dimColor>**</Text>
+            <span key={i} attributes={BOLD}>
+              <span attributes={DIM}>**</span>
               {s.text}
-              <Text dimColor>**</Text>
-            </Text>
+              <span attributes={DIM}>**</span>
+            </span>
           );
         }
         if (s.italic) {
           return (
-            <Text key={i} italic>
-              <Text dimColor>*</Text>
+            <span key={i} attributes={ITALIC}>
+              <span attributes={DIM}>*</span>
               {s.text}
-              <Text dimColor>*</Text>
-            </Text>
+              <span attributes={DIM}>*</span>
+            </span>
           );
         }
-        return <Text key={i}>{s.text}</Text>;
+        return <span key={i}>{s.text}</span>;
       })}
     </>
   );

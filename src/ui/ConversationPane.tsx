@@ -1,5 +1,5 @@
-import React from 'react';
-import { Box, Text } from 'ink';
+import type React from 'react';
+import { createTextAttributes } from '@opentui/core';
 import type { State } from '../orchestrator/state.js';
 import { InlineText } from './markdown.js';
 
@@ -24,6 +24,9 @@ type Entry =
       round: number;
       timestamp: string;
     };
+
+const BOLD = createTextAttributes({ bold: true });
+const DIM = createTextAttributes({ dim: true });
 
 export function buildConversation(state: State): Entry[] {
   const out: Entry[] = [];
@@ -90,36 +93,40 @@ export function ConversationPane({
         ? 'Waiting for the first turn…'
         : `${speakerLabel(speaker as 'claude' | 'codex')} is starting up…`;
     return (
-      <Box flexDirection="column" paddingX={1} flexGrow={1}>
-        <Text bold color="cyan">CONVERSATION</Text>
-        <Box height={1} />
-        <Box flexDirection="column" flexGrow={1} justifyContent="flex-end">
-          <Text dimColor>{placeholder}</Text>
-        </Box>
-      </Box>
+      <box flexDirection="column" paddingX={1} flexGrow={1}>
+        <text><span fg="cyan" attributes={BOLD}>CONVERSATION</span></text>
+        <box height={1} />
+        <scrollbox flexGrow={1} stickyScroll stickyStart="bottom" scrollY focused>
+          <text><span attributes={DIM}>{placeholder}</span></text>
+        </scrollbox>
+      </box>
     );
   }
 
   return (
-    <Box flexDirection="column" paddingX={1} flexGrow={1}>
-      <Text bold color="cyan">CONVERSATION</Text>
-      <Box height={1} />
-      <Box flexDirection="column" flexGrow={1} justifyContent="flex-end">
+    <box flexDirection="column" paddingX={1} flexGrow={1}>
+      <text><span fg="cyan" attributes={BOLD}>CONVERSATION</span></text>
+      <box height={1} />
+      <scrollbox flexGrow={1} stickyScroll stickyStart="bottom" scrollY focused>
+        <box flexDirection="column">
         {slice.map((e, i) => (
-          <Box key={i} flexDirection="column" marginBottom={1} flexShrink={0}>
+          <box key={i} flexDirection="column" marginBottom={1} flexShrink={0}>
             {renderHeader(e)}
             {renderBody(e)}
-          </Box>
+          </box>
         ))}
         {(state.speaker === 'claude' || state.speaker === 'codex') &&
         !state.endReason ? (
-          <Text dimColor>
+          <text>
+            <span attributes={DIM}>
             {speakerLabel(state.speaker)} is{' '}
             {state.phase === 'interview' ? 'thinking…' : 'drafting…'}
-          </Text>
+            </span>
+          </text>
         ) : null}
-      </Box>
-    </Box>
+        </box>
+      </scrollbox>
+    </box>
   );
 }
 
@@ -127,11 +134,11 @@ function renderHeader(e: Entry): React.ReactNode {
   const ts = formatTime(e.timestamp);
   if (e.kind === 'user') {
     return (
-      <Text>
-        <Text color="greenBright">✦ </Text>
-        <Text color="greenBright" bold>You</Text>
-        <Text dimColor> · {ts}</Text>
-      </Text>
+      <text>
+        <span fg="brightGreen">✦ </span>
+        <span fg="brightGreen" attributes={BOLD}>You</span>
+        <span attributes={DIM}> · {ts}</span>
+      </text>
     );
   }
   const color = speakerColor(e.speaker);
@@ -139,49 +146,49 @@ function renderHeader(e: Entry): React.ReactNode {
   const glyph = e.speaker === 'claude' ? '☀ ' : '⊛ ';
   const glyphColor = e.speaker === 'claude' ? '#FF8C42' : 'cyan';
   return (
-    <Text>
-      <Text color={glyphColor}>{glyph}</Text>
-      <Text color={color} bold>{label}</Text>
-      <Text dimColor> · {ts}</Text>
+    <text>
+      <span fg={glyphColor}>{glyph}</span>
+      <span fg={color} attributes={BOLD}>{label}</span>
+      <span attributes={DIM}> · {ts}</span>
       {e.kind === 'agent' && e.ready ? (
-        <Text color="green"> · ready</Text>
+        <span fg="green"> · ready</span>
       ) : null}
       {e.kind === 'debate' ? (
-        <Text>
-          <Text dimColor> · r{e.round}</Text>
-          <Text color={e.verdict === 'lgtm' ? 'green' : 'yellow'}>
+        <span>
+          <span attributes={DIM}> · r{e.round}</span>
+          <span fg={e.verdict === 'lgtm' ? 'green' : 'yellow'}>
             {' '}
             · {e.verdict}
-          </Text>
+          </span>
           {e.applied > 0 ? (
-            <Text dimColor>
+            <span attributes={DIM}>
               {' '}
               · {e.applied} edit{e.applied === 1 ? '' : 's'} ({e.charsChanged}
               c)
-            </Text>
+            </span>
           ) : null}
           {e.rejected > 0 ? (
-            <Text color="red"> · {e.rejected} rejected</Text>
+            <span fg="red"> · {e.rejected} rejected</span>
           ) : null}
-        </Text>
+        </span>
       ) : null}
-    </Text>
+    </text>
   );
 }
 
 function renderBody(e: Entry): React.ReactNode {
   if (e.kind === 'user') {
-    return <Text>{e.content}</Text>;
+    return <text>{e.content}</text>;
   }
   return (
     <>
       {e.commentary ? (
-        <Text>
+        <text>
           <InlineText text={e.commentary} />
-        </Text>
+        </text>
       ) : null}
       {e.kind === 'agent' && e.question ? (
-        <Text color="yellow">? {e.question}</Text>
+        <text><span fg="yellow">? {e.question}</span></text>
       ) : null}
     </>
   );
