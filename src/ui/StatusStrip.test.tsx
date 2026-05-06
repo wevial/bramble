@@ -1,6 +1,5 @@
 import React from 'react';
 import { describe, it, expect } from 'vitest';
-import { render } from 'ink-testing-library';
 import {
   StatusStrip,
   modelLabel,
@@ -10,6 +9,7 @@ import {
 } from './StatusStrip.js';
 import { initialState, type State } from '../orchestrator/state.js';
 import type { ModelConfig } from './models.js';
+import { renderFrame } from './test-renderer.js';
 
 const T = '2026-04-28T00:00:00.000Z';
 
@@ -97,15 +97,16 @@ describe('statusLabel / nextHint', () => {
 });
 
 describe('StatusStrip', () => {
-  it('renders Model and Status and Next labels', () => {
-    const { lastFrame } = render(
+  it('renders Model and Status and Next labels', async () => {
+    const { frame, unmount } = await renderFrame(
       <StatusStrip state={fresh({ speaker: 'claude' })} models={models} />,
     );
-    const out = lastFrame() ?? '';
+    const out = frame;
     expect(out).toContain('Model:');
     expect(out).toContain('claude-opus-4-7');
     expect(out).toContain('Status:');
     expect(out).toContain('Next:');
+    unmount();
   });
 });
 

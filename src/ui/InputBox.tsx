@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { createTextAttributes, decodePasteBytes } from '@opentui/core';
+import { useKeyboard, usePaste } from '@opentui/react';
 
 export type InputBoxProps = {
   onSubmit(line: string): void;
@@ -27,6 +28,8 @@ export type InputBoxProps = {
   onChange?(value: string): void;
 };
 
+const REVERSE = createTextAttributes({ inverse: true });
+
 export function InputBox({
   onSubmit,
   onQuit,
@@ -48,14 +51,21 @@ export function InputBox({
     onChange?.(buffer);
   }, [buffer, onChange]);
 
-  useInput(
-    (input, key) => {
+  usePaste(event => {
+    if (disabled || !(isActive ?? true)) return;
+    setBuffer(b => b + decodePasteBytes(event.bytes));
+  });
+
+  useKeyboard(
+    key => {
+      if (!(isActive ?? true)) return;
       if (disabled) return;
-      if (key.ctrl && input === 'c') {
+      const input = key.sequence;
+      if (key.ctrl && key.name === 'c') {
         onQuit();
         return;
       }
-      if (key.ctrl && input === 'd') {
+      if (key.ctrl && key.name === 'd') {
         onQuit();
         return;
       }
@@ -85,8 +95,8 @@ export function InputBox({
         return;
       }
       // Tab is reserved for parent-level focus navigation.
-      if (key.tab) return;
-      if (key.return) {
+      if (key.name === 'tab') return;
+      if (key.name === 'return' || key.name === 'enter') {
         const wantsNewline =
           multiline && (key.shift || key.meta);
         if (wantsNewline) {
@@ -102,44 +112,43 @@ export function InputBox({
       }
       // Ctrl+J is the terminal literal for LF; treat it as a newline when
       // multiline, since some terminals collapse Shift+Enter to plain Enter.
-      if (multiline && key.ctrl && input === 'j') {
+      if (multiline && key.ctrl && key.name === 'j') {
         setBuffer(b => b + '\n');
         return;
       }
-      if (key.backspace || key.delete) {
+      if (key.name === 'backspace' || key.name === 'delete') {
         setBuffer(b => b.slice(0, -1));
         return;
       }
-      if (input && !key.ctrl && !key.meta) {
+      if (input && input.length === 1 && !key.ctrl && !key.meta) {
         setBuffer(b => b + input);
       }
     },
-    { isActive: isActive ?? true },
   );
 
   if (multiline) {
     const lines = buffer.length === 0 ? [''] : buffer.split('\n');
     return (
-      <Box flexDirection="column">
+      <box flexDirection="column">
         {lines.map((line, i) => {
           const isLast = i === lines.length - 1;
           return (
-            <Box key={i}>
-              {i === 0 ? <Text color="green">{'> '}</Text> : <Text>{'  '}</Text>}
-              <Text>{line}</Text>
-              {isLast && (isActive ?? true) ? <Text inverse> </Text> : null}
-            </Box>
+            <box key={i}>
+              {i === 0 ? <text><span fg="green">{'> '}</span></text> : <text>{'  '}</text>}
+              <text>{line}</text>
+              {isLast && (isActive ?? true) ? <text><span attributes={REVERSE}> </span></text> : null}
+            </box>
           );
         })}
-      </Box>
+      </box>
     );
   }
 
   return (
-    <Box>
-      <Text color="green">{'> '}</Text>
-      <Text>{buffer}</Text>
-      {(isActive ?? true) ? <Text inverse> </Text> : null}
-    </Box>
+    <box>
+      <text><span fg="green">{'> '}</span></text>
+      <text>{buffer}</text>
+      {(isActive ?? true) ? <text><span attributes={REVERSE}> </span></text> : null}
+    </box>
   );
 }

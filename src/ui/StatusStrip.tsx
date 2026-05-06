@@ -1,7 +1,8 @@
-import React from 'react';
-import { Box, Text } from 'ink';
+import { createTextAttributes } from '@opentui/core';
 import type { State } from '../orchestrator/state.js';
 import type { ModelConfig } from './models.js';
+
+const DIM = createTextAttributes({ dim: true });
 
 export function lastSpeaker(state: State): 'claude' | 'codex' | null {
   if (state.speaker === 'claude' || state.speaker === 'codex') {
@@ -58,19 +59,19 @@ export function StatusStrip({
   models: ModelConfig;
 }) {
   return (
-    <Box flexDirection="row" justifyContent="space-between" paddingX={1}>
-      <Text>
-        <Text dimColor>Status: </Text>
-        <Text color="yellow">{statusLabel(state)}</Text>
-      </Text>
-      <Text>
-        <Text dimColor>Model: </Text>
-        <Text color="cyan">{modelLabel(state, models)}</Text>
-      </Text>
-      <Text>
-        <Text dimColor>Next: </Text>
-        <Text color="magenta">{nextHint(state)}</Text>
-      </Text>
-    </Box>
+    <box flexDirection="row" justifyContent="space-between" paddingX={1}>
+      <text>
+        <span attributes={DIM}>Status: </span>
+        <span fg="yellow">{statusLabel(state)}</span>
+      </text>
+      <text>
+        <span attributes={DIM}>Model: </span>
+        <span fg="cyan">{modelLabel(state, models)}</span>
+      </text>
+      <text>
+        <span attributes={DIM}>Next: </span>
+        <span fg="magenta">{nextHint(state)}</span>
+      </text>
+    </box>
   );
 }

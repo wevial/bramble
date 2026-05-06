@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Box, Text, useInput, useStdout } from 'ink';
+import { createTextAttributes } from '@opentui/core';
+import { useKeyboard, useTerminalDimensions } from '@opentui/react';
 import { InputBox } from './InputBox.js';
 import { type ModelConfig } from './models.js';
 import {
@@ -42,6 +43,12 @@ const EMPTY_MODELS: ModelConfig = {
   codexEffort: null,
 };
 
+const BOLD = createTextAttributes({ bold: true });
+const DIM = createTextAttributes({ dim: true });
+const REVERSE = createTextAttributes({ inverse: true });
+const BOLD_REVERSE = createTextAttributes({ bold: true, inverse: true });
+const BOLD_UNDERLINE = createTextAttributes({ bold: true, underline: true });
+
 export function SetupScreen({
   sessionName,
   initialPrompt,
@@ -50,8 +57,8 @@ export function SetupScreen({
   onSubmit,
   onQuit,
 }: SetupScreenProps) {
-  const { stdout } = useStdout();
-  const cols = stdout?.columns ?? 80;
+  const { width } = useTerminalDimensions();
+  const cols = width ?? 80;
   const cardWidth = Math.max(64, Math.min(86, cols - 8));
 
   const [focus, setFocus] = useState<FieldIndex>(0);
@@ -81,19 +88,19 @@ export function SetupScreen({
   const focusedOpt = focusedRow.options[focusedRow.index]!;
   const needsCustomText = focusedOpt.value === 'custom';
 
-  useInput(
-    (input, key) => {
+  useKeyboard(
+    key => {
       if (editingCustom) return; // InputBox owns the keyboard
-      if (key.tab && key.shift) {
+      if (key.name === 'tab' && key.shift) {
         retreat();
         return;
       }
-      if (key.tab) {
+      if (key.name === 'tab') {
         advance();
         return;
       }
       // Enter on prompt is handled inside the multiline InputBox.
-      if (key.return && focus !== 0) {
+      if ((key.name === 'return' || key.name === 'enter') && focus !== 0) {
         if (focus === 3) {
           tryStart();
         } else {
@@ -102,21 +109,21 @@ export function SetupScreen({
         return;
       }
       if (focus === 1) {
-        if (key.leftArrow || key.rightArrow) {
+        if (key.name === 'left' || key.name === 'right') {
           setMode(m => (m === 'auto' ? 'collab' : 'auto'));
         }
         return;
       }
       if (focus === 2) {
-        if (key.upArrow) {
+        if (key.name === 'up') {
           setModelRowFocus(i => (i - 1 + rows.length) % rows.length);
           return;
         }
-        if (key.downArrow) {
+        if (key.name === 'down') {
           setModelRowFocus(i => (i + 1) % rows.length);
           return;
         }
-        if (key.leftArrow) {
+        if (key.name === 'left') {
           setRows(rs =>
             rs.map((r, i) =>
               i === modelRowFocus
@@ -126,7 +133,7 @@ export function SetupScreen({
           );
           return;
         }
-        if (key.rightArrow) {
+        if (key.name === 'right') {
           setRows(rs =>
             rs.map((r, i) =>
               i === modelRowFocus
@@ -136,14 +143,13 @@ export function SetupScreen({
           );
           return;
         }
-        if (input === 'e' && needsCustomText) {
+        if (key.name === 'e' && needsCustomText) {
           setEditingCustom(true);
           return;
         }
         return;
       }
     },
-    { isActive: true },
   );
 
   const focusColor = (target: FieldIndex): string | undefined =>
@@ -152,34 +158,34 @@ export function SetupScreen({
     focus === target ? '▸ ' : '  ';
 
   return (
-    <Box flexDirection="column" width={cols} alignItems="center">
-      <Box
+    <box flexDirection="column" width={cols} alignItems="center">
+      <box
         flexDirection="column"
-        borderStyle="round"
+        border borderStyle="rounded"
         paddingX={3}
         paddingY={1}
         width={cardWidth}
       >
         {BRAMBLE_BANNER.map((line, i) => (
-          <Box key={i} justifyContent="center">
-            <Text color="green">{line}</Text>
-          </Box>
+          <box key={i} justifyContent="center">
+            <text fg="green">{line}</text>
+          </box>
         ))}
-        <Text> </Text>
-        <Box justifyContent="center">
-          <Text dimColor>session: {sessionName}</Text>
-        </Box>
-        <Text> </Text>
-        <Text>Two agents will debate and draft a spec together.</Text>
-        <Text> </Text>
+        <text> </text>
+        <box justifyContent="center">
+          <text>session: {sessionName}</text>
+        </box>
+        <text> </text>
+        <text>Two agents will debate and draft a spec together.</text>
+        <text> </text>
 
-        <Box>
-          <Text color={focusColor(0)} bold={focus === 0}>
+        <box>
+          <text fg={focusColor(0)} attributes={(focus === 0) ? BOLD : 0}>
             {focusMarker(0)}What do you want to design?
-          </Text>
-        </Box>
-        <Text dimColor>  e.g. "design tic-tac-toe" — shift+enter for newline</Text>
-        <Box borderStyle="single" paddingX={1}>
+          </text>
+        </box>
+        <text><span attributes={DIM}>  e.g. "design tic-tac-toe" — shift+enter for newline</span></text>
+        <box border borderStyle="single" paddingX={1}>
           <InputBox
             initialValue={initialPrompt}
             multiline
@@ -192,32 +198,32 @@ export function SetupScreen({
             onQuit={onQuit}
             allowEmptySubmit
           />
-        </Box>
-        <Text> </Text>
+        </box>
+        <text> </text>
 
-        <Box>
-          <Text color={focusColor(1)} bold={focus === 1}>
+        <box>
+          <text fg={focusColor(1)} attributes={(focus === 1) ? BOLD : 0}>
             {focusMarker(1)}Mode
-          </Text>
-        </Box>
-        <Box>
-          <Text>   </Text>
+          </text>
+        </box>
+        <box>
+          <text>   </text>
           <ModeOption label="auto" selected={mode === 'auto'} focused={focus === 1} />
-          <Text>  </Text>
+          <text>  </text>
           <ModeOption label="collab" selected={mode === 'collab'} focused={focus === 1} />
           {focus === 1 ? (
-            <Text dimColor>    ←/→ to switch</Text>
+            <text><span attributes={DIM}>    ←/→ to switch</span></text>
           ) : null}
-        </Box>
-        <Text> </Text>
+        </box>
+        <text> </text>
 
-        <Box>
-          <Text color={focusColor(2)} bold={focus === 2}>
+        <box>
+          <text fg={focusColor(2)} attributes={(focus === 2) ? BOLD : 0}>
             {focusMarker(2)}Models
-          </Text>
-        </Box>
+          </text>
+        </box>
         {focus === 2 ? (
-          <Text dimColor>   ↑↓ row · ←→ option{needsCustomText ? " · 'e' edit custom id" : ''}</Text>
+          <text><span attributes={DIM}>   ↑↓ row · ←→ option{needsCustomText ? " · 'e' edit custom id" : ''}</span></text>
         ) : null}
         {rows.map((row, i) => (
           <ModelRow
@@ -228,14 +234,14 @@ export function SetupScreen({
           />
         ))}
         {focus === 2 && needsCustomText ? (
-          <Box flexDirection="column" marginTop={1}>
-            <Text dimColor>
+          <box flexDirection="column" marginTop={1}>
+            <text><span attributes={DIM}>
               {`   custom ${focusedRow.key.startsWith('claude') ? 'claude' : 'codex'} model id${
                 editingCustom ? ' (enter to confirm)' : " (press 'e' to edit)"
               }:`}
-            </Text>
+            </span></text>
             {editingCustom ? (
-              <Box marginLeft={3} borderStyle="single" paddingX={1}>
+              <box marginLeft={3} border borderStyle="single" paddingX={1}>
                 <InputBox
                   allowEmptySubmit
                   initialValue={focusedRow.custom}
@@ -249,33 +255,32 @@ export function SetupScreen({
                   }}
                   onQuit={onQuit}
                 />
-              </Box>
+              </box>
             ) : (
-              <Text color={focusedRow.custom ? 'white' : 'gray'}>
+              <text fg={focusedRow.custom ? 'white' : 'gray'}>
                 {`   ${focusedRow.custom || '(none — use default)'}`}
-              </Text>
+              </text>
             )}
-          </Box>
+          </box>
         ) : null}
-        <Text> </Text>
+        <text> </text>
 
-        <Box justifyContent="center">
-          <Text
-            color={focus === 3 ? 'greenBright' : undefined}
-            bold={focus === 3}
-            inverse={focus === 3}
+        <box justifyContent="center">
+          <text
+            fg={focus === 3 ? 'brightGreen' : undefined}
+            attributes={focus === 3 ? BOLD_REVERSE : 0}
           >
             {'  Start  '}
-          </Text>
-        </Box>
-        <Text> </Text>
-        <Box justifyContent="center">
-          <Text dimColor>
+          </text>
+        </box>
+        <text> </text>
+        <box justifyContent="center">
+          <text><span attributes={DIM}>
             tab/enter forward · shift-tab back · /quit to exit
-          </Text>
-        </Box>
-      </Box>
-    </Box>
+          </span></text>
+        </box>
+      </box>
+    </box>
   );
 }
 
@@ -290,12 +295,12 @@ function ModeOption({
 }) {
   if (selected) {
     return (
-      <Text color={focused ? 'greenBright' : 'green'} bold>
+      <text fg={focused ? 'brightGreen' : 'green'} attributes={BOLD}>
         [● {label}]
-      </Text>
+      </text>
     );
   }
-  return <Text dimColor>[  {label}]</Text>;
+  return <text><span attributes={DIM}>[  {label}]</span></text>;
 }
 
 function ModelRow({
@@ -308,14 +313,14 @@ function ModelRow({
   rowFocused: boolean;
 }) {
   return (
-    <Box>
-      <Box width={22}>
-        <Text color={rowFocused ? 'cyanBright' : undefined}>
+    <box>
+      <box width={22}>
+        <text fg={rowFocused ? 'brightCyan' : undefined}>
           {rowFocused ? '   › ' : '     '}
           {row.label}
-        </Text>
-      </Box>
-      <Box>
+        </text>
+      </box>
+      <box>
         {row.options.map((opt, i) => {
           const selected = i === row.index;
           const display =
@@ -323,23 +328,22 @@ function ModelRow({
               ? `custom: ${row.custom}`
               : opt.label;
           return (
-            <Text key={opt.label}>
+            <text key={opt.label}>
               {i === 0 ? '' : '  '}
               {selected ? (
-                <Text
-                  color={rowFocused ? 'cyanBright' : sectionFocused ? 'white' : undefined}
-                  bold={rowFocused}
-                  underline={rowFocused}
+                <span
+                  fg={rowFocused ? 'brightCyan' : sectionFocused ? 'white' : undefined}
+                  attributes={rowFocused ? BOLD_UNDERLINE : 0}
                 >
                   {display}
-                </Text>
+                </span>
               ) : (
-                <Text dimColor>{display}</Text>
+                <span attributes={DIM}>{display}</span>
               )}
-            </Text>
+            </text>
           );
         })}
-      </Box>
-    </Box>
+      </box>
+    </box>
   );
 }
