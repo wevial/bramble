@@ -1,5 +1,4 @@
-import React from 'react';
-import { Box, Text } from 'ink';
+import { createTextAttributes } from '@opentui/core';
 import type { State } from '../orchestrator/state.js';
 
 export type FlowStep = 1 | 2 | 3 | 4 | 5;
@@ -36,6 +35,8 @@ const ACTIVE_COLOR = '#7AA2FF'; // soft blue used for the current step
 const DONE_COLOR = 'green';
 const PENDING_COLOR = 'gray';
 const CONNECTOR_COLOR = '#5B5F7A'; // muted purple-gray for the timeline rail
+const BOLD = createTextAttributes({ bold: true });
+const DIM = createTextAttributes({ dim: true });
 
 export function flowStep(state: State): FlowStep {
   if (state.phase === 'done') return 5;
@@ -51,9 +52,9 @@ export function flowStep(state: State): FlowStep {
 export function FlowBox({ state }: { state: State }) {
   const active = flowStep(state);
   return (
-    <Box flexDirection="column" paddingX={1}>
-      <Text bold color="cyan">FLOW</Text>
-      <Box height={1} />
+    <box flexDirection="column" paddingX={1}>
+      <text><span fg="cyan" attributes={BOLD}>FLOW</span></text>
+      <box height={1} />
       {STEPS.map((s, i) => {
         const done = s.id < active;
         const current = s.id === active;
@@ -99,40 +100,42 @@ export function FlowBox({ state }: { state: State }) {
         const gutterRows = isLast ? contentRows : contentRows + 1;
 
         return (
-          <Box key={s.id} flexDirection="row">
-            <Box flexDirection="column" width={5} flexShrink={0}>
-              <Text>
-                <Text bold color={markerColor}>{marker}</Text>
-                <Text> </Text>
-                <Text color={numColor} bold>{s.id}</Text>
-                <Text>  </Text>
-              </Text>
+          <box key={s.id} flexDirection="row">
+            <box flexDirection="column" width={5} flexShrink={0}>
+              <text>
+                <span fg={markerColor} attributes={BOLD}>{marker}</span>
+                <span> </span>
+                <span fg={numColor} attributes={BOLD}>{s.id}</span>
+                <span>  </span>
+              </text>
               {Array.from({ length: gutterRows - 1 }, (_, r) => (
-                <Text key={r}>
+                <text key={r}>
                   {'  '}
                   {isLast ? (
-                    <Text> </Text>
+                    <span> </span>
                   ) : (
-                    <Text color={CONNECTOR_COLOR}>│</Text>
+                    <span fg={CONNECTOR_COLOR}>│</span>
                   )}
                   {'  '}
-                </Text>
+                </text>
               ))}
-            </Box>
-            <Box flexDirection="column" flexGrow={1}>
-              <Text color={labelColor} bold={current}>{s.label}</Text>
+            </box>
+            <box flexDirection="column" flexGrow={1}>
+              <text>
+                <span fg={labelColor} attributes={current ? BOLD : 0}>{s.label}</span>
+              </text>
               {s.subtitle.map((line, j) => (
-                <Text key={j} dimColor>{line}</Text>
+                <text key={j}><span attributes={DIM}>{line}</span></text>
               ))}
-              <Text>
-                <Text color={tagColor} bold={current}>{tag}</Text>
-              </Text>
-              {!isLast ? <Text> </Text> : null}
-            </Box>
-          </Box>
+              <text>
+                <span fg={tagColor} attributes={current ? BOLD : 0}>{tag}</span>
+              </text>
+              {!isLast ? <text> </text> : null}
+            </box>
+          </box>
         );
       })}
-    </Box>
+    </box>
   );
 }
 
@@ -142,45 +145,49 @@ export function ParticipantsBox({ state }: { state: State }) {
   const claudeReady = state.readyAgents.includes('claude');
   const codexReady = state.readyAgents.includes('codex');
   return (
-    <Box flexDirection="column" paddingX={1}>
-      <Text bold color="cyan">PARTICIPANTS</Text>
-      <Box height={1} />
-      <Box justifyContent="space-between">
-        <Text>
-          <Text color="greenBright">✦ </Text>
-          <Text color="greenBright" bold>You</Text>
-        </Text>
-        <Text color="green">Active</Text>
-      </Box>
-      <Box justifyContent="space-between">
-        <Text>
-          <Text color="#FF8C42">☀ </Text>
-          <Text color="#FF8C42" bold>Claude</Text>
-        </Text>
-        <Text color={speakingClaude ? 'yellow' : claudeReady ? 'green' : 'gray'}>
-          {speakingClaude ? 'Thinking…' : claudeReady ? 'Ready' : 'Idle'}
-        </Text>
-      </Box>
-      <Box justifyContent="space-between">
-        <Text>
-          <Text color="cyan">⊛ </Text>
-          <Text color="cyan" bold>Codex</Text>
-        </Text>
-        <Text color={speakingCodex ? 'yellow' : codexReady ? 'green' : 'gray'}>
-          {speakingCodex ? 'Thinking…' : codexReady ? 'Ready' : 'Idle'}
-        </Text>
-      </Box>
-    </Box>
+    <box flexDirection="column" paddingX={1}>
+      <text><span fg="cyan" attributes={BOLD}>PARTICIPANTS</span></text>
+      <box height={1} />
+      <box justifyContent="space-between">
+        <text>
+          <span fg="brightGreen">✦ </span>
+          <span fg="brightGreen" attributes={BOLD}>You</span>
+        </text>
+        <text><span fg="green">Active</span></text>
+      </box>
+      <box justifyContent="space-between">
+        <text>
+          <span fg="#FF8C42">☀ </span>
+          <span fg="#FF8C42" attributes={BOLD}>Claude</span>
+        </text>
+        <text>
+          <span fg={speakingClaude ? 'yellow' : claudeReady ? 'green' : 'gray'}>
+            {speakingClaude ? 'Thinking…' : claudeReady ? 'Ready' : 'Idle'}
+          </span>
+        </text>
+      </box>
+      <box justifyContent="space-between">
+        <text>
+          <span fg="cyan">⊛ </span>
+          <span fg="cyan" attributes={BOLD}>Codex</span>
+        </text>
+        <text>
+          <span fg={speakingCodex ? 'yellow' : codexReady ? 'green' : 'gray'}>
+            {speakingCodex ? 'Thinking…' : codexReady ? 'Ready' : 'Idle'}
+          </span>
+        </text>
+      </box>
+    </box>
   );
 }
 
 /** @deprecated use FlowBox + ParticipantsBox separately. */
 export function FlowSidebar({ state }: { state: State }) {
   return (
-    <Box flexDirection="column">
+    <box flexDirection="column">
       <FlowBox state={state} />
-      <Box height={1} />
+      <box height={1} />
       <ParticipantsBox state={state} />
-    </Box>
+    </box>
   );
 }

@@ -1,8 +1,8 @@
 import React from 'react';
 import { describe, it, expect } from 'vitest';
-import { render } from 'ink-testing-library';
 import { FlowSidebar, flowStep } from './FlowSidebar.js';
 import { initialState, type State } from '../orchestrator/state.js';
+import { renderFrame } from './test-renderer.js';
 
 const T = '2026-04-28T00:00:00.000Z';
 
@@ -58,11 +58,11 @@ describe('flowStep', () => {
 });
 
 describe('FlowSidebar', () => {
-  it('marks earlier steps done and current step in progress', () => {
-    const { lastFrame } = render(
+  it('marks earlier steps done and current step in progress', async () => {
+    const { frame, unmount } = await renderFrame(
       <FlowSidebar state={fresh({ phase: 'debate' })} />,
     );
-    const out = lastFrame() ?? '';
+    const out = frame;
     // step 1 (Intent) and 2 (Clarify) are done; step 3 (Draft Spec) is active
     expect(out).toContain('Intent');
     expect(out).toContain('Clarify');
@@ -76,25 +76,29 @@ describe('FlowSidebar', () => {
     expect(out).toContain('IN PROGRESS');
     expect(out).toContain('PENDING');
     expect(out).toContain('COMPLETE');
+    unmount();
   });
 
-  it('shows Thinking next to the active speaker', () => {
-    const { lastFrame } = render(
+  it('shows Thinking next to the active speaker', async () => {
+    const { frame, unmount } = await renderFrame(
       <FlowSidebar
         state={fresh({ phase: 'debate', speaker: 'claude' })}
       />,
     );
-    const out = lastFrame() ?? '';
-    expect(out).toMatch(/Claude.*Thinking/);
+    const out = frame;
+    expect(out).toContain('Claude');
+    expect(out).toContain('Thinking');
     // Codex line present but no Thinking
     expect(out).toMatch(/Codex/);
     expect(out.split('\n').find(l => l.includes('Codex'))).not.toMatch(
       /Thinking/,
     );
+    unmount();
   });
 
-  it('renders the user with the bramble sparkle', () => {
-    const { lastFrame } = render(<FlowSidebar state={fresh()} />);
-    expect(lastFrame() ?? '').toMatch(/✦.*You/);
+  it('renders the user with the bramble sparkle', async () => {
+    const { frame, unmount } = await renderFrame(<FlowSidebar state={fresh()} />);
+    expect(frame).toMatch(/✦.*You/);
+    unmount();
   });
 });
