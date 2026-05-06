@@ -251,7 +251,7 @@ export function App(props: AppProps) {
 
   return (
     <box flexDirection="column" width={dims.columns} height={dims.rows}>
-      <box paddingX={1} flexShrink={0} justifyContent="space-between">
+      <box flexDirection="row" paddingX={1} flexShrink={0} justifyContent="space-between">
         <text>
           <span fg="brightGreen" attributes={BOLD}>✦ bramble</span>
           <span attributes={DIM}>  v0.1.0</span>
@@ -266,7 +266,7 @@ export function App(props: AppProps) {
         </text>
       </box>
       {!wide && (
-        <box paddingX={1} flexShrink={0}>
+        <box flexDirection="row" paddingX={1} flexShrink={0}>
           <text>
             <span fg="brightGreen">✦ </span>
             <span fg="brightGreen" attributes={BOLD}>You</span>

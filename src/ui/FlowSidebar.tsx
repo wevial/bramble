@@ -148,14 +148,14 @@ export function ParticipantsBox({ state }: { state: State }) {
     <box flexDirection="column" paddingX={1}>
       <text><span fg="cyan" attributes={BOLD}>PARTICIPANTS</span></text>
       <box height={1} />
-      <box justifyContent="space-between">
+      <box flexDirection="row" justifyContent="space-between">
         <text>
           <span fg="brightGreen">✦ </span>
           <span fg="brightGreen" attributes={BOLD}>You</span>
         </text>
         <text><span fg="green">Active</span></text>
       </box>
-      <box justifyContent="space-between">
+      <box flexDirection="row" justifyContent="space-between">
         <text>
           <span fg="#FF8C42">☀ </span>
           <span fg="#FF8C42" attributes={BOLD}>Claude</span>
@@ -166,7 +166,7 @@ export function ParticipantsBox({ state }: { state: State }) {
           </span>
         </text>
       </box>
-      <box justifyContent="space-between">
+      <box flexDirection="row" justifyContent="space-between">
         <text>
           <span fg="cyan">⊛ </span>
           <span fg="cyan" attributes={BOLD}>Codex</span>

@@ -56,7 +56,7 @@ export function SpecPane({
   const stats = specStats(text);
   return (
     <box flexDirection="column" paddingX={1} flexGrow={1}>
-      <box justifyContent="space-between">
+      <box flexDirection="row" justifyContent="space-between">
         <text>
           <span fg="green" attributes={BOLD}>SPEC </span>
           <span attributes={DIM}>({title})</span>
@@ -75,7 +75,7 @@ export function SpecPane({
           <SpecMarkdown text={text} maxLines={maxLines} />
         )}
       </scrollbox>
-      <box marginTop={1} justifyContent="space-between">
+      <box flexDirection="row" marginTop={1} justifyContent="space-between">
         <text>
           <span attributes={DIM}>{lineRangeLabel(stats.lines, maxLines)}</span>
           <span attributes={DIM}>{'  ·  Words: '}</span>
