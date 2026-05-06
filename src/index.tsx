@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import React from 'react';
-import { render } from 'ink';
+import { createCliRenderer } from '@opentui/core';
+import { createRoot } from '@opentui/react';
 import { join } from 'node:path';
 import type { Agent } from './agents/agent.js';
 import { FakeAgent } from './agents/fake.js';
@@ -408,35 +409,31 @@ if (real) {
   codex = fCodex;
 }
 
-// Enter the alternate screen buffer so the TUI takes over the whole window
-// (like vim/less). On exit we restore the prior scrollback before printing
-// the summary.
-const enterAltScreen = (): void => {
-  process.stdout.write('\x1b[?1049h\x1b[H');
+const renderer = await createCliRenderer({
+  screenMode: 'alternate-screen',
+  useMouse: true,
+  exitOnCtrlC: false,
+  clearOnShutdown: true,
+});
+const root = createRoot(renderer);
+let shuttingDown = false;
+const shutdown = (): void => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  root.unmount();
+  renderer.destroy();
 };
-const exitAltScreen = (): void => {
-  process.stdout.write('\x1b[?1049l');
-};
-let altActive = false;
-const restoreScreen = (): void => {
-  if (!altActive) return;
-  altActive = false;
-  exitAltScreen();
-};
-process.on('exit', restoreScreen);
+
 process.on('SIGINT', () => {
-  restoreScreen();
+  shutdown();
   process.exit(130);
 });
 process.on('SIGTERM', () => {
-  restoreScreen();
+  shutdown();
   process.exit(143);
 });
 
-enterAltScreen();
-altActive = true;
-
-const ink = render(
+root.render(
   <App
     agents={{ claude, codex }}
     prompt={prompt || resumedPrompt}
@@ -457,13 +454,15 @@ const ink = render(
       codexEffort: codexEffort ?? null,
     }}
     setupStorePath={savedSetupPath}
-    onQuit={() => ink.unmount()}
+    onQuit={shutdown}
     onDone={() => {
       // Finalization happens; user can ctrl-c or we let App quit when ready.
     }}
   />,
 );
 
-await ink.waitUntilExit();
-restoreScreen();
+renderer.start();
+await new Promise<void>(resolve => {
+  renderer.once('destroy', () => resolve());
+});
 await printSessionSummary(paths, name);
