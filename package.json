@@ -17,14 +17,12 @@
     "@anthropic-ai/sdk": "^0.30.0",
     "@opentui/core": "^0.2.3",
     "@opentui/react": "^0.2.3",
-    "ink": "^5.0.0",
     "react": "^19.2.6",
     "zod": "^3.23.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/react": "^18.3.0",
-    "ink-testing-library": "^4.0.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"
   }
