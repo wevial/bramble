@@ -1,7 +1,7 @@
 import React from 'react';
 import { describe, it, expect } from 'vitest';
-import { render } from 'ink-testing-library';
 import { SpecPane, specStats, lineRangeLabel } from './SpecPane.js';
+import { renderFrame } from './test-renderer.js';
 
 describe('specStats', () => {
   it('zeroes out for empty text', () => {
@@ -30,45 +30,51 @@ describe('lineRangeLabel', () => {
 });
 
 describe('SpecPane', () => {
-  it('shows an empty hint when the body is empty', () => {
-    const { lastFrame } = render(<SpecPane text="" />);
-    expect(lastFrame() ?? '').toMatch(/empty/);
+  it('shows an empty hint when the body is empty', async () => {
+    const { frame, unmount } = await renderFrame(<SpecPane text="" />);
+    expect(frame).toMatch(/empty/);
+    unmount();
   });
 
-  it('shows the title and stats footer', () => {
+  it('shows the title and stats footer', async () => {
     const body = '# Hello\n\nworld words here';
-    const { lastFrame } = render(<SpecPane text={body} title="spec.md" />);
-    const out = lastFrame() ?? '';
+    const { frame, unmount } = await renderFrame(<SpecPane text={body} title="spec.md" />);
+    const out = frame;
     expect(out).toContain('spec.md');
     expect(out).toContain('Lines');
     expect(out).toContain('Words');
     expect(out).toContain('Chars');
+    unmount();
   });
 
-  it('renders a custom title (e.g. README_SPEC.md)', () => {
-    const { lastFrame } = render(
+  it('renders a custom title (e.g. README_SPEC.md)', async () => {
+    const { frame, unmount } = await renderFrame(
       <SpecPane text="# x" title="README_SPEC.md" />,
     );
-    expect(lastFrame() ?? '').toContain('README_SPEC.md');
+    expect(frame).toContain('README_SPEC.md');
+    unmount();
   });
 
-  it('renders the auto-save indicator when saving', () => {
-    const { lastFrame } = render(
+  it('renders the auto-save indicator when saving', async () => {
+    const { frame, unmount } = await renderFrame(
       <SpecPane text="# x" saveStatus="saving" />,
     );
-    expect(lastFrame() ?? '').toMatch(/Auto-saving/);
+    expect(frame).toMatch(/Auto-saving/);
+    unmount();
   });
 
-  it('renders the mode pill in the footer', () => {
-    const { lastFrame } = render(
+  it('renders the mode pill in the footer', async () => {
+    const { frame, unmount } = await renderFrame(
       <SpecPane text="# x" mode={{ label: 'DRAFT', color: 'cyan' }} />,
     );
-    expect(lastFrame() ?? '').toContain('DRAFT');
+    expect(frame).toContain('DRAFT');
+    unmount();
   });
 
-  it('shows truncation in the line label when maxLines crops the body', () => {
+  it('shows truncation in the line label when maxLines crops the body', async () => {
     const body = Array.from({ length: 50 }, (_, i) => `line ${i + 1}`).join('\n');
-    const { lastFrame } = render(<SpecPane text={body} maxLines={10} />);
-    expect(lastFrame() ?? '').toMatch(/Lines: 1-10 of 50/);
+    const { frame, unmount } = await renderFrame(<SpecPane text={body} maxLines={10} />);
+    expect(frame).toMatch(/Lines: 1-10 of 50/);
+    unmount();
   });
 });

@@ -1,5 +1,4 @@
-import React from 'react';
-import { Box, Text } from 'ink';
+import { createTextAttributes, RGBA, SyntaxStyle } from '@opentui/core';
 import { MarkdownBlock } from './markdown.js';
 
 export type SpecStats = { lines: number; words: number; chars: number };
@@ -19,6 +18,20 @@ export type SpecMode =
   | null;
 
 export type SaveStatus = 'idle' | 'saving' | 'saved';
+
+const BOLD = createTextAttributes({ bold: true });
+const DIM = createTextAttributes({ dim: true });
+
+const codeStyle = SyntaxStyle.fromStyles({
+  default: { fg: RGBA.fromHex('#D7DAE0') },
+  keyword: { fg: RGBA.fromHex('#7AA2FF'), bold: true },
+  string: { fg: RGBA.fromHex('#8CCF7E') },
+  number: { fg: RGBA.fromHex('#F0C674') },
+  comment: { fg: RGBA.fromHex('#7D8490'), italic: true },
+  function: { fg: RGBA.fromHex('#6CCBCE') },
+  variable: { fg: RGBA.fromHex('#D7DAE0') },
+  property: { fg: RGBA.fromHex('#BFA3FF') },
+});
 
 export function lineRangeLabel(total: number, max?: number): string {
   if (total === 0) return 'Lines: 0';
@@ -42,37 +55,107 @@ export function SpecPane({
 }) {
   const stats = specStats(text);
   return (
-    <Box flexDirection="column" paddingX={1} flexGrow={1}>
-      <Box justifyContent="space-between">
-        <Text bold color="green">
-          SPEC <Text dimColor>({title})</Text>
-        </Text>
+    <box flexDirection="column" paddingX={1} flexGrow={1}>
+      <box justifyContent="space-between">
+        <text>
+          <span fg="green" attributes={BOLD}>SPEC </span>
+          <span attributes={DIM}>({title})</span>
+        </text>
         {saveStatus === 'saving' ? (
-          <Text color="yellow">Auto-saving…</Text>
+          <text><span fg="yellow">Auto-saving…</span></text>
         ) : saveStatus === 'saved' ? (
-          <Text color="green" dimColor>Saved</Text>
+          <text><span fg="green" attributes={DIM}>Saved</span></text>
         ) : null}
-      </Box>
-      <Box height={1} />
-      <Box flexGrow={1} flexDirection="column">
+      </box>
+      <box height={1} />
+      <scrollbox flexGrow={1} scrollY focused>
         {text.length === 0 ? (
-          <Text dimColor>(empty — no edits yet)</Text>
+          <text><span attributes={DIM}>(empty — no edits yet)</span></text>
         ) : (
-          <MarkdownBlock text={text} maxLines={maxLines} />
+          <SpecMarkdown text={text} maxLines={maxLines} />
         )}
-      </Box>
-      <Box marginTop={1} justifyContent="space-between">
-        <Text>
-          <Text dimColor>{lineRangeLabel(stats.lines, maxLines)}</Text>
-          <Text dimColor>{'  ·  Words: '}</Text>
-          <Text>{stats.words}</Text>
-          <Text dimColor>{'  ·  Chars: '}</Text>
-          <Text>{stats.chars}</Text>
-        </Text>
+      </scrollbox>
+      <box marginTop={1} justifyContent="space-between">
+        <text>
+          <span attributes={DIM}>{lineRangeLabel(stats.lines, maxLines)}</span>
+          <span attributes={DIM}>{'  ·  Words: '}</span>
+          <span>{stats.words}</span>
+          <span attributes={DIM}>{'  ·  Chars: '}</span>
+          <span>{stats.chars}</span>
+        </text>
         {mode ? (
-          <Text bold color={mode.color}>{mode.label}</Text>
+          <text><span fg={mode.color} attributes={BOLD}>{mode.label}</span></text>
         ) : null}
-      </Box>
-    </Box>
+      </box>
+    </box>
+  );
+}
+
+function SpecMarkdown({
+  text,
+  maxLines,
+}: {
+  text: string;
+  maxLines?: number;
+}) {
+  const lines = typeof maxLines === 'number'
+    ? text.split('\n').slice(0, maxLines)
+    : text.split('\n');
+  const blocks: Array<
+    | { kind: 'markdown'; text: string }
+    | { kind: 'code'; filetype: string | undefined; content: string }
+  > = [];
+  let markdown: string[] = [];
+  let code: string[] | null = null;
+  let filetype: string | undefined;
+
+  const flushMarkdown = () => {
+    if (markdown.length === 0) return;
+    blocks.push({ kind: 'markdown', text: markdown.join('\n') });
+    markdown = [];
+  };
+  const flushCode = () => {
+    if (!code) return;
+    blocks.push({ kind: 'code', filetype, content: code.join('\n') || ' ' });
+    code = null;
+    filetype = undefined;
+  };
+
+  for (const line of lines) {
+    const fence = line.match(/^```(\S*)/);
+    if (fence) {
+      if (code) {
+        flushCode();
+      } else {
+        flushMarkdown();
+        code = [];
+        filetype = fence[1] || undefined;
+      }
+      continue;
+    }
+    if (code) code.push(line);
+    else markdown.push(line);
+  }
+  if (code) flushCode();
+  flushMarkdown();
+
+  return (
+    <box flexDirection="column">
+      {blocks.map((block, i) =>
+        block.kind === 'code' ? (
+          <box key={i} flexDirection="column" marginBottom={1}>
+            <code
+              content={block.content}
+              filetype={block.filetype}
+              syntaxStyle={codeStyle}
+              drawUnstyledText
+              conceal={false}
+            />
+          </box>
+        ) : (
+          <MarkdownBlock key={i} text={block.text} />
+        ),
+      )}
+    </box>
   );
 }
