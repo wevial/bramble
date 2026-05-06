@@ -206,11 +206,13 @@ export function SetupScreen({
             {focusMarker(1)}Mode
           </text>
         </box>
-        <box>
-          <text>   </text>
-          <ModeOption label="auto" selected={mode === 'auto'} focused={focus === 1} />
-          <text>  </text>
-          <ModeOption label="collab" selected={mode === 'collab'} focused={focus === 1} />
+        <box flexDirection="row">
+          <text>
+            <span>   </span>
+            <ModeOption label="auto" selected={mode === 'auto'} focused={focus === 1} />
+            <span>  </span>
+            <ModeOption label="collab" selected={mode === 'collab'} focused={focus === 1} />
+          </text>
           {focus === 1 ? (
             <text><span attributes={DIM}>    ←/→ to switch</span></text>
           ) : null}
@@ -295,12 +297,12 @@ function ModeOption({
 }) {
   if (selected) {
     return (
-      <text fg={focused ? 'brightGreen' : 'green'} attributes={BOLD}>
+      <span fg={focused ? 'brightGreen' : 'green'} attributes={BOLD}>
         [● {label}]
-      </text>
+      </span>
     );
   }
-  return <text><span attributes={DIM}>[  {label}]</span></text>;
+  return <span attributes={DIM}>[  {label}]</span>;
 }
 
 function ModelRow({
@@ -313,14 +315,15 @@ function ModelRow({
   rowFocused: boolean;
 }) {
   return (
-    <box>
+    <box flexDirection="row">
       <box width={22}>
         <text fg={rowFocused ? 'brightCyan' : undefined}>
           {rowFocused ? '   › ' : '     '}
           {row.label}
         </text>
       </box>
-      <box>
+      <box flexGrow={1}>
+        <text>
         {row.options.map((opt, i) => {
           const selected = i === row.index;
           const display =
@@ -328,7 +331,7 @@ function ModelRow({
               ? `custom: ${row.custom}`
               : opt.label;
           return (
-            <text key={opt.label}>
+            <span key={opt.label}>
               {i === 0 ? '' : '  '}
               {selected ? (
                 <span
@@ -340,9 +343,10 @@ function ModelRow({
               ) : (
                 <span attributes={DIM}>{display}</span>
               )}
-            </text>
+            </span>
           );
         })}
+        </text>
       </box>
     </box>
   );

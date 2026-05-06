@@ -133,10 +133,12 @@ export function InputBox({
         {lines.map((line, i) => {
           const isLast = i === lines.length - 1;
           return (
-            <box key={i}>
-              {i === 0 ? <text><span fg="green">{'> '}</span></text> : <text>{'  '}</text>}
-              <text>{line}</text>
-              {isLast && (isActive ?? true) ? <text><span attributes={REVERSE}> </span></text> : null}
+            <box key={i} flexDirection="row">
+              <text>
+                {i === 0 ? <span fg="green">{'> '}</span> : <span>{'  '}</span>}
+                <span>{line}</span>
+                {isLast && (isActive ?? true) ? <span attributes={REVERSE}> </span> : null}
+              </text>
             </box>
           );
         })}
@@ -145,10 +147,12 @@ export function InputBox({
   }
 
   return (
-    <box>
-      <text><span fg="green">{'> '}</span></text>
-      <text>{buffer}</text>
-      {(isActive ?? true) ? <text><span attributes={REVERSE}> </span></text> : null}
+    <box flexDirection="row">
+      <text>
+        <span fg="green">{'> '}</span>
+        <span>{buffer}</span>
+        {(isActive ?? true) ? <span attributes={REVERSE}> </span> : null}
+      </text>
     </box>
   );
 }
