@@ -3,7 +3,7 @@ import { Box, Text, useInput, useStdin, useStdout } from 'ink';
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import type { Agent } from '../agents/agent.js';
 import {
   startDebate,
@@ -21,7 +21,7 @@ import { SetupScreen } from './SetupScreen.js';
 import { saveSetup } from './setup-store.js';
 import { FlowBox, ParticipantsBox } from './FlowSidebar.js';
 import { ConversationPane } from './ConversationPane.js';
-import { SpecPane } from './SpecPane.js';
+import { SpecPane, type SaveStatus, type SpecMode } from './SpecPane.js';
 import { StatusStrip } from './StatusStrip.js';
 
 export type AppProps = {
@@ -64,6 +64,8 @@ export function App(props: AppProps) {
   const { stdout } = useStdout();
   const stdinCtx = useStdin();
   const [editorBusy, setEditorBusy] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [dims, setDims] = useState({
     rows: stdout?.rows ?? 24,
     columns: stdout?.columns ?? 80,
@@ -103,11 +105,25 @@ export function App(props: AppProps) {
         const interview = next.interview;
         const answers = next.userAnswers;
         const debate = next.debate;
+        setSaveStatus('saving');
+        if (savedTimerRef.current) {
+          clearTimeout(savedTimerRef.current);
+          savedTimerRef.current = null;
+        }
         writesRef.current = writesRef.current
           .then(() => writeSpec(props.specPath, spec))
           .then(() => writeInterviewMd(props.interviewPath, interview, answers))
           .then(() => writeDebateLedger(props.debatePath, debate))
-          .catch(() => {});
+          .then(() => {
+            setSaveStatus('saved');
+            // Auto-fade the "Saved" indicator back to idle so the corner
+            // doesn't sit permanently green between turns.
+            savedTimerRef.current = setTimeout(() => {
+              setSaveStatus('idle');
+              savedTimerRef.current = null;
+            }, 1500);
+          })
+          .catch(() => setSaveStatus('idle'));
       },
     });
     handleRef.current = handle;
@@ -221,10 +237,15 @@ export function App(props: AppProps) {
   }
 
   const wide = dims.columns >= 100;
-  const sidebarWidth = wide ? 26 : 0;
+  const sidebarWidth = wide ? 32 : 0;
   const remaining = Math.max(20, dims.columns - sidebarWidth);
   const conversationWidth = Math.floor(remaining / 2);
   const specMaxLines = Math.max(4, dims.rows - 10);
+  // Each conversation entry takes roughly 3 rows (header + 1-2 lines of body
+  // + a margin row). Estimate how many fit in the conversation pane and cap
+  // there so flex-end + overflow-hidden can crop cleanly at the top instead
+  // of the slice leaving a half-empty pane.
+  const conversationMaxEntries = Math.max(8, Math.floor((dims.rows - 10) / 3));
   const modelConfig: ModelConfig = props.initialModelConfig ?? {
     claudeModel: null,
     claudeEffort: null,
@@ -233,6 +254,7 @@ export function App(props: AppProps) {
   };
 
   const titleText = `Bramble: Collaborative spec creation with Claude & Codex`;
+  const mode_pill: SpecMode = specMode(state);
 
   return (
     <Box flexDirection="column" width={dims.columns} height={dims.rows}>
@@ -254,14 +276,16 @@ export function App(props: AppProps) {
         <Box paddingX={1} flexShrink={0}>
           <Text>
             <Text color="greenBright">✦ </Text>
-            <Text bold>You</Text>
+            <Text color="greenBright" bold>You</Text>
             <Text dimColor> · </Text>
-            <Text color="cyan" bold>Claude</Text>
+            <Text color="#FF8C42">☀ </Text>
+            <Text color="#FF8C42" bold>Claude</Text>
             {state.speaker === 'claude' ? (
               <Text color="yellow"> ⏳</Text>
             ) : null}
             <Text dimColor> · </Text>
-            <Text color="magenta" bold>Codex</Text>
+            <Text color="cyan">⊛ </Text>
+            <Text color="cyan" bold>Codex</Text>
             {state.speaker === 'codex' ? (
               <Text color="yellow"> ⏳</Text>
             ) : null}
@@ -280,18 +304,18 @@ export function App(props: AppProps) {
             <Box
               flexDirection="column"
               borderStyle="single"
-              flexGrow={1}
-              overflow="hidden"
-            >
-              <FlowBox state={state} />
-            </Box>
-            <Box
-              flexDirection="column"
-              borderStyle="single"
               flexShrink={0}
               overflow="hidden"
             >
               <ParticipantsBox state={state} />
+            </Box>
+            <Box
+              flexDirection="column"
+              borderStyle="single"
+              flexGrow={1}
+              overflow="hidden"
+            >
+              <FlowBox state={state} />
             </Box>
           </Box>
         )}
@@ -306,7 +330,7 @@ export function App(props: AppProps) {
             flexGrow={1}
             overflow="hidden"
           >
-            <ConversationPane state={state} maxEntries={8} />
+            <ConversationPane state={state} maxEntries={conversationMaxEntries} />
           </Box>
           <Box
             flexDirection="column"
@@ -388,7 +412,13 @@ export function App(props: AppProps) {
           flexGrow={1}
           overflow="hidden"
         >
-          <SpecPane text={state.spec} maxLines={specMaxLines} />
+          <SpecPane
+            text={state.spec}
+            title={basename(props.specPath)}
+            maxLines={specMaxLines}
+            saveStatus={saveStatus}
+            mode={mode_pill}
+          />
         </Box>
       </Box>
       <StatusStrip state={state} models={modelConfig} />
@@ -409,5 +439,17 @@ function truncate(s: string, max: number): string {
   if (max <= 0) return '';
   if (s.length <= max) return s;
   return s.slice(0, Math.max(0, max - 1)) + '…';
+}
+
+function specMode(state: State): SpecMode {
+  if (state.phase === 'done') return { label: 'DONE', color: 'green' };
+  if (state.awaitingSignoff) return { label: 'SIGNOFF', color: 'yellow' };
+  if (state.phase === 'interview') return { label: 'INTERVIEW', color: 'gray' };
+  const anyLgtm =
+    state.lgtmThisRound.length > 0 ||
+    state.debate.some(t => t.verdict === 'lgtm');
+  return anyLgtm
+    ? { label: 'REFINE', color: 'magenta' }
+    : { label: 'DRAFT', color: 'cyan' };
 }
 

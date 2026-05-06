@@ -63,13 +63,17 @@ describe('FlowSidebar', () => {
       <FlowSidebar state={fresh({ phase: 'debate' })} />,
     );
     const out = lastFrame() ?? '';
-    // step 1 (Intent) and 2 (Clarify) are done; step 3 (Draft) is active
-    expect(out).toMatch(/✓ 1\. Intent/);
-    expect(out).toMatch(/✓ 2\. Clarify/);
-    expect(out).toMatch(/3\. Draft/);
+    // step 1 (Intent) and 2 (Clarify) are done; step 3 (Draft Spec) is active
+    expect(out).toContain('Intent');
+    expect(out).toContain('Clarify');
+    expect(out).toContain('Draft Spec');
+    expect(out).toContain('Refine Spec');
+    expect(out).toContain('Export');
+    // current step uses the filled-circle marker
+    expect(out).toContain('●');
+    // done steps use the check marker
+    expect(out).toContain('✓');
     expect(out).toContain('IN PROGRESS');
-    expect(out).toMatch(/4\. Refine/);
-    expect(out).toMatch(/5\. Export/);
     expect(out).toContain('PENDING');
     expect(out).toContain('COMPLETE');
   });

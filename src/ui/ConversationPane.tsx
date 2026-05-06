@@ -66,7 +66,7 @@ function formatTime(ts: string): string {
 }
 
 function speakerColor(s: 'claude' | 'codex'): string {
-  return s === 'claude' ? 'cyan' : 'magenta';
+  return s === 'claude' ? '#FF8C42' : 'cyan';
 }
 
 function speakerLabel(s: 'claude' | 'codex'): string {
@@ -129,15 +129,18 @@ function renderHeader(e: Entry): React.ReactNode {
     return (
       <Text>
         <Text color="greenBright">✦ </Text>
-        <Text bold>You</Text>
+        <Text color="greenBright" bold>You</Text>
         <Text dimColor> · {ts}</Text>
       </Text>
     );
   }
   const color = speakerColor(e.speaker);
   const label = speakerLabel(e.speaker);
+  const glyph = e.speaker === 'claude' ? '☀ ' : '⊛ ';
+  const glyphColor = e.speaker === 'claude' ? '#FF8C42' : 'cyan';
   return (
     <Text>
+      <Text color={glyphColor}>{glyph}</Text>
       <Text color={color} bold>{label}</Text>
       <Text dimColor> · {ts}</Text>
       {e.kind === 'agent' && e.ready ? (
