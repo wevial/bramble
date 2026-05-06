@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Box, Text, useInput, useStdin, useStdout } from 'ink';
+import { createTextAttributes } from '@opentui/core';
+import { useKeyboard, useRenderer, useSelectionHandler, useTerminalDimensions } from '@opentui/react';
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -23,6 +24,9 @@ import { FlowBox, ParticipantsBox } from './FlowSidebar.js';
 import { ConversationPane } from './ConversationPane.js';
 import { SpecPane, type SaveStatus, type SpecMode } from './SpecPane.js';
 import { StatusStrip } from './StatusStrip.js';
+
+const BOLD = createTextAttributes({ bold: true });
+const DIM = createTextAttributes({ dim: true });
 
 export type AppProps = {
   agents: { claude: Agent; codex: Agent };
@@ -61,25 +65,17 @@ export function App(props: AppProps) {
   const [mode, setMode] = useState<DebateMode>(props.mode ?? 'auto');
   const handleRef = useRef<RunHandle | null>(null);
   const writesRef = useRef<Promise<void>>(Promise.resolve());
-  const { stdout } = useStdout();
-  const stdinCtx = useStdin();
+  const renderer = useRenderer();
+  const terminal = useTerminalDimensions();
   const [editorBusy, setEditorBusy] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [dims, setDims] = useState({
-    rows: stdout?.rows ?? 24,
-    columns: stdout?.columns ?? 80,
-  });
+  const dims = {
+    rows: terminal.height ?? 24,
+    columns: terminal.width ?? 80,
+  };
 
-  useEffect(() => {
-    if (!stdout) return;
-    const onResize = () =>
-      setDims({ rows: stdout.rows, columns: stdout.columns });
-    stdout.on('resize', onResize);
-    return () => {
-      stdout.off('resize', onResize);
-    };
-  }, [stdout]);
+  useSelectionHandler(() => {});
 
   useEffect(() => {
     if (phase !== 'running' || !prompt) return;
@@ -138,12 +134,12 @@ export function App(props: AppProps) {
     };
   }, [phase]);
 
-  useInput((input, key) => {
+  useKeyboard(key => {
     if (phase !== 'running' || !state) return;
     if (state.phase !== 'debate') return;
     if (editorBusy) return;
     // Ctrl+G — open the spec in $EDITOR. On exit, dispatch the new body.
-    if (key.ctrl && input === 'g') {
+    if (key.ctrl && key.name === 'g') {
       openSpecInEditor();
     }
   });
@@ -159,19 +155,16 @@ export function App(props: AppProps) {
     try {
       writeFileSync(file, before, 'utf8');
       try {
-        stdinCtx.setRawMode?.(false);
+        renderer.stdin.setRawMode?.(false);
       } catch { /* ignore */ }
-      stdinCtx.stdin?.pause?.();
-      // Vim toggles its own alt screen, which can pop us out of bramble's on
-      // exit. Briefly leave our alt screen for the editor, then re-enter so
-      // the TUI re-takes the full window when control returns.
-      process.stdout.write('\x1b[?1049l');
+      renderer.stdin.pause?.();
+      renderer.suspend();
       spawnSync(editor, [file], { stdio: 'inherit' });
-      process.stdout.write('\x1b[?1049h\x1b[H');
+      renderer.resume();
       try {
-        stdinCtx.setRawMode?.(true);
+        renderer.stdin.setRawMode?.(true);
       } catch { /* ignore */ }
-      stdinCtx.stdin?.resume?.();
+      renderer.stdin.resume?.();
       const after = readFileSync(file, 'utf8');
       if (after !== before) {
         handleRef.current?.userEdit(after);
@@ -230,9 +223,9 @@ export function App(props: AppProps) {
 
   if (!state) {
     return (
-      <Box padding={1}>
-        <Text dimColor>booting…</Text>
-      </Box>
+      <box padding={1}>
+        <text><span attributes={DIM}>booting…</span></text>
+      </box>
     );
   }
 
@@ -257,93 +250,95 @@ export function App(props: AppProps) {
   const mode_pill: SpecMode = specMode(state);
 
   return (
-    <Box flexDirection="column" width={dims.columns} height={dims.rows}>
-      <Box paddingX={1} flexShrink={0} justifyContent="space-between">
-        <Text>
-          <Text color="greenBright" bold>✦ bramble</Text>
-          <Text dimColor>  v0.1.0</Text>
-        </Text>
+    <box flexDirection="column" width={dims.columns} height={dims.rows}>
+      <box paddingX={1} flexShrink={0} justifyContent="space-between">
+        <text>
+          <span fg="brightGreen" attributes={BOLD}>✦ bramble</span>
+          <span attributes={DIM}>  v0.1.0</span>
+        </text>
         {dims.columns >= 110 ? (
-          <Text dimColor>{truncate(titleText, dims.columns - 60)}</Text>
+          <text><span attributes={DIM}>{truncate(titleText, dims.columns - 60)}</span></text>
         ) : null}
-        <Text>
-          <Text dimColor>session: </Text>
-          <Text color="cyan">{props.sessionName}</Text>
-          <Text dimColor>  ·  {status}</Text>
-        </Text>
-      </Box>
+        <text>
+          <span attributes={DIM}>session: </span>
+          <span fg="cyan">{props.sessionName}</span>
+          <span attributes={DIM}>  ·  {status}</span>
+        </text>
+      </box>
       {!wide && (
-        <Box paddingX={1} flexShrink={0}>
-          <Text>
-            <Text color="greenBright">✦ </Text>
-            <Text color="greenBright" bold>You</Text>
-            <Text dimColor> · </Text>
-            <Text color="#FF8C42">☀ </Text>
-            <Text color="#FF8C42" bold>Claude</Text>
+        <box paddingX={1} flexShrink={0}>
+          <text>
+            <span fg="brightGreen">✦ </span>
+            <span fg="brightGreen" attributes={BOLD}>You</span>
+            <span attributes={DIM}> · </span>
+            <span fg="#FF8C42">☀ </span>
+            <span fg="#FF8C42" attributes={BOLD}>Claude</span>
             {state.speaker === 'claude' ? (
-              <Text color="yellow"> ⏳</Text>
+              <span fg="yellow"> ⏳</span>
             ) : null}
-            <Text dimColor> · </Text>
-            <Text color="cyan">⊛ </Text>
-            <Text color="cyan" bold>Codex</Text>
+            <span attributes={DIM}> · </span>
+            <span fg="cyan">⊛ </span>
+            <span fg="cyan" attributes={BOLD}>Codex</span>
             {state.speaker === 'codex' ? (
-              <Text color="yellow"> ⏳</Text>
+              <span fg="yellow"> ⏳</span>
             ) : null}
-            {paused ? <Text color="yellow"> · paused</Text> : null}
-          </Text>
-        </Box>
+            {paused ? <span fg="yellow"> · paused</span> : null}
+          </text>
+        </box>
       )}
 
-      <Box flexGrow={1} flexDirection="row">
+      <box flexGrow={1} flexDirection="row">
         {wide && (
-          <Box
+          <box
             flexDirection="column"
             width={sidebarWidth}
             flexShrink={0}
           >
-            <Box
+            <box
               flexDirection="column"
-              borderStyle="single"
+              border borderStyle="single"
               flexShrink={0}
               overflow="hidden"
             >
               <ParticipantsBox state={state} />
-            </Box>
-            <Box
+            </box>
+            <box
               flexDirection="column"
-              borderStyle="single"
+              border borderStyle="single"
               flexGrow={1}
               overflow="hidden"
             >
               <FlowBox state={state} />
-            </Box>
-          </Box>
+            </box>
+          </box>
         )}
-        <Box
+        <box
           flexDirection="column"
           width={conversationWidth}
           flexShrink={0}
         >
-          <Box
+          <box
             flexDirection="column"
-            borderStyle="single"
+            border borderStyle="single"
             flexGrow={1}
             overflow="hidden"
           >
             <ConversationPane state={state} maxEntries={conversationMaxEntries} />
-          </Box>
-          <Box
+          </box>
+          <box
             flexDirection="column"
-            borderStyle="single"
+            border borderStyle="single"
             flexShrink={0}
             paddingX={1}
           >
-            <Text dimColor>
+            <text>
+              <span attributes={DIM}>
               {state.phase === 'interview' &&
               (state.speaker === 'claude' || state.speaker === 'codex')
                 ? `${state.speaker === 'claude' ? 'Claude' : 'Codex'} is asking — input disabled until their question lands…`
                 : 'Your message (↵ to send, ⇧+↵ for newline)'}
-            </Text>
+              </span>
+            </text>
             <InputBox
           disabled={
             state.phase === 'interview' &&
@@ -404,11 +399,11 @@ export function App(props: AppProps) {
             props.onQuit?.();
           }}
         />
-          </Box>
-        </Box>
-        <Box
+          </box>
+        </box>
+        <box
           flexDirection="column"
-          borderStyle="single"
+          border borderStyle="single"
           flexGrow={1}
           overflow="hidden"
         >
@@ -419,19 +414,21 @@ export function App(props: AppProps) {
             saveStatus={saveStatus}
             mode={mode_pill}
           />
-        </Box>
-      </Box>
+        </box>
+      </box>
       <StatusStrip state={state} models={modelConfig} />
-      <Box paddingX={1}>
-        <Text dimColor>
+      <box paddingX={1}>
+        <text>
+          <span attributes={DIM}>
           {state.phase === 'interview'
             ? 'answer the question · /context <text> to add detail · /done to skip ahead · /quit'
             : state.awaitingSignoff
               ? 'type to revise · /context <text> · ^G edit spec · /done to finalize · /quit'
               : '/context <text> · ^G edit spec · /rounds N · /threshold N · /decay N · /quit'}
-        </Text>
-      </Box>
-    </Box>
+          </span>
+        </text>
+      </box>
+    </box>
   );
 }
 
@@ -452,4 +449,3 @@ function specMode(state: State): SpecMode {
     ? { label: 'REFINE', color: 'magenta' }
     : { label: 'DRAFT', color: 'cyan' };
 }
-
