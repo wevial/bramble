@@ -25,7 +25,12 @@ type Entry =
       charsChanged: number;
       round: number;
       timestamp: string;
-    };
+    }
+  | { kind: 'divider'; label: string; timestamp: string };
+
+function isSpecialist(id: PersonaId): boolean {
+  return findPersona(id)?.scope === 'specialist';
+}
 
 const BOLD = createTextAttributes({ bold: true });
 const DIM = createTextAttributes({ dim: true });
@@ -33,6 +38,11 @@ const DIM = createTextAttributes({ dim: true });
 export function buildConversation(state: State): Entry[] {
   const out: Entry[] = [];
   for (const t of state.interview) {
+    // Specialists only render an interview turn when they actually contribute
+    // a question or commentary. Pure "ready" beats are silent in the feed.
+    if (isSpecialist(t.speaker) && !t.question && !t.commentary.trim()) {
+      continue;
+    }
     out.push({
       kind: 'agent',
       speaker: t.speaker,
@@ -46,6 +56,14 @@ export function buildConversation(state: State): Entry[] {
     out.push({ kind: 'user', content: a.content, timestamp: a.timestamp });
   }
   for (const d of state.debate) {
+    // Specialists with no commentary and no edits are silent here too.
+    if (
+      isSpecialist(d.speaker) &&
+      !d.commentary.trim() &&
+      d.applied.length === 0
+    ) {
+      continue;
+    }
     out.push({
       kind: 'debate',
       speaker: d.speaker,
@@ -59,6 +77,17 @@ export function buildConversation(state: State): Entry[] {
     });
   }
   out.sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+
+  // Insert a divider where the conversation transitions from interview to
+  // spec drafting (first debate turn).
+  const firstDebateIdx = out.findIndex(e => e.kind === 'debate');
+  if (firstDebateIdx >= 0) {
+    out.splice(firstDebateIdx, 0, {
+      kind: 'divider',
+      label: 'Spec drafting',
+      timestamp: out[firstDebateIdx]!.timestamp,
+    });
+  }
   return out;
 }
 
@@ -115,12 +144,25 @@ export function ConversationPane({
       <box height={1} />
       <scrollbox flexGrow={1} stickyScroll stickyStart="bottom" scrollY focused>
         <box flexDirection="column">
-        {slice.map((e, i) => (
-          <box key={i} flexDirection="column" marginBottom={1} flexShrink={0}>
-            {renderHeader(e)}
-            {renderBody(e)}
-          </box>
-        ))}
+        {slice.map((e, i) => {
+          if (e.kind === 'divider') {
+            return (
+              <box key={i} flexDirection="row" marginBottom={1} flexShrink={0}>
+                <text>
+                  <span attributes={DIM}>───── </span>
+                  <span fg="cyan" attributes={BOLD}>{e.label}</span>
+                  <span attributes={DIM}> ─────</span>
+                </text>
+              </box>
+            );
+          }
+          return (
+            <box key={i} flexDirection="column" marginBottom={1} flexShrink={0}>
+              {renderHeader(e)}
+              {renderBody(e)}
+            </box>
+          );
+        })}
         {state.speaker !== 'idle' &&
         state.speaker !== 'user' &&
         !state.endReason ? (
@@ -137,7 +179,7 @@ export function ConversationPane({
   );
 }
 
-function renderHeader(e: Entry): React.ReactNode {
+function renderHeader(e: Exclude<Entry, { kind: 'divider' }>): React.ReactNode {
   const ts = formatTime(e.timestamp);
   if (e.kind === 'user') {
     return (
@@ -183,7 +225,7 @@ function renderHeader(e: Entry): React.ReactNode {
   );
 }
 
-function renderBody(e: Entry): React.ReactNode {
+function renderBody(e: Exclude<Entry, { kind: 'divider' }>): React.ReactNode {
   if (e.kind === 'user') {
     return <text>{e.content}</text>;
   }

@@ -42,7 +42,7 @@ function withMix(): State {
 describe('buildConversation', () => {
   it('merges user answers, interview turns, and debate turns in timestamp order', () => {
     const items = buildConversation(withMix());
-    expect(items.map(i => i.kind)).toEqual(['user', 'agent', 'debate']);
+    expect(items.map(i => i.kind)).toEqual(['user', 'agent', 'divider', 'debate']);
   });
 });
 
