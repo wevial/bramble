@@ -24,12 +24,19 @@ import { FlowBox, ParticipantsBox } from './FlowSidebar.js';
 import { ConversationPane } from './ConversationPane.js';
 import { SpecPane, type SaveStatus, type SpecMode } from './SpecPane.js';
 import { StatusStrip } from './StatusStrip.js';
+import {
+  CLAUDE_PERSONA,
+  CODEX_PERSONA,
+  SPECIALIST_PERSONAS,
+  type Persona,
+  type PersonaId,
+} from '../personas/personas.js';
 
 const BOLD = createTextAttributes({ bold: true });
 const DIM = createTextAttributes({ dim: true });
 
 export type AppProps = {
-  agents: { claude: Agent; codex: Agent };
+  agents: Record<PersonaId, Agent>;
   prompt?: string;
   sessionName: string;
   config?: Partial<DebateConfig>;
@@ -43,8 +50,18 @@ export type AppProps = {
   onDone?: () => void;
   onQuit?: () => void;
   skipPromptEntry?: boolean;
-  buildAgents?: (config: ModelConfig) => { claude: Agent; codex: Agent };
+  /**
+   * Build per-persona agents. Called when the user submits the setup form
+   * with their chosen models + selected specialist personas. Returns a map
+   * from persona ID to the Agent that should back that persona; the
+   * orchestrator looks each speaker up here on every turn.
+   */
+  buildAgents?: (
+    config: ModelConfig,
+    personas: Persona[],
+  ) => Record<PersonaId, Agent>;
   initialModelConfig?: ModelConfig;
+  initialSpecialists?: PersonaId[];
   setupStorePath?: string;
 };
 
@@ -58,6 +75,13 @@ export function App(props: AppProps) {
     showSetup ? 'setup' : 'running',
   );
   const [activeAgents, setActiveAgents] = useState(props.agents);
+  const [activePersonas, setActivePersonas] = useState<Persona[]>(() => {
+    const ids = props.initialState?.activePersonas ?? ['claude', 'codex'];
+    const known = new Map<PersonaId, Persona>(
+      [CLAUDE_PERSONA, CODEX_PERSONA, ...SPECIALIST_PERSONAS].map(p => [p.id, p]),
+    );
+    return ids.map(id => known.get(id) ?? CLAUDE_PERSONA);
+  });
   const [prompt, setPrompt] = useState(initialPrompt);
   const [state, setState] = useState<State | null>(props.initialState ?? null);
   const [status, setStatus] = useState('starting…');
@@ -86,6 +110,7 @@ export function App(props: AppProps) {
     }
     const handle = startDebate({
       agents: activeAgents,
+      personas: activePersonas,
       prompt,
       config: props.config,
       mode,
@@ -194,11 +219,21 @@ export function App(props: AppProps) {
             codexEffort: null,
           }
         }
-        onSubmit={({ prompt: p, mode: m, models }) => {
+        initialSpecialists={props.initialSpecialists}
+        onSubmit={({ prompt: p, mode: m, models, specialists }) => {
           setPrompt(p);
           setMode(m);
+          const chosenSpecialists = SPECIALIST_PERSONAS.filter(s =>
+            specialists.includes(s.id),
+          );
+          const personas: Persona[] = [
+            CLAUDE_PERSONA,
+            CODEX_PERSONA,
+            ...chosenSpecialists,
+          ];
+          setActivePersonas(personas);
           if (props.buildAgents) {
-            setActiveAgents(props.buildAgents(models));
+            setActiveAgents(props.buildAgents(models, personas));
           }
           if (props.setupStorePath) {
             try {
@@ -208,6 +243,7 @@ export function App(props: AppProps) {
                 claudeEffort: models.claudeEffort,
                 codexModel: models.codexModel,
                 codexEffort: models.codexEffort,
+                specialists,
               });
             } catch {
               /* best-effort */

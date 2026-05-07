@@ -17,6 +17,13 @@ import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { helpText } from './help.js';
 import { loadSavedSetup, defaultSetupPath } from './ui/setup-store.js';
+import {
+  CLAUDE_PERSONA,
+  CODEX_PERSONA,
+  SPECIALIST_PERSONAS,
+  type Persona,
+} from './personas/personas.js';
+import { systemInstructions } from './prompts/system.js';
 
 const argv = process.argv.slice(2);
 
@@ -237,23 +244,37 @@ let codex: Agent;
 const isoCwd =
   real && isolated ? mkdtempSync(join(tmpdir(), 'bramble-iso-')) : undefined;
 const buildRealAgents = real
-  ? (config: {
-      claudeModel: string | null;
-      claudeEffort: string | null;
-      codexModel: string | null;
-      codexEffort: string | null;
-    }) => ({
-      claude: new ClaudeAgent({
-        model: config.claudeModel ?? undefined,
-        reasoningEffort: config.claudeEffort ?? undefined,
-        cwd: isoCwd,
-      }),
-      codex: new CodexAgent({
-        model: config.codexModel ?? undefined,
-        reasoningEffort: config.codexEffort ?? undefined,
-        cwd: isoCwd,
-      }),
-    })
+  ? (
+      config: {
+        claudeModel: string | null;
+        claudeEffort: string | null;
+        codexModel: string | null;
+        codexEffort: string | null;
+      },
+      personas: Persona[],
+    ): Record<string, Agent> => {
+      const result: Record<string, Agent> = {};
+      for (const persona of personas) {
+        const others = personas.filter(p => p.id !== persona.id);
+        const sys = systemInstructions(persona, others);
+        if (persona.transport === 'claude') {
+          result[persona.id] = new ClaudeAgent({
+            model: config.claudeModel ?? undefined,
+            reasoningEffort: config.claudeEffort ?? undefined,
+            cwd: isoCwd,
+            systemInstructions: sys,
+          });
+        } else {
+          result[persona.id] = new CodexAgent({
+            model: config.codexModel ?? undefined,
+            reasoningEffort: config.codexEffort ?? undefined,
+            cwd: isoCwd,
+            systemInstructions: sys,
+          });
+        }
+      }
+      return result;
+    }
   : undefined;
 if (real) {
   claude = new ClaudeAgent({
@@ -454,6 +475,7 @@ root.render(
       codexEffort: codexEffort ?? null,
     }}
     setupStorePath={savedSetupPath}
+    initialSpecialists={savedSetup.specialists}
     onQuit={shutdown}
     onDone={() => {
       // Finalization happens; user can ctrl-c or we let App quit when ready.

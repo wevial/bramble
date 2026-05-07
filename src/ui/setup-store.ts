@@ -9,6 +9,8 @@ export type SavedSetup = {
   claudeEffort?: string | null;
   codexModel?: string | null;
   codexEffort?: string | null;
+  /** PersonaIds of specialist personas the user opted into last session. */
+  specialists?: string[];
 };
 
 /** Default location: ~/.bramble/setup.json — user-global, not per-project. */
@@ -37,6 +39,10 @@ export function loadSavedSetup(path: string): SavedSetup | null {
     if (!(key in src)) continue;
     const v = src[key];
     if (v === null || typeof v === 'string') out[key] = v;
+  }
+  if (Array.isArray(src.specialists)) {
+    const ids = src.specialists.filter((s): s is string => typeof s === 'string');
+    if (ids.length > 0) out.specialists = ids;
   }
   return out;
 }

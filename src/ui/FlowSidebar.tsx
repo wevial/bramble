@@ -1,5 +1,6 @@
 import { createTextAttributes } from '@opentui/core';
 import type { State } from '../orchestrator/state.js';
+import { findPersona } from '../personas/personas.js';
 
 export type FlowStep = 1 | 2 | 3 | 4 | 5;
 
@@ -140,10 +141,7 @@ export function FlowBox({ state }: { state: State }) {
 }
 
 export function ParticipantsBox({ state }: { state: State }) {
-  const speakingClaude = state.speaker === 'claude';
-  const speakingCodex = state.speaker === 'codex';
-  const claudeReady = state.readyAgents.includes('claude');
-  const codexReady = state.readyAgents.includes('codex');
+  const personaIds = state.activePersonas ?? ['claude', 'codex'];
   return (
     <box flexDirection="column" paddingX={1}>
       <text><span fg="cyan" attributes={BOLD}>PARTICIPANTS</span></text>
@@ -155,28 +153,25 @@ export function ParticipantsBox({ state }: { state: State }) {
         </text>
         <text><span fg="green">Active</span></text>
       </box>
-      <box flexDirection="row" justifyContent="space-between">
-        <text>
-          <span fg="#FF8C42">☀ </span>
-          <span fg="#FF8C42" attributes={BOLD}>Claude</span>
-        </text>
-        <text>
-          <span fg={speakingClaude ? 'yellow' : claudeReady ? 'green' : 'gray'}>
-            {speakingClaude ? 'Thinking…' : claudeReady ? 'Ready' : 'Idle'}
-          </span>
-        </text>
-      </box>
-      <box flexDirection="row" justifyContent="space-between">
-        <text>
-          <span fg="cyan">⊛ </span>
-          <span fg="cyan" attributes={BOLD}>Codex</span>
-        </text>
-        <text>
-          <span fg={speakingCodex ? 'yellow' : codexReady ? 'green' : 'gray'}>
-            {speakingCodex ? 'Thinking…' : codexReady ? 'Ready' : 'Idle'}
-          </span>
-        </text>
-      </box>
+      {personaIds.map(id => {
+        const persona = findPersona(id);
+        const label = persona?.label ?? id;
+        const glyph = persona?.glyph ?? '·';
+        const color = persona?.color ?? 'white';
+        const speaking = state.speaker === id;
+        const ready = state.readyAgents.includes(id);
+        const status = speaking ? 'Thinking…' : ready ? 'Ready' : 'Idle';
+        const statusColor = speaking ? 'yellow' : ready ? 'green' : 'gray';
+        return (
+          <box key={id} flexDirection="row" justifyContent="space-between">
+            <text>
+              <span fg={color}>{glyph} </span>
+              <span fg={color} attributes={BOLD}>{label}</span>
+            </text>
+            <text><span fg={statusColor}>{status}</span></text>
+          </box>
+        );
+      })}
     </box>
   );
 }

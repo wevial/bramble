@@ -26,6 +26,55 @@ describe('nextSpeaker — interview phase', () => {
   });
 });
 
+describe('nextSpeaker — multi-persona', () => {
+  it('round-robins through three or more personas in order', () => {
+    let s: State = {
+      ...initialState('x', undefined, ['claude', 'codex', 'security']),
+    };
+    expect(nextSpeaker(s)).toBe('claude');
+    s = reducer(s, {
+      type: 'interviewTurn',
+      timestamp: T,
+      turn: { speaker: 'claude', commentary: '', question: 'q', ready: false },
+    });
+    expect(nextSpeaker(s)).toBe('codex');
+    s = reducer(s, {
+      type: 'interviewTurn',
+      timestamp: T,
+      turn: { speaker: 'codex', commentary: '', question: 'q', ready: false },
+    });
+    expect(nextSpeaker(s)).toBe('security');
+    s = reducer(s, {
+      type: 'interviewTurn',
+      timestamp: T,
+      turn: { speaker: 'security', commentary: '', question: 'q', ready: false },
+    });
+    // Wraps back to the first persona.
+    expect(nextSpeaker(s)).toBe('claude');
+  });
+
+  it('phase only advances when EVERY persona signals ready', () => {
+    let s: State = {
+      ...initialState('x', undefined, ['claude', 'codex', 'security']),
+    };
+    for (const speaker of ['claude', 'codex'] as const) {
+      s = reducer(s, {
+        type: 'interviewTurn',
+        timestamp: T,
+        turn: { speaker, commentary: '', question: null, ready: true },
+      });
+    }
+    // Two of three ready — still in interview.
+    expect(s.phase).toBe('interview');
+    s = reducer(s, {
+      type: 'interviewTurn',
+      timestamp: T,
+      turn: { speaker: 'security', commentary: '', question: null, ready: true },
+    });
+    expect(s.phase).toBe('debate');
+  });
+});
+
 describe('nextSpeaker — debate phase', () => {
   function debating(): State {
     return { ...initialState('x'), phase: 'debate' };

@@ -9,6 +9,10 @@ import {
   type RowState,
 } from './model-rows.js';
 import type { DebateMode } from '../orchestrator/runner.js';
+import {
+  SPECIALIST_PERSONAS,
+  type PersonaId,
+} from '../personas/personas.js';
 
 const BRAMBLE_BANNER = [
   '    ▄▄▄                            ▄▄       ',
@@ -23,6 +27,7 @@ export type SetupSubmit = {
   prompt: string;
   mode: DebateMode;
   models: ModelConfig;
+  specialists: PersonaId[];
 };
 
 export type SetupScreenProps = {
@@ -30,11 +35,12 @@ export type SetupScreenProps = {
   initialPrompt?: string;
   initialMode?: DebateMode;
   initialModels?: ModelConfig;
+  initialSpecialists?: PersonaId[];
   onSubmit(result: SetupSubmit): void;
   onQuit(): void;
 };
 
-type FieldIndex = 0 | 1 | 2 | 3; // prompt, mode, models, start
+type FieldIndex = 0 | 1 | 2 | 3 | 4; // prompt, mode, models, specialists, start
 
 const EMPTY_MODELS: ModelConfig = {
   claudeModel: null,
@@ -54,6 +60,7 @@ export function SetupScreen({
   initialPrompt,
   initialMode,
   initialModels,
+  initialSpecialists,
   onSubmit,
   onQuit,
 }: SetupScreenProps) {
@@ -69,9 +76,13 @@ export function SetupScreen({
   );
   const [modelRowFocus, setModelRowFocus] = useState(0);
   const [editingCustom, setEditingCustom] = useState(false);
+  const [specialists, setSpecialists] = useState<Set<PersonaId>>(
+    () => new Set(initialSpecialists ?? []),
+  );
+  const [specialistRowFocus, setSpecialistRowFocus] = useState(0);
 
   const advance = () =>
-    setFocus(f => (f < 3 ? ((f + 1) as FieldIndex) : f));
+    setFocus(f => (f < 4 ? ((f + 1) as FieldIndex) : f));
   const retreat = () =>
     setFocus(f => (f > 0 ? ((f - 1) as FieldIndex) : f));
 
@@ -81,7 +92,14 @@ export function SetupScreen({
       setFocus(0);
       return;
     }
-    onSubmit({ prompt: trimmed, mode, models: resolveRows(rows) });
+    onSubmit({
+      prompt: trimmed,
+      mode,
+      models: resolveRows(rows),
+      specialists: SPECIALIST_PERSONAS.filter(p => specialists.has(p.id)).map(
+        p => p.id,
+      ),
+    });
   };
 
   const focusedRow = rows[modelRowFocus]!;
@@ -101,8 +119,19 @@ export function SetupScreen({
       }
       // Enter on prompt is handled inside the multiline InputBox.
       if ((key.name === 'return' || key.name === 'enter') && focus !== 0) {
-        if (focus === 3) {
+        if (focus === 4) {
           tryStart();
+        } else if (focus === 3) {
+          // Enter on a specialist row = toggle. Enter elsewhere = advance.
+          const persona = SPECIALIST_PERSONAS[specialistRowFocus];
+          if (persona) {
+            setSpecialists(prev => {
+              const next = new Set(prev);
+              if (next.has(persona.id)) next.delete(persona.id);
+              else next.add(persona.id);
+              return next;
+            });
+          }
         } else {
           advance();
         }
@@ -145,6 +174,31 @@ export function SetupScreen({
         }
         if (key.name === 'e' && needsCustomText) {
           setEditingCustom(true);
+          return;
+        }
+        return;
+      }
+      if (focus === 3) {
+        if (key.name === 'up') {
+          setSpecialistRowFocus(
+            i => (i - 1 + SPECIALIST_PERSONAS.length) % SPECIALIST_PERSONAS.length,
+          );
+          return;
+        }
+        if (key.name === 'down') {
+          setSpecialistRowFocus(i => (i + 1) % SPECIALIST_PERSONAS.length);
+          return;
+        }
+        if (key.name === 'space') {
+          const persona = SPECIALIST_PERSONAS[specialistRowFocus];
+          if (persona) {
+            setSpecialists(prev => {
+              const next = new Set(prev);
+              if (next.has(persona.id)) next.delete(persona.id);
+              else next.add(persona.id);
+              return next;
+            });
+          }
           return;
         }
         return;
@@ -267,10 +321,40 @@ export function SetupScreen({
         ) : null}
         <text> </text>
 
+        <box>
+          <text fg={focusColor(3)} attributes={(focus === 3) ? BOLD : 0}>
+            {focusMarker(3)}Specialists (optional)
+          </text>
+        </box>
+        <text><span attributes={DIM}>   add critic personas to the debate — each takes a turn every round</span></text>
+        {focus === 3 ? (
+          <text><span attributes={DIM}>   ↑↓ row · space/enter toggle</span></text>
+        ) : null}
+        {SPECIALIST_PERSONAS.map((persona, i) => {
+          const enabled = specialists.has(persona.id);
+          const rowFocused = focus === 3 && specialistRowFocus === i;
+          return (
+            <box key={persona.id} flexDirection="row">
+              <text fg={rowFocused ? 'brightCyan' : undefined}>
+                {rowFocused ? '   › ' : '     '}
+                <span fg={enabled ? 'green' : undefined}>
+                  {enabled ? '[x] ' : '[ ] '}
+                </span>
+                <span fg={persona.color}>{persona.glyph} </span>
+                <span attributes={enabled ? BOLD : 0}>{persona.label}</span>
+                <span attributes={DIM}>
+                  {' '}· via {persona.transport}
+                </span>
+              </text>
+            </box>
+          );
+        })}
+        <text> </text>
+
         <box justifyContent="center">
           <text
-            fg={focus === 3 ? 'brightGreen' : undefined}
-            attributes={focus === 3 ? BOLD_REVERSE : 0}
+            fg={focus === 4 ? 'brightGreen' : undefined}
+            attributes={focus === 4 ? BOLD_REVERSE : 0}
           >
             {'  Start  '}
           </text>

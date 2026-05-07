@@ -100,6 +100,7 @@ describe('SetupScreen', () => {
     input.pressTab(); // → mode
     input.pressArrow('right'); // auto → collab
     input.pressTab(); // → models
+    input.pressTab(); // → specialists
     input.pressTab(); // → start
     input.pressEnter();
     await update();
@@ -108,6 +109,7 @@ describe('SetupScreen', () => {
       prompt: 'design a URL shortener',
       mode: 'collab',
       models: EMPTY,
+      specialists: [],
     });
     unmount();
   });
@@ -116,6 +118,7 @@ describe('SetupScreen', () => {
     const { input, frame, submissions, update, unmount } = await mount();
     input.pressTab(); // mode
     input.pressTab(); // models
+    input.pressTab(); // specialists
     input.pressTab(); // start
     input.pressEnter();
     await update();
@@ -186,6 +189,7 @@ describe('SetupScreen', () => {
     await update();
     expect(frame()).toMatch(/›\s*claude effort/);
     // Tab to Start and submit.
+    input.pressTab(); // → specialists
     input.pressTab(); // → start
     input.pressEnter();
     await update();
@@ -208,6 +212,7 @@ describe('SetupScreen', () => {
     await update();
     await input.typeText('claude-future-model');
     input.pressEnter(); // confirm custom id
+    input.pressTab(); // → specialists
     input.pressTab(); // → start
     input.pressEnter(); // launch
     await update();
