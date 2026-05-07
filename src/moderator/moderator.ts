@@ -23,7 +23,7 @@ export interface Moderator {
  * gets stuck on one persona.
  */
 export class RoundRobinModerator implements Moderator {
-  async pick(state: State): Promise<ModeratorPick> {
+  async pick(state: State, _signal?: AbortSignal): Promise<ModeratorPick> {
     return { next: nextSpeaker(state), reason: '' };
   }
 }

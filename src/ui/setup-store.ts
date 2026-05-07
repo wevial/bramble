@@ -11,6 +11,8 @@ export type SavedSetup = {
   codexEffort?: string | null;
   /** PersonaIds of specialist personas the user opted into last session. */
   specialists?: string[];
+  /** Whether the LLM moderator was enabled last session. */
+  moderator?: boolean;
 };
 
 /** Default location: ~/.bramble/setup.json — user-global, not per-project. */
@@ -44,6 +46,7 @@ export function loadSavedSetup(path: string): SavedSetup | null {
     const ids = src.specialists.filter((s): s is string => typeof s === 'string');
     if (ids.length > 0) out.specialists = ids;
   }
+  if (typeof src.moderator === 'boolean') out.moderator = src.moderator;
   return out;
 }
 

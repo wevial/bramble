@@ -24,6 +24,12 @@ import {
   type Persona,
 } from './personas/personas.js';
 import { systemInstructions } from './prompts/system.js';
+import {
+  LLMModerator,
+  RoundRobinModerator,
+  type Moderator,
+  type ModeratorPick,
+} from './moderator/moderator.js';
 
 const argv = process.argv.slice(2);
 
@@ -509,6 +515,37 @@ const buildFakeAgents = real
       return result;
     };
 
+/**
+ * In real mode the moderator is a Codex subprocess pinned to gpt-5.4-mini
+ * — cheap and fast, since we're only asking "who speaks next?" In fake
+ * mode it's a round-robin wrapped with a canned reason so the UI surface
+ * still demos the moderator attribution row.
+ */
+function buildModerator(personas: Persona[]): Moderator {
+  if (real) {
+    const agent = new CodexAgent({
+      model: 'gpt-5.4-mini',
+      reasoningEffort: 'low',
+      cwd: isoCwd,
+      systemInstructions:
+        'You are a debate moderator. Output one JSON object per request, nothing else.',
+    });
+    return new LLMModerator({ agent, personas });
+  }
+  const rr = new RoundRobinModerator();
+  return {
+    async pick(state, signal): Promise<ModeratorPick> {
+      const pick = await rr.pick(state, signal);
+      const label =
+        personas.find(p => p.id === pick.next)?.label ?? pick.next;
+      return {
+        next: pick.next,
+        reason: `round-robin (fake mode) — ${label}'s turn in the rotation`,
+      };
+    },
+  };
+}
+
 const renderer = await createCliRenderer({
   screenMode: 'alternate-screen',
   useMouse: true,
@@ -547,6 +584,8 @@ root.render(
     debatePath={paths.debatePath}
     interviewPath={paths.interviewPath}
     buildAgents={buildRealAgents ?? buildFakeAgents}
+    buildModerator={buildModerator}
+    initialModerator={savedSetup.moderator}
     initialModelConfig={{
       claudeModel: claudeModel ?? null,
       claudeEffort: claudeEffort ?? null,

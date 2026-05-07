@@ -28,6 +28,7 @@ export type SetupSubmit = {
   mode: DebateMode;
   models: ModelConfig;
   specialists: PersonaId[];
+  moderator: boolean;
 };
 
 export type SetupScreenProps = {
@@ -36,11 +37,12 @@ export type SetupScreenProps = {
   initialMode?: DebateMode;
   initialModels?: ModelConfig;
   initialSpecialists?: PersonaId[];
+  initialModerator?: boolean;
   onSubmit(result: SetupSubmit): void;
   onQuit(): void;
 };
 
-type FieldIndex = 0 | 1 | 2 | 3 | 4; // prompt, mode, models, specialists, start
+type FieldIndex = 0 | 1 | 2 | 3 | 4 | 5; // prompt, mode, models, specialists, moderator, start
 
 const EMPTY_MODELS: ModelConfig = {
   claudeModel: null,
@@ -61,6 +63,7 @@ export function SetupScreen({
   initialMode,
   initialModels,
   initialSpecialists,
+  initialModerator,
   onSubmit,
   onQuit,
 }: SetupScreenProps) {
@@ -80,9 +83,10 @@ export function SetupScreen({
     () => new Set(initialSpecialists ?? []),
   );
   const [specialistRowFocus, setSpecialistRowFocus] = useState(0);
+  const [moderator, setModerator] = useState<boolean>(initialModerator ?? false);
 
   const advance = () =>
-    setFocus(f => (f < 4 ? ((f + 1) as FieldIndex) : f));
+    setFocus(f => (f < 5 ? ((f + 1) as FieldIndex) : f));
   const retreat = () =>
     setFocus(f => (f > 0 ? ((f - 1) as FieldIndex) : f));
 
@@ -99,6 +103,7 @@ export function SetupScreen({
       specialists: SPECIALIST_PERSONAS.filter(p => specialists.has(p.id)).map(
         p => p.id,
       ),
+      moderator,
     });
   };
 
@@ -119,8 +124,11 @@ export function SetupScreen({
       }
       // Enter on prompt is handled inside the multiline InputBox.
       if ((key.name === 'return' || key.name === 'enter') && focus !== 0) {
-        if (focus === 4) {
+        if (focus === 5) {
           tryStart();
+        } else if (focus === 4) {
+          // Enter on moderator field = toggle on/off.
+          setModerator(m => !m);
         } else if (focus === 3) {
           // Enter on a specialist row = toggle. Enter elsewhere = advance.
           const persona = SPECIALIST_PERSONAS[specialistRowFocus];
@@ -175,6 +183,16 @@ export function SetupScreen({
         if (key.name === 'e' && needsCustomText) {
           setEditingCustom(true);
           return;
+        }
+        return;
+      }
+      if (focus === 4) {
+        if (
+          key.name === 'left' ||
+          key.name === 'right' ||
+          key.name === 'space'
+        ) {
+          setModerator(m => !m);
         }
         return;
       }
@@ -351,10 +369,29 @@ export function SetupScreen({
         })}
         <text> </text>
 
+        <box>
+          <text fg={focusColor(4)} attributes={(focus === 4) ? BOLD : 0}>
+            {focusMarker(4)}Moderator (optional)
+          </text>
+        </box>
+        <text><span attributes={DIM}>   when on, an LLM picks the next speaker each turn (uses gpt-5.4-mini)</span></text>
+        <box flexDirection="row">
+          <text>
+            <span>   </span>
+            <ModeratorOption label="off" selected={!moderator} focused={focus === 4} />
+            <span>  </span>
+            <ModeratorOption label="on" selected={moderator} focused={focus === 4} />
+          </text>
+          {focus === 4 ? (
+            <text><span attributes={DIM}>    ←/→ or space to toggle</span></text>
+          ) : null}
+        </box>
+        <text> </text>
+
         <box justifyContent="center">
           <text
-            fg={focus === 4 ? 'brightGreen' : undefined}
-            attributes={focus === 4 ? BOLD_REVERSE : 0}
+            fg={focus === 5 ? 'brightGreen' : undefined}
+            attributes={focus === 5 ? BOLD_REVERSE : 0}
           >
             {'  Start  '}
           </text>
@@ -371,6 +408,25 @@ export function SetupScreen({
 }
 
 function ModeOption({
+  label,
+  selected,
+  focused,
+}: {
+  label: string;
+  selected: boolean;
+  focused: boolean;
+}) {
+  if (selected) {
+    return (
+      <span fg={focused ? 'brightGreen' : 'green'} attributes={BOLD}>
+        [● {label}]
+      </span>
+    );
+  }
+  return <span attributes={DIM}>[  {label}]</span>;
+}
+
+function ModeratorOption({
   label,
   selected,
   focused,

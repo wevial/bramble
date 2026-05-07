@@ -166,12 +166,19 @@ export function ConversationPane({
         {state.speaker !== 'idle' &&
         state.speaker !== 'user' &&
         !state.endReason ? (
-          <text>
-            <span attributes={DIM}>
-            {speakerLabel(state.speaker)} is{' '}
-            {state.phase === 'interview' ? 'thinking…' : 'drafting…'}
-            </span>
-          </text>
+          <box flexDirection="column">
+            <text>
+              <span attributes={DIM}>
+              {speakerLabel(state.speaker)} is{' '}
+              {state.phase === 'interview' ? 'thinking…' : 'drafting…'}
+              </span>
+            </text>
+            {state.lastModeratorReason ? (
+              <text>
+                <span attributes={DIM}>  ↳ moderator: {state.lastModeratorReason}</span>
+              </text>
+            ) : null}
+          </box>
         ) : null}
         </box>
       </scrollbox>

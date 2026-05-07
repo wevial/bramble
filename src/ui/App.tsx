@@ -6,6 +6,7 @@ import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import type { Agent } from '../agents/agent.js';
+import type { Moderator } from '../moderator/moderator.js';
 import {
   startDebate,
   type RunHandle,
@@ -60,8 +61,15 @@ export type AppProps = {
     config: ModelConfig,
     personas: Persona[],
   ) => Record<PersonaId, Agent>;
+  /**
+   * Build a Moderator when the user enables it in setup. Receives the
+   * personas active in the session so the moderator can describe them in
+   * its prompt. Returns null/undefined when the build can't proceed.
+   */
+  buildModerator?: (personas: Persona[]) => Moderator | null;
   initialModelConfig?: ModelConfig;
   initialSpecialists?: PersonaId[];
+  initialModerator?: boolean;
   setupStorePath?: string;
 };
 
@@ -75,6 +83,7 @@ export function App(props: AppProps) {
     showSetup ? 'setup' : 'running',
   );
   const [activeAgents, setActiveAgents] = useState(props.agents);
+  const [activeModerator, setActiveModerator] = useState<Moderator | null>(null);
   const [activePersonas, setActivePersonas] = useState<Persona[]>(() => {
     const ids = props.initialState?.activePersonas ?? ['claude', 'codex'];
     const known = new Map<PersonaId, Persona>(
@@ -111,6 +120,7 @@ export function App(props: AppProps) {
     const handle = startDebate({
       agents: activeAgents,
       personas: activePersonas,
+      moderator: activeModerator ?? undefined,
       prompt,
       config: props.config,
       mode,
@@ -220,7 +230,8 @@ export function App(props: AppProps) {
           }
         }
         initialSpecialists={props.initialSpecialists}
-        onSubmit={({ prompt: p, mode: m, models, specialists }) => {
+        initialModerator={props.initialModerator}
+        onSubmit={({ prompt: p, mode: m, models, specialists, moderator }) => {
           setPrompt(p);
           setMode(m);
           const chosenSpecialists = SPECIALIST_PERSONAS.filter(s =>
@@ -235,6 +246,11 @@ export function App(props: AppProps) {
           if (props.buildAgents) {
             setActiveAgents(props.buildAgents(models, personas));
           }
+          if (moderator && props.buildModerator) {
+            setActiveModerator(props.buildModerator(personas));
+          } else {
+            setActiveModerator(null);
+          }
           if (props.setupStorePath) {
             try {
               saveSetup(props.setupStorePath, {
@@ -244,6 +260,7 @@ export function App(props: AppProps) {
                 codexModel: models.codexModel,
                 codexEffort: models.codexEffort,
                 specialists,
+                moderator,
               });
             } catch {
               /* best-effort */

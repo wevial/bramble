@@ -56,6 +56,12 @@ describe('SetupScreen', () => {
     expect(frame()).toContain('▸ Models');
     input.pressTab();
     await update();
+    expect(frame()).toContain('▸ Specialists');
+    input.pressTab();
+    await update();
+    expect(frame()).toContain('▸ Moderator');
+    input.pressTab();
+    await update();
     expect(frame()).toMatch(/Start/);
     // Already on Start — tab shouldn't wrap.
     input.pressTab();
@@ -101,6 +107,7 @@ describe('SetupScreen', () => {
     input.pressArrow('right'); // auto → collab
     input.pressTab(); // → models
     input.pressTab(); // → specialists
+    input.pressTab(); // → moderator
     input.pressTab(); // → start
     input.pressEnter();
     await update();
@@ -110,6 +117,7 @@ describe('SetupScreen', () => {
       mode: 'collab',
       models: EMPTY,
       specialists: [],
+      moderator: false,
     });
     unmount();
   });
@@ -119,6 +127,7 @@ describe('SetupScreen', () => {
     input.pressTab(); // mode
     input.pressTab(); // models
     input.pressTab(); // specialists
+    input.pressTab(); // moderator
     input.pressTab(); // start
     input.pressEnter();
     await update();
@@ -190,6 +199,7 @@ describe('SetupScreen', () => {
     expect(frame()).toMatch(/›\s*claude effort/);
     // Tab to Start and submit.
     input.pressTab(); // → specialists
+    input.pressTab(); // → moderator
     input.pressTab(); // → start
     input.pressEnter();
     await update();
@@ -213,6 +223,7 @@ describe('SetupScreen', () => {
     await input.typeText('claude-future-model');
     input.pressEnter(); // confirm custom id
     input.pressTab(); // → specialists
+    input.pressTab(); // → moderator
     input.pressTab(); // → start
     input.pressEnter(); // launch
     await update();
