@@ -10,6 +10,7 @@ import { debatePrompt } from '../prompts/debate.js';
 import { reducer, type State, type DebateConfig, initialState } from './state.js';
 import { nextSpeaker } from './scheduler.js';
 import { appendEntry } from '../docs/transcript.js';
+import type { Moderator } from '../moderator/moderator.js';
 
 export type DebateMode = 'auto' | 'collab';
 
@@ -26,6 +27,11 @@ export type RunOptions = {
    * `[CLAUDE_PERSONA, CODEX_PERSONA]` for backward compatibility.
    */
   personas?: Persona[];
+  /**
+   * Optional moderator that picks the next speaker each turn. When omitted,
+   * the runner uses round-robin scheduling via `nextSpeaker`.
+   */
+  moderator?: Moderator;
   prompt: string;
   /**
    * Override the default debate config (rounds cap, decay threshold/window).
@@ -97,6 +103,7 @@ export function startDebate(opts: RunOptions): RunHandle {
       seen.add(a);
       try { a.dispose?.(); } catch { /* ignore */ }
     }
+    try { opts.moderator?.dispose?.(); } catch { /* ignore */ }
   };
   outer.signal.addEventListener('abort', disposeAgents, { once: true });
 
@@ -284,7 +291,26 @@ export function startDebate(opts: RunOptions): RunHandle {
           if (outer.signal.aborted) break;
         }
 
-        const speaker = nextSpeaker(state);
+        let speaker: PersonaId;
+        if (opts.moderator) {
+          try {
+            const pick = await opts.moderator.pick(state, outer.signal);
+            speaker = pick.next;
+            dispatch({
+              type: 'moderatorPicked',
+              speaker,
+              reason: pick.reason,
+            });
+          } catch {
+            // Moderator threw — fall back to round-robin so the loop keeps
+            // making progress.
+            speaker = nextSpeaker(state);
+            dispatch({ type: 'moderatorPicked', speaker, reason: '' });
+          }
+        } else {
+          speaker = nextSpeaker(state);
+        }
+        if (outer.signal.aborted) break;
         dispatch({ type: 'turnStarted', speaker });
 
         turnController = new AbortController();

@@ -89,6 +89,13 @@ export type State = {
    * the debate) or confirm via `/done` (which flips phase to 'done').
    */
   awaitingSignoff?: boolean;
+  /**
+   * Last reason emitted by the moderator (if any) explaining why the next
+   * speaker was chosen. Rendered in the conversation pane as attribution
+   * under the next speaker's header. Null when round-robin scheduling is
+   * in use or no pick has been made yet.
+   */
+  lastModeratorReason?: string | null;
 };
 
 export function initialState(
@@ -127,7 +134,8 @@ export type Action =
       timestamp: string;
     }
   | { type: 'userEdit'; newSpec: string }
-  | { type: 'updateConfig'; patch: Partial<DebateConfig> };
+  | { type: 'updateConfig'; patch: Partial<DebateConfig> }
+  | { type: 'moderatorPicked'; speaker: PersonaId; reason: string };
 
 export function reducer(state: State, action: Action): State {
   switch (action.type) {
@@ -283,6 +291,9 @@ export function reducer(state: State, action: Action): State {
 
     case 'updateConfig':
       return { ...state, config: { ...state.config, ...action.patch } };
+
+    case 'moderatorPicked':
+      return { ...state, lastModeratorReason: action.reason || null };
   }
 }
 
