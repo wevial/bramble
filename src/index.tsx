@@ -431,42 +431,61 @@ if (real) {
 }
 
 /**
- * Build a FakeAgent backing for an arbitrary specialist persona — used in
- * fake mode so the user can sanity-check the multi-persona round-robin
- * without spending real tokens. Each specialist asks one role-flavored
- * question, then signals ready, then offers commentary-only LGTMs in
- * debate.
+ * Build a FakeAgent-shaped backing for an arbitrary specialist persona,
+ * for fake mode. Phase-aware: returns interview-shaped JSON during the
+ * interview phase (one role-flavored question, then ready forever) and
+ * debate-shaped JSON during debate (one continue, then lgtm forever).
+ * Without phase awareness, a fixed response cycle would emit
+ * debate-shaped JSON during interview once the cycle wrapped, which the
+ * interview parser can't handle.
  */
 function buildFakeSpecialist(persona: Persona): Agent {
-  const a = new FakeAgent(persona.transport);
-  a.setResponses([
-    {
-      kind: 'interview',
-      commentary: `${persona.label} angle: framing one question for the role.`,
-      question: persona.systemPrompt
-        .split('.')[0]!
-        .replace(/^You are[^.]*\.\s*/, '') + '?',
+  let interviewCalls = 0;
+  let debateCalls = 0;
+  const TOKEN_DELAY = 8;
+  return {
+    name: persona.transport,
+    async *stream(ctx, signal) {
+      let raw: string;
+      let displayText: string;
+      if (ctx.phase === 'interview') {
+        if (interviewCalls === 0) {
+          const question =
+            (persona.systemPrompt.split('.')[0] ?? `What's a key concern for the ${persona.label} role`)
+              .replace(/^You are[^.]*\.\s*/, '')
+              .trim() + '?';
+          const commentary = `${persona.label} angle: one question to frame the role.`;
+          displayText = commentary;
+          raw = JSON.stringify({ commentary, question, ready: false });
+        } else {
+          const commentary = `${persona.label}: have what I need from this role. Signaling ready.`;
+          displayText = commentary;
+          raw = JSON.stringify({ commentary, question: null, ready: true });
+        }
+        interviewCalls += 1;
+      } else {
+        // debate phase
+        const verdict: 'continue' | 'lgtm' = debateCalls === 0 ? 'continue' : 'lgtm';
+        const commentary =
+          verdict === 'continue'
+            ? `${persona.label}: reading the spec — no edits this round, will evaluate after the primaries land theirs.`
+            : `${persona.label}: spec covers my role's concerns adequately. lgtm.`;
+        displayText = commentary;
+        raw = JSON.stringify({ commentary, edits: [], verdict });
+        debateCalls += 1;
+      }
+      for (const ch of displayText) {
+        if (signal.aborted) return;
+        await new Promise<void>(resolve => {
+          const t = setTimeout(resolve, TOKEN_DELAY);
+          signal.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true });
+        });
+        if (signal.aborted) return;
+        yield { text: ch };
+      }
+      return { raw };
     },
-    {
-      kind: 'interview',
-      commentary: `Have what I need from this role. Signaling ready.`,
-      ready: true,
-    },
-    {
-      kind: 'debate',
-      commentary: `${persona.label}: reading the spec — no edits this round, will evaluate after the primaries land theirs.`,
-      edits: [],
-      verdict: 'continue',
-    },
-    {
-      kind: 'debate',
-      commentary: `${persona.label}: spec covers my role's concerns adequately. lgtm.`,
-      edits: [],
-      verdict: 'lgtm',
-    },
-  ]);
-  a.setTokenDelayMs(8);
-  return a;
+  };
 }
 
 /**
