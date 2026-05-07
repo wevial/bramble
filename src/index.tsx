@@ -430,6 +430,66 @@ if (real) {
   codex = fCodex;
 }
 
+/**
+ * Build a FakeAgent backing for an arbitrary specialist persona — used in
+ * fake mode so the user can sanity-check the multi-persona round-robin
+ * without spending real tokens. Each specialist asks one role-flavored
+ * question, then signals ready, then offers commentary-only LGTMs in
+ * debate.
+ */
+function buildFakeSpecialist(persona: Persona): Agent {
+  const a = new FakeAgent(persona.transport);
+  a.setResponses([
+    {
+      kind: 'interview',
+      commentary: `${persona.label} angle: framing one question for the role.`,
+      question: persona.systemPrompt
+        .split('.')[0]!
+        .replace(/^You are[^.]*\.\s*/, '') + '?',
+    },
+    {
+      kind: 'interview',
+      commentary: `Have what I need from this role. Signaling ready.`,
+      ready: true,
+    },
+    {
+      kind: 'debate',
+      commentary: `${persona.label}: reading the spec — no edits this round, will evaluate after the primaries land theirs.`,
+      edits: [],
+      verdict: 'continue',
+    },
+    {
+      kind: 'debate',
+      commentary: `${persona.label}: spec covers my role's concerns adequately. lgtm.`,
+      edits: [],
+      verdict: 'lgtm',
+    },
+  ]);
+  a.setTokenDelayMs(8);
+  return a;
+}
+
+/**
+ * In fake mode: build the per-persona Agent map by reusing the canned
+ * fClaude/fCodex for primaries and constructing a generic FakeAgent per
+ * specialist. Mirrors the shape of buildRealAgents so App can call it the
+ * same way.
+ */
+const buildFakeAgents = real
+  ? undefined
+  : (
+      _config: unknown,
+      personas: Persona[],
+    ): Record<string, Agent> => {
+      const result: Record<string, Agent> = {};
+      for (const persona of personas) {
+        if (persona.id === 'claude') result[persona.id] = claude;
+        else if (persona.id === 'codex') result[persona.id] = codex;
+        else result[persona.id] = buildFakeSpecialist(persona);
+      }
+      return result;
+    };
+
 const renderer = await createCliRenderer({
   screenMode: 'alternate-screen',
   useMouse: true,
@@ -467,7 +527,7 @@ root.render(
     specPath={paths.specPath}
     debatePath={paths.debatePath}
     interviewPath={paths.interviewPath}
-    buildAgents={buildRealAgents}
+    buildAgents={buildRealAgents ?? buildFakeAgents}
     initialModelConfig={{
       claudeModel: claudeModel ?? null,
       claudeEffort: claudeEffort ?? null,
