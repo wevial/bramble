@@ -43,8 +43,9 @@ export function claudeTransportArgsFor(opts: {
 }
 
 import { systemInstructions } from '../prompts/system.js';
+import { CLAUDE_PERSONA, CODEX_PERSONA } from '../personas/personas.js';
 
-const DEFAULT_PROTOCOL = systemInstructions('claude');
+const DEFAULT_PROTOCOL = systemInstructions(CLAUDE_PERSONA, [CODEX_PERSONA]);
 
 /**
  * Wrap a legacy per-turn `streamLines` callback as a ClaudeTransport. Every

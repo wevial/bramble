@@ -1,13 +1,15 @@
 import type React from 'react';
 import { createTextAttributes } from '@opentui/core';
 import type { State } from '../orchestrator/state.js';
+import type { PersonaId } from '../personas/personas.js';
+import { findPersona } from '../personas/personas.js';
 import { InlineText } from './markdown.js';
 
 type Entry =
   | { kind: 'user'; content: string; timestamp: string }
   | {
       kind: 'agent';
-      speaker: 'claude' | 'codex';
+      speaker: PersonaId;
       commentary: string;
       question: string | null;
       ready: boolean;
@@ -15,7 +17,7 @@ type Entry =
     }
   | {
       kind: 'debate';
-      speaker: 'claude' | 'codex';
+      speaker: PersonaId;
       commentary: string;
       verdict: 'continue' | 'lgtm';
       applied: number;
@@ -68,12 +70,16 @@ function formatTime(ts: string): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-function speakerColor(s: 'claude' | 'codex'): string {
-  return s === 'claude' ? '#FF8C42' : 'cyan';
+function speakerColor(id: PersonaId): string {
+  return findPersona(id)?.color ?? 'white';
 }
 
-function speakerLabel(s: 'claude' | 'codex'): string {
-  return s === 'claude' ? 'Claude' : 'Codex';
+function speakerLabel(id: PersonaId): string {
+  return findPersona(id)?.label ?? id;
+}
+
+function speakerGlyph(id: PersonaId): string {
+  return findPersona(id)?.glyph ?? '·';
 }
 
 export function ConversationPane({
@@ -91,7 +97,7 @@ export function ConversationPane({
     const placeholder =
       speaker === 'idle'
         ? 'Waiting for the first turn…'
-        : `${speakerLabel(speaker as 'claude' | 'codex')} is starting up…`;
+        : `${speakerLabel(speaker)} is starting up…`;
     return (
       <box flexDirection="column" paddingX={1} flexGrow={1}>
         <text><span fg="cyan" attributes={BOLD}>CONVERSATION</span></text>
@@ -115,7 +121,8 @@ export function ConversationPane({
             {renderBody(e)}
           </box>
         ))}
-        {(state.speaker === 'claude' || state.speaker === 'codex') &&
+        {state.speaker !== 'idle' &&
+        state.speaker !== 'user' &&
         !state.endReason ? (
           <text>
             <span attributes={DIM}>
@@ -143,8 +150,8 @@ function renderHeader(e: Entry): React.ReactNode {
   }
   const color = speakerColor(e.speaker);
   const label = speakerLabel(e.speaker);
-  const glyph = e.speaker === 'claude' ? '☀ ' : '⊛ ';
-  const glyphColor = e.speaker === 'claude' ? '#FF8C42' : 'cyan';
+  const glyph = `${speakerGlyph(e.speaker)} `;
+  const glyphColor = color;
   return (
     <text>
       <span fg={glyphColor}>{glyph}</span>

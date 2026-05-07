@@ -4,6 +4,7 @@ import { checkTermination } from './termination.js';
 const base = {
   round: 1,
   maxRounds: 8,
+  activePersonas: ['claude', 'codex'] as string[],
   lgtmThisRound: [] as ('claude' | 'codex')[],
   roundVolumes: [0],
   decayThreshold: 50,

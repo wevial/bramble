@@ -1,4 +1,4 @@
-import type { AgentName } from '../agents/agent.js';
+import type { PersonaId } from '../personas/personas.js';
 
 export type EndReason =
   | 'mutual_lgtm'
@@ -11,8 +11,10 @@ export type TerminationInput = {
   round: number;
   /** Hard cap on rounds. */
   maxRounds: number;
+  /** All personas that must LGTM for mutual_lgtm. */
+  activePersonas: PersonaId[];
   /** LGTM votes received in the most recently completed round. */
-  lgtmThisRound: AgentName[];
+  lgtmThisRound: PersonaId[];
   /** Per-round chars-changed totals, oldest first. */
   roundVolumes: number[];
   /** Volume strictly less than this counts as "low" for decay. */
@@ -27,10 +29,10 @@ export type TerminationInput = {
  * deterministically: mutual_lgtm > edit_decay > max_rounds.
  */
 export function checkTermination(input: TerminationInput): EndReason | null {
-  if (
-    input.lgtmThisRound.includes('claude') &&
-    input.lgtmThisRound.includes('codex')
-  ) {
+  const allLgtm =
+    input.activePersonas.length > 0 &&
+    input.activePersonas.every(p => input.lgtmThisRound.includes(p));
+  if (allLgtm) {
     return 'mutual_lgtm';
   }
   if (

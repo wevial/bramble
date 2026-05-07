@@ -1,9 +1,10 @@
-import type { AgentName } from '../agents/agent.js';
+import type { PersonaId } from '../personas/personas.js';
+import { findPersona } from '../personas/personas.js';
 import type { State } from '../orchestrator/state.js';
 
 export type InterviewPromptInput = {
   state: State;
-  speaker: AgentName;
+  speaker: PersonaId;
 };
 
 /**
@@ -24,7 +25,8 @@ export function interviewPrompt(input: InterviewPromptInput): string {
     // pairs with the user answer that immediately followed it (if any).
     let answerIdx = 0;
     for (const turn of state.interview) {
-      const tag = turn.speaker === speaker ? `${turn.speaker} (you)` : turn.speaker;
+      const turnLabel = personaLabel(turn.speaker);
+      const tag = turn.speaker === speaker ? `${turnLabel} (you)` : turnLabel;
       lines.push(`## ${tag}`);
       if (turn.commentary) lines.push(turn.commentary);
       if (turn.question) lines.push(`> ${turn.question}`);
@@ -51,13 +53,21 @@ export function interviewPrompt(input: InterviewPromptInput): string {
   return parts.join('\n\n');
 }
 
-function buildInterviewInstruction(state: State, speaker: AgentName): string {
-  const other: AgentName = speaker === 'claude' ? 'codex' : 'claude';
-  const otherReady = state.readyAgents.includes(other);
+function buildInterviewInstruction(state: State, speaker: PersonaId): string {
+  const active = state.activePersonas ?? ['claude', 'codex'];
+  const others = active.filter(p => p !== speaker);
+  const othersReady = others.filter(p => state.readyAgents.includes(p));
   const youReady = state.readyAgents.includes(speaker);
-  const hint =
-    otherReady && !youReady
-      ? `${other} has signaled ready. If you also have enough context, signal ready and the debate phase will start.`
-      : `Don't ask filler questions — only ask if the answer would meaningfully change the spec.`;
+  let hint: string;
+  if (othersReady.length > 0 && !youReady) {
+    const readyLabels = othersReady.map(personaLabel).join(', ');
+    hint = `${readyLabels} ${othersReady.length === 1 ? 'has' : 'have'} signaled ready. If you also have enough context, signal ready — the debate phase starts when every participant is ready.`;
+  } else {
+    hint = `Don't ask filler questions — only ask if the answer would meaningfully change the spec.`;
+  }
   return `# Your turn\n\nAsk ONE clarifying question or signal ready. ${hint} Respond as a single JSON object: {"commentary": "...", "question": "..." | null, "ready": true | false}.`;
+}
+
+function personaLabel(id: PersonaId): string {
+  return findPersona(id)?.label ?? id;
 }

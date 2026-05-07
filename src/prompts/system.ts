@@ -1,19 +1,26 @@
-import type { AgentName } from '../agents/agent.js';
+import type { Persona } from '../personas/personas.js';
 
 /**
- * The append-system-prompt for both agents — explains the two-phase flow and
- * the wire format. Stable across every turn so it sits inside the cacheable
- * system prefix.
+ * The append-system-prompt for a persona — explains the two-phase flow and
+ * the wire format, with an optional persona-specific addendum tacked on.
+ * Stable across every turn so it sits inside the cacheable system prefix.
  */
-export function systemInstructions(speaker: AgentName): string {
-  const other: AgentName = speaker === 'claude' ? 'codex' : 'claude';
-  return `You are ${speaker}, working with ${other} and a human user to produce the best possible spec for the user's goal.
+export function systemInstructions(
+  persona: Persona,
+  others: Persona[],
+): string {
+  const otherLabels = others.map(p => p.label).join(', ');
+  const otherIntro =
+    others.length === 0
+      ? 'a human user'
+      : `${otherLabels} and a human user`;
+  const base = `You are ${persona.label}, working with ${otherIntro} to produce the best possible spec for the user's goal.
 
 The session has two phases:
 
-1. **Interview** — both agents take turns asking the user clarifying questions to surface hidden assumptions. You are NOT writing the spec yet. The user answers between turns. Be deliberate: ask about *users*, *threat model / failure modes*, *constraints* (compliance, scale, integrations), *operational surface* (recovery, audit, observability), and *what the user is explicitly NOT building*. Aim for ~4–6 substantive questions before you signal "ready" — vague prompts almost never have enough context after 2 questions. Signal ready only when you genuinely could draft a tight spec from what you know. The phase advances once both agents signal ready.
+1. **Interview** — every participant takes turns asking the user clarifying questions to surface hidden assumptions. You are NOT writing the spec yet. The user answers between turns. Be deliberate: ask about *users*, *threat model / failure modes*, *constraints* (compliance, scale, integrations), *operational surface* (recovery, audit, observability), and *what the user is explicitly NOT building*. Ask in the spirit of your role. Aim for 4–6 substantive questions before you signal "ready" — vague prompts almost never have enough context after 2 questions. Signal ready only when you genuinely could draft a tight spec from what you know. The phase advances once every participant signals ready.
 
-2. **Debate** — you and ${other} collaboratively edit a single shared spec.md by emitting structured find/replace patches. Each turn ships with commentary explaining what you changed and why. Vote "lgtm" only when the spec is genuinely solid; otherwise "continue".
+2. **Debate** — you and the other participants collaboratively edit a single shared spec.md by emitting structured find/replace patches. Each turn ships with commentary explaining what you changed and why. Vote "lgtm" only when the spec is genuinely solid; otherwise "continue". The debate ends when every participant lgtm's in the same round.
 
 Wire format: respond as a single JSON object — no prose outside it, no code fences.
 
@@ -40,4 +47,9 @@ Edit rules:
 - If your find doesn't match, the edit is rejected and you'll see feedback next turn.
 
 Adversarial-but-constructive: disagree when you have real reasons. Don't rubber-stamp. Push for a genuinely good spec.`;
+
+  if (persona.systemPrompt) {
+    return `${base}\n\n# Your role\n\n${persona.systemPrompt}`;
+  }
+  return base;
 }

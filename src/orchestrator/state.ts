@@ -1,15 +1,15 @@
-import type { AgentName } from '../agents/agent.js';
 import type { Edit, RejectedEdit } from '../protocol/messages.js';
 import { applyEdits } from '../protocol/messages.js';
+import type { PersonaId } from '../personas/personas.js';
 import { checkTermination, type EndReason } from './termination.js';
 export type { EndReason } from './termination.js';
 
 export type Phase = 'interview' | 'debate' | 'done';
 
-export type Speaker = AgentName | 'user';
+export type Speaker = PersonaId | 'user';
 
 export type InterviewTurn = {
-  speaker: AgentName;
+  speaker: PersonaId;
   commentary: string;
   question: string | null;
   ready: boolean;
@@ -22,7 +22,7 @@ export type UserAnswer = {
 };
 
 export type DebateTurn = {
-  speaker: AgentName;
+  speaker: PersonaId;
   commentary: string;
   /** Original edit list as the agent submitted it, in submission order. */
   edits: Edit[];
@@ -38,7 +38,7 @@ export type DebateTurn = {
 };
 
 export type DebateConfig = {
-  /** Hard cap on rounds (one round = both agents speak). */
+  /** Hard cap on rounds (one round = every persona speaks once). */
   maxRounds: number;
   /** Per-round chars-changed threshold for the decay convergence signal. */
   decayThreshold: number;
@@ -57,12 +57,19 @@ export type State = {
   speaker: Speaker | 'idle';
   /** The user's original goal prompt. */
   prompt: string;
+  /**
+   * Personas active in this session, in scheduling order. The scheduler
+   * round-robins through this list; termination requires every persona to
+   * LGTM in the same round. Defaults to `['claude', 'codex']` for legacy
+   * sessions / replays.
+   */
+  activePersonas: PersonaId[];
   /** Interview Q&A in chronological order. */
   interview: InterviewTurn[];
   /** User answers to interview questions, chronological. */
   userAnswers: UserAnswer[];
-  /** Most recent ready vote per agent (set membership). */
-  readyAgents: AgentName[];
+  /** Most recent ready vote per persona (set membership). */
+  readyAgents: PersonaId[];
   /** Debate turn log, chronological. */
   debate: DebateTurn[];
   /** Canonical spec.md body. */
@@ -72,14 +79,14 @@ export type State = {
   /** Per-round chars-changed totals (one entry per completed round). */
   roundVolumes: number[];
   /** LGTM votes received during the current open round. */
-  lgtmThisRound: AgentName[];
+  lgtmThisRound: PersonaId[];
   config: DebateConfig;
   endReason?: EndReason;
   /**
-   * Set after both agents reach mutual LGTM in the same round, before the
-   * runner finalizes the session. While true the loop pauses so the user
-   * can either revise (any user input clears the flag and re-opens the
-   * debate) or confirm via `/done` (which flips phase to 'done').
+   * Set after every persona reaches mutual LGTM in the same round, before
+   * the runner finalizes the session. While true the loop pauses so the
+   * user can either revise (any user input clears the flag and re-opens
+   * the debate) or confirm via `/done` (which flips phase to 'done').
    */
   awaitingSignoff?: boolean;
 };
@@ -87,11 +94,13 @@ export type State = {
 export function initialState(
   prompt: string,
   config: Partial<DebateConfig> = {},
+  activePersonas: PersonaId[] = ['claude', 'codex'],
 ): State {
   return {
     phase: 'interview',
     speaker: 'idle',
     prompt,
+    activePersonas,
     interview: [],
     userAnswers: [],
     readyAgents: [],
@@ -105,13 +114,13 @@ export function initialState(
 }
 
 export type Action =
-  | { type: 'turnStarted'; speaker: AgentName }
+  | { type: 'turnStarted'; speaker: PersonaId }
   | { type: 'interviewTurn'; turn: Omit<InterviewTurn, 'timestamp'>; timestamp: string }
   | { type: 'userAnswer'; content: string; timestamp: string }
   | { type: 'userDone' }
   | {
       type: 'debateTurn';
-      speaker: AgentName;
+      speaker: PersonaId;
       commentary: string;
       edits: Edit[];
       verdict: 'continue' | 'lgtm';
@@ -130,14 +139,14 @@ export function reducer(state: State, action: Action): State {
       const turn: InterviewTurn = { ...action.turn, timestamp: action.timestamp };
       const interview = [...state.interview, turn];
       const readyAgents = setReady(state.readyAgents, turn.speaker, turn.ready);
-      const bothReady =
-        readyAgents.includes('claude') && readyAgents.includes('codex');
+      const active = state.activePersonas ?? ['claude', 'codex'];
+      const allReady = active.every(p => readyAgents.includes(p));
       return {
         ...state,
         speaker: 'idle',
         interview,
         readyAgents,
-        phase: bothReady ? 'debate' : 'interview',
+        phase: allReady ? 'debate' : 'interview',
       };
     }
 
@@ -176,10 +185,9 @@ export function reducer(state: State, action: Action): State {
 
     case 'debateTurn': {
       if (state.phase !== 'debate') return state;
-      // A round = one turn per agent. The Nth turn by this agent belongs to
-      // round N. If both agents alternate normally (claude→codex→claude→codex)
-      // the rounds are 1,1,2,2; if one agent speaks twice in a row they
-      // advance to their next round independently.
+      // A round = one turn per active persona. The Nth turn by this persona
+      // belongs to round N. Personas may advance independently if the
+      // schedule glitches and one speaks twice in a row.
       const priorTurnsByThisAgent = state.debate.filter(
         t => t.speaker === action.speaker,
       ).length;
@@ -209,12 +217,12 @@ export function reducer(state: State, action: Action): State {
         }
       }
 
-      // Compute round-volume bookkeeping. A round is "complete" when both
-      // agents have spoken in it; at that point we push the round's total
-      // chars-changed into roundVolumes and clear lgtmThisRound (mutual LGTM
-      // is already detected before clearing — see below).
+      // Compute round-volume bookkeeping. A round is "complete" when every
+      // active persona has spoken in it.
       const debate = [...state.debate, turn];
       const turnsInRound = countTurnsInRound(debate, round);
+      const activeForDebate = state.activePersonas ?? ['claude', 'codex'];
+      const roundSize = activeForDebate.length;
 
       let next: State = {
         ...state,
@@ -225,7 +233,7 @@ export function reducer(state: State, action: Action): State {
         lgtmThisRound,
       };
 
-      if (turnsInRound === 2) {
+      if (turnsInRound === roundSize) {
         // Round closed — sum its chars-changed.
         const volume = debate
           .filter(t => t.round === round)
@@ -235,6 +243,7 @@ export function reducer(state: State, action: Action): State {
         const reason = checkTermination({
           round,
           maxRounds: state.config.maxRounds,
+          activePersonas: activeForDebate,
           lgtmThisRound,
           roundVolumes,
           decayThreshold: state.config.decayThreshold,
@@ -278,10 +287,10 @@ export function reducer(state: State, action: Action): State {
 }
 
 function setReady(
-  current: AgentName[],
-  speaker: AgentName,
+  current: PersonaId[],
+  speaker: PersonaId,
   ready: boolean,
-): AgentName[] {
+): PersonaId[] {
   const has = current.includes(speaker);
   if (ready && !has) return [...current, speaker];
   if (!ready && has) return current.filter(a => a !== speaker);

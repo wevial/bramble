@@ -1,11 +1,13 @@
 import { createTextAttributes } from '@opentui/core';
 import type { State } from '../orchestrator/state.js';
+import type { PersonaId } from '../personas/personas.js';
+import { findPersona } from '../personas/personas.js';
 import type { ModelConfig } from './models.js';
 
 const DIM = createTextAttributes({ dim: true });
 
-export function lastSpeaker(state: State): 'claude' | 'codex' | null {
-  if (state.speaker === 'claude' || state.speaker === 'codex') {
+export function lastSpeaker(state: State): PersonaId | null {
+  if (state.speaker !== 'idle' && state.speaker !== 'user') {
     return state.speaker;
   }
   // Fall back to the most recent agent in any log.
@@ -20,9 +22,15 @@ export function lastSpeaker(state: State): 'claude' | 'codex' | null {
 
 export function modelLabel(state: State, models: ModelConfig): string {
   const who = lastSpeaker(state);
-  if (who === 'claude') return models.claudeModel ?? 'claude (default)';
-  if (who === 'codex') return models.codexModel ?? 'codex (default)';
-  return '—';
+  if (!who) return '—';
+  const persona = findPersona(who);
+  if (persona?.transport === 'claude') {
+    return models.claudeModel ?? 'claude (default)';
+  }
+  if (persona?.transport === 'codex') {
+    return models.codexModel ?? 'codex (default)';
+  }
+  return who;
 }
 
 export function statusLabel(state: State): string {
@@ -30,7 +38,8 @@ export function statusLabel(state: State): string {
   if (state.awaitingSignoff) return 'awaiting your signoff';
   if (state.phase === 'interview') return 'clarifying requirements';
   if (state.phase === 'debate') {
-    return `debate · round ${state.round || 1}/${state.config.maxRounds} · ${state.lgtmThisRound.length}/2 LGTM`;
+    const total = (state.activePersonas ?? ['claude', 'codex']).length;
+    return `debate · round ${state.round || 1}/${state.config.maxRounds} · ${state.lgtmThisRound.length}/${total} LGTM`;
   }
   return state.phase;
 }

@@ -1,9 +1,10 @@
-import type { AgentName } from '../agents/agent.js';
+import type { PersonaId } from '../personas/personas.js';
+import { findPersona } from '../personas/personas.js';
 import type { State, DebateTurn } from '../orchestrator/state.js';
 
 export type DebatePromptInput = {
   state: State;
-  speaker: AgentName;
+  speaker: PersonaId;
 };
 
 const RECENT_TURN_LIMIT = 6;
@@ -23,7 +24,7 @@ export function debatePrompt(input: DebatePromptInput): string {
     const qa: string[] = [];
     let answerIdx = 0;
     for (const t of state.interview) {
-      if (t.question) qa.push(`Q (${t.speaker}): ${t.question}`);
+      if (t.question) qa.push(`Q (${personaLabel(t.speaker)}): ${t.question}`);
       const ans = state.userAnswers[answerIdx];
       if (
         ans &&
@@ -65,8 +66,9 @@ function renderSpec(body: string): string {
   return body.length === 0 ? '(empty — your first edit can use find:"" to seed)' : body;
 }
 
-function renderDebateTurn(turn: DebateTurn, speaker: AgentName): string {
-  const tag = turn.speaker === speaker ? `${turn.speaker} (you)` : turn.speaker;
+function renderDebateTurn(turn: DebateTurn, speaker: PersonaId): string {
+  const turnLabel = personaLabel(turn.speaker);
+  const tag = turn.speaker === speaker ? `${turnLabel} (you)` : turnLabel;
   const out: string[] = [`## ${tag} · round ${turn.round} · verdict ${turn.verdict}`];
   if (turn.commentary) out.push(turn.commentary);
   if (turn.applied.length > 0) {
@@ -78,9 +80,13 @@ function renderDebateTurn(turn: DebateTurn, speaker: AgentName): string {
   return out.join('\n');
 }
 
-function buildDebateInstruction(state: State, speaker: AgentName): string {
+function buildDebateInstruction(state: State, speaker: PersonaId): string {
   const lgtmHint = state.lgtmThisRound.includes(speaker)
     ? "You've already lgtm'd this round."
-    : `If the spec is genuinely solid, vote "lgtm" — both agents must lgtm in the same round to end the debate.`;
+    : `If the spec is genuinely solid, vote "lgtm" — every participant must lgtm in the same round to end the debate.`;
   return `# Your turn\n\n${lgtmHint} Otherwise edit the spec where it needs work and vote "continue". Respond as a single JSON object: {"commentary": "...", "edits": [{"find": "...", "replace": "..."}], "verdict": "continue" | "lgtm"}.`;
+}
+
+function personaLabel(id: PersonaId): string {
+  return findPersona(id)?.label ?? id;
 }

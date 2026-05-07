@@ -1,4 +1,6 @@
-import type { Agent, AgentName, TurnUsage } from '../agents/agent.js';
+import type { Agent, TurnUsage } from '../agents/agent.js';
+import type { Persona, PersonaId } from '../personas/personas.js';
+import { defaultPersonas } from '../personas/personas.js';
 import {
   parseDebateMessage,
   parseInterviewMessage,
@@ -12,7 +14,18 @@ import { appendEntry } from '../docs/transcript.js';
 export type DebateMode = 'auto' | 'collab';
 
 export type RunOptions = {
-  agents: { claude: Agent; codex: Agent };
+  /**
+   * Map from persona ID to the Agent that backs it. The legacy shape
+   * `{ claude, codex }` still works since both are valid persona IDs.
+   * For richer sessions with specialists, pass each persona's backing
+   * agent here keyed by its ID.
+   */
+  agents: Record<PersonaId, Agent>;
+  /**
+   * Personas active in this session, in scheduling order. Defaults to
+   * `[CLAUDE_PERSONA, CODEX_PERSONA]` for backward compatibility.
+   */
+  personas?: Persona[];
   prompt: string;
   /**
    * Override the default debate config (rounds cap, decay threshold/window).
@@ -23,9 +36,9 @@ export type RunOptions = {
   /** When provided, skips writing the initial 'session' transcript entry. */
   initialState?: State;
   mode?: DebateMode;
-  onToken?: (speaker: AgentName, text: string) => void;
+  onToken?: (speaker: PersonaId, text: string) => void;
   onState?: (state: State) => void;
-  onUsage?: (speaker: AgentName, usage: TurnUsage) => void;
+  onUsage?: (speaker: PersonaId, usage: TurnUsage) => void;
   onPauseChange?: (paused: boolean) => void;
   signal?: AbortSignal;
 };
@@ -53,8 +66,11 @@ export type RunHandle = {
 };
 
 export function startDebate(opts: RunOptions): RunHandle {
+  const personas = opts.personas ?? defaultPersonas();
+  const personaIds = personas.map(p => p.id);
   let state: State =
-    opts.initialState ?? initialState(opts.prompt, opts.config);
+    opts.initialState ??
+    initialState(opts.prompt, opts.config, personaIds);
   const mode: DebateMode = opts.mode ?? 'auto';
   const outer = new AbortController();
   opts.signal?.addEventListener('abort', () => outer.abort(), { once: true });
@@ -72,8 +88,15 @@ export function startDebate(opts: RunOptions): RunHandle {
   const disposeAgents = () => {
     if (disposed) return;
     disposed = true;
-    try { opts.agents.claude.dispose?.(); } catch { /* ignore */ }
-    try { opts.agents.codex.dispose?.(); } catch { /* ignore */ }
+    // Dedupe: the same Agent instance may back multiple personas (e.g. a
+    // shared claude transport powering ClaudePersona + SecurityCritic).
+    const seen = new Set<Agent>();
+    for (const id of personaIds) {
+      const a = opts.agents[id];
+      if (!a || seen.has(a)) continue;
+      seen.add(a);
+      try { a.dispose?.(); } catch { /* ignore */ }
+    }
   };
   outer.signal.addEventListener('abort', disposeAgents, { once: true });
 
@@ -279,8 +302,12 @@ export function startDebate(opts: RunOptions): RunHandle {
         let displayed = '';
         let rawTail: string | undefined;
         let usageTail: TurnUsage | undefined;
+        const agent = opts.agents[speaker];
+        if (!agent) {
+          throw new Error(`startDebate: no agent registered for persona '${speaker}'`);
+        }
         try {
-          const iter = opts.agents[speaker].stream(ctx, turnController.signal);
+          const iter = agent.stream(ctx, turnController.signal);
           while (true) {
             const r = await iter.next();
             if (r.done) {

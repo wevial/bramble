@@ -34,7 +34,9 @@ export function codexSpawnSpec(
   return spec;
 }
 
-const DEFAULT_PROTOCOL = systemInstructions('codex');
+import { CLAUDE_PERSONA, CODEX_PERSONA } from '../personas/personas.js';
+
+const DEFAULT_PROTOCOL = systemInstructions(CODEX_PERSONA, [CLAUDE_PERSONA]);
 
 function defaultSpawn(
   prompt: string,

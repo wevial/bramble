@@ -70,9 +70,9 @@ describe('interviewPrompt', () => {
     });
     const fromClaude = interviewPrompt({ state: s, speaker: 'claude' });
     const fromCodex = interviewPrompt({ state: s, speaker: 'codex' });
-    expect(fromClaude).toContain('claude (you)');
-    expect(fromCodex).toContain('claude');
-    expect(fromCodex).not.toContain('claude (you)');
+    expect(fromClaude).toContain('Claude (you)');
+    expect(fromCodex).toContain('Claude');
+    expect(fromCodex).not.toContain('Claude (you)');
   });
 
   it('hints that the OTHER agent has signaled ready when applicable', () => {
@@ -83,6 +83,6 @@ describe('interviewPrompt', () => {
       turn: { speaker: 'codex', commentary: '', question: null, ready: true },
     });
     const out = interviewPrompt({ state: s, speaker: 'claude' });
-    expect(out).toContain('codex has signaled ready');
+    expect(out).toContain('Codex has signaled ready');
   });
 });

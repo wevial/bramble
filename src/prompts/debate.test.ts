@@ -49,7 +49,7 @@ describe('debatePrompt', () => {
     s = reducer(s, { type: 'userDone' });
     const out = debatePrompt({ state: s, speaker: 'claude' });
     expect(out).toContain('# Interview transcript');
-    expect(out).toContain('Q (claude): who?');
+    expect(out).toContain('Q (Claude): who?');
     expect(out).toContain('A: internal only');
   });
 

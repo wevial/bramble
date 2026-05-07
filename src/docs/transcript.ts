@@ -1,6 +1,6 @@
 import { appendFile, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import type { AgentName } from '../agents/agent.js';
+import type { PersonaId } from '../personas/personas.js';
 import type {
   DebateConfig,
   DebateTurn,
@@ -25,7 +25,7 @@ export type TranscriptEntry =
   | { type: 'config_update'; patch: Partial<DebateConfig>; timestamp: string }
   | { type: 'done'; reason: EndReason; finalSpec: string; timestamp: string };
 
-export type TranscriptSpeaker = AgentName | 'user' | 'system';
+export type TranscriptSpeaker = PersonaId | 'user' | 'system';
 
 export async function appendEntry(
   path: string,

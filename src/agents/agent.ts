@@ -1,3 +1,8 @@
+/**
+ * Identifies a CLI *transport* (which subprocess we spawn). Persona IDs
+ * (which can be arbitrary strings like 'security' or 'ux') are a separate
+ * concept — see src/personas/personas.ts.
+ */
 export type AgentName = 'claude' | 'codex';
 
 export type TurnContext = {
