@@ -57,7 +57,7 @@ export class LLMModerator implements Moderator {
     this.agent = opts.agent;
     this.personas = opts.personas;
     this.contextWindow = opts.contextWindow ?? 5;
-    this.cap = opts.consecutivePickCap ?? 2;
+    this.cap = opts.consecutivePickCap ?? 1;
   }
 
   async pick(state: State, signal?: AbortSignal): Promise<ModeratorPick> {
