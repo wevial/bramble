@@ -292,7 +292,23 @@ export function startDebate(opts: RunOptions): RunHandle {
         }
 
         let speaker: PersonaId;
-        if (opts.moderator) {
+        // Phase-stuck guard: in interview, every persona must signal ready
+        // before the phase advances. If any persona has zero turns, force
+        // the next pick to come from the never-spoken set so the moderator
+        // can't keep skipping someone forever.
+        const interviewSpoken = new Set(state.interview.map(t => t.speaker));
+        const neverSpoken =
+          state.phase === 'interview'
+            ? state.activePersonas.filter(p => !interviewSpoken.has(p))
+            : [];
+        if (neverSpoken.length > 0) {
+          speaker = neverSpoken[0]!;
+          dispatch({
+            type: 'moderatorPicked',
+            speaker,
+            reason: `${speaker} hasn't spoken yet — required before interview can end`,
+          });
+        } else if (opts.moderator) {
           try {
             const pick = await opts.moderator.pick(state, outer.signal);
             speaker = pick.next;
