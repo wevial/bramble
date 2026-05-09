@@ -68,6 +68,27 @@ describe('parseInterviewMessage', () => {
     if (!r.ok) throw new Error(r.error);
     expect(r.value.question).toBe('what?');
   });
+
+  it('extracts JSON wrapped in code fences', () => {
+    const raw =
+      '```json\n{"commentary": "fenced", "question": "x?", "ready": false}\n```';
+    const r = parseInterviewMessage(raw);
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error(r.error);
+    expect(r.value.commentary).toBe('fenced');
+  });
+
+  it('uses balanced-brace matching when JSON is followed by trailing prose', () => {
+    // The naive lastIndexOf('}') approach would consume the trailing brace
+    // in the prose and fail JSON.parse. The balanced extractor stops at the
+    // matching close brace.
+    const raw =
+      '{"commentary": "ok", "question": "what?", "ready": false}\nNote: see also {something else}.';
+    const r = parseInterviewMessage(raw);
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error(r.error);
+    expect(r.value.question).toBe('what?');
+  });
 });
 
 describe('parseDebateMessage', () => {

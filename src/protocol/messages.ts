@@ -68,12 +68,43 @@ function parseWithSchema<T extends z.ZodTypeAny>(
 }
 
 function extractJsonObject(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (trimmed.startsWith('{')) return null;
-  const start = trimmed.indexOf('{');
-  const end = trimmed.lastIndexOf('}');
-  if (start === -1 || end === -1 || end <= start) return null;
-  return trimmed.slice(start, end + 1);
+  // Strip code fences first — agents often wrap JSON in ```json ... ``` even
+  // though they're told not to.
+  const noFences = raw
+    .replace(/```(?:json)?\s*/gi, '')
+    .replace(/```/g, '')
+    .trim();
+  // Find the first '{' and walk forward with a brace-depth counter that
+  // respects strings and escapes. This handles trailing prose after the
+  // JSON, multiple top-level objects (we take the first), and nested
+  // objects that simple lastIndexOf('}') would mis-bracket.
+  const start = noFences.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < noFences.length; i++) {
+    const ch = noFences[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === '\\' && inString) {
+      escape = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) return noFences.slice(start, i + 1);
+    }
+  }
+  return null;
 }
 
 export type RejectedEdit = {
