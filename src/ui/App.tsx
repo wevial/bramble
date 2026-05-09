@@ -121,6 +121,7 @@ export function App(props: AppProps) {
       agents: activeAgents,
       personas: activePersonas,
       moderator: activeModerator ?? undefined,
+      pauseEachRound: true,
       prompt,
       config: props.config,
       mode,

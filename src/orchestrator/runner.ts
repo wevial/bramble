@@ -32,6 +32,13 @@ export type RunOptions = {
    * the runner uses round-robin scheduling via `nextSpeaker`.
    */
   moderator?: Moderator;
+  /**
+   * Auto-mode only: when true, the runner pauses at the end of every
+   * full debate round so the user can weigh in. Defaults to false to
+   * keep headless/test invocations non-blocking; the interactive UI
+   * sets it true.
+   */
+  pauseEachRound?: boolean;
   prompt: string;
   /**
    * Override the default debate config (rounds cap, decay threshold/window).
@@ -421,6 +428,7 @@ export function startDebate(opts: RunOptions): RunHandle {
         }
 
         // debate phase
+        const roundsBefore = state.roundVolumes.length;
         const parsed = parseDebateMessage(raw);
         const turnPayload = parsed.ok
           ? parsed.value
@@ -433,6 +441,7 @@ export function startDebate(opts: RunOptions): RunHandle {
           verdict: turnPayload.verdict,
           timestamp: ts,
         });
+        const roundClosed = state.roundVolumes.length > roundsBefore;
         const debateTurn = state.debate[state.debate.length - 1];
         if (debateTurn) {
           queueAppend({
@@ -459,6 +468,35 @@ export function startDebate(opts: RunOptions): RunHandle {
           });
           if ((state.phase as string) === 'done') break;
           // Otherwise the user revised — fall through and keep debating.
+        }
+
+        // Auto mode: pause at the end of every full round so the user can
+        // weigh in (or just press enter to continue). collab mode handles
+        // its own per-turn pause below; skip the round pause to avoid
+        // double-pausing.
+        if (
+          mode === 'auto' &&
+          opts.pauseEachRound &&
+          roundClosed &&
+          !state.awaitingSignoff &&
+          !outer.signal.aborted &&
+          (state.phase as string) !== 'done'
+        ) {
+          opts.onPauseChange?.(true);
+          await new Promise<void>(resolve => {
+            collabPauseResolver = resolve;
+            outer.signal.addEventListener(
+              'abort',
+              () => {
+                if (collabPauseResolver) {
+                  collabPauseResolver = null;
+                  resolve();
+                }
+              },
+              { once: true },
+            );
+          });
+          opts.onPauseChange?.(false);
         }
 
         if (mode === 'collab' && !outer.signal.aborted) {
