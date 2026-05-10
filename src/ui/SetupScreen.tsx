@@ -126,11 +126,9 @@ export function SetupScreen({
       if ((key.name === 'return' || key.name === 'enter') && focus !== 0) {
         if (focus === 5) {
           tryStart();
-        } else if (focus === 4) {
-          // Enter on moderator field = toggle on/off.
-          setModerator(m => !m);
         } else {
-          // Enter on specialists (3) advances; toggling is space-only there.
+          // Enter on specialists (3) and moderator (4) advances; toggling
+          // is space-only there.
           advance();
         }
         return;
@@ -373,7 +371,7 @@ export function SetupScreen({
             <ModeratorOption label="on" selected={moderator} focused={focus === 4} />
           </text>
           {focus === 4 ? (
-            <text><span attributes={DIM}>    ←/→ or space to toggle</span></text>
+            <text><span attributes={DIM}>    ←/→ or space toggles · enter advances</span></text>
           ) : null}
         </box>
         <text> </text>
