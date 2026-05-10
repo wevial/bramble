@@ -129,18 +129,8 @@ export function SetupScreen({
         } else if (focus === 4) {
           // Enter on moderator field = toggle on/off.
           setModerator(m => !m);
-        } else if (focus === 3) {
-          // Enter on a specialist row = toggle. Enter elsewhere = advance.
-          const persona = SPECIALIST_PERSONAS[specialistRowFocus];
-          if (persona) {
-            setSpecialists(prev => {
-              const next = new Set(prev);
-              if (next.has(persona.id)) next.delete(persona.id);
-              else next.add(persona.id);
-              return next;
-            });
-          }
         } else {
+          // Enter on specialists (3) advances; toggling is space-only there.
           advance();
         }
         return;
@@ -346,7 +336,7 @@ export function SetupScreen({
         </box>
         <text><span attributes={DIM}>   add critic personas to the debate — each takes a turn every round</span></text>
         {focus === 3 ? (
-          <text><span attributes={DIM}>   ↑↓ row · space/enter toggle</span></text>
+          <text><span attributes={DIM}>   ↑↓ row · space toggle · enter advances</span></text>
         ) : null}
         {SPECIALIST_PERSONAS.map((persona, i) => {
           const enabled = specialists.has(persona.id);
