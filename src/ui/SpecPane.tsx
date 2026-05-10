@@ -68,7 +68,7 @@ export function SpecPane({
         ) : null}
       </box>
       <box height={1} />
-      <scrollbox flexGrow={1} scrollY focused>
+      <scrollbox flexGrow={1} scrollY>
         {text.length === 0 ? (
           <text><span attributes={DIM}>(empty — no edits yet)</span></text>
         ) : (

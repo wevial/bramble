@@ -131,7 +131,7 @@ export function ConversationPane({
       <box flexDirection="column" paddingX={1} flexGrow={1}>
         <text><span fg="cyan" attributes={BOLD}>CONVERSATION</span></text>
         <box height={1} />
-        <scrollbox flexGrow={1} stickyScroll stickyStart="bottom" scrollY focused>
+        <scrollbox flexGrow={1} stickyScroll stickyStart="bottom" scrollY>
           <text><span attributes={DIM}>{placeholder}</span></text>
         </scrollbox>
       </box>
@@ -142,7 +142,7 @@ export function ConversationPane({
     <box flexDirection="column" paddingX={1} flexGrow={1}>
       <text><span fg="cyan" attributes={BOLD}>CONVERSATION</span></text>
       <box height={1} />
-      <scrollbox flexGrow={1} stickyScroll stickyStart="bottom" scrollY focused>
+      <scrollbox flexGrow={1} stickyScroll stickyStart="bottom" scrollY>
         <box flexDirection="column">
         {slice.map((e, i) => {
           if (e.kind === 'divider') {
