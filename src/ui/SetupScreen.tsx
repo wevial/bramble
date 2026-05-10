@@ -387,7 +387,7 @@ export function SetupScreen({
         <text> </text>
         <box justifyContent="center">
           <text><span attributes={DIM}>
-            tab/enter forward · shift-tab back · /quit to exit
+            tab/enter forward · shift-tab back · ctrl+c to exit
           </span></text>
         </box>
       </box>
