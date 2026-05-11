@@ -53,23 +53,30 @@ describe('nextSpeaker — multi-persona', () => {
     expect(nextSpeaker(s)).toBe('claude');
   });
 
-  it('phase only advances when EVERY persona signals ready', () => {
+  it('phase advances when every PRIMARY signals ready — specialists are advisory', () => {
     let s: State = {
       ...initialState('x', undefined, ['claude', 'codex', 'security']),
     };
-    for (const speaker of ['claude', 'codex'] as const) {
-      s = reducer(s, {
-        type: 'interviewTurn',
-        timestamp: T,
-        turn: { speaker, commentary: '', question: null, ready: true },
-      });
-    }
-    // Two of three ready — still in interview.
+    // Only claude ready — still in interview.
+    s = reducer(s, {
+      type: 'interviewTurn',
+      timestamp: T,
+      turn: { speaker: 'claude', commentary: '', question: null, ready: true },
+    });
     expect(s.phase).toBe('interview');
+    // A specialist saying ready doesn't advance the phase by itself…
     s = reducer(s, {
       type: 'interviewTurn',
       timestamp: T,
       turn: { speaker: 'security', commentary: '', question: null, ready: true },
+    });
+    expect(s.phase).toBe('interview');
+    // …but the moment both primaries are ready, phase flips even if a
+    // specialist never spoke.
+    s = reducer(s, {
+      type: 'interviewTurn',
+      timestamp: T,
+      turn: { speaker: 'codex', commentary: '', question: null, ready: true },
     });
     expect(s.phase).toBe('debate');
   });

@@ -1,6 +1,7 @@
 import type { Edit, RejectedEdit } from '../protocol/messages.js';
 import { applyEdits } from '../protocol/messages.js';
 import type { PersonaId } from '../personas/personas.js';
+import { findPersona } from '../personas/personas.js';
 import { checkTermination, type EndReason } from './termination.js';
 export type { EndReason } from './termination.js';
 
@@ -148,7 +149,13 @@ export function reducer(state: State, action: Action): State {
       const interview = [...state.interview, turn];
       const readyAgents = setReady(state.readyAgents, turn.speaker, turn.ready);
       const active = state.activePersonas ?? ['claude', 'codex'];
-      const allReady = active.every(p => readyAgents.includes(p));
+      // Phase advance gates on PRIMARIES only. Specialists are advisory —
+      // they may speak or stay silent in interview, but they don't block the
+      // transition to debate. Without this, a specialist who never reaches
+      // `ready` (e.g. because the user hasn't volunteered details that
+      // specialist cares about) would keep the loop spinning forever.
+      const primaries = primariesOf(active);
+      const allReady = primaries.every(p => readyAgents.includes(p));
       return {
         ...state,
         speaker: 'idle',
@@ -226,11 +233,19 @@ export function reducer(state: State, action: Action): State {
       }
 
       // Compute round-volume bookkeeping. A round is "complete" when every
-      // active persona has spoken in it.
+      // primary persona has spoken in it. Specialists may chime in or skip
+      // any round — they're advisory and shouldn't drive the round boundary.
       const debate = [...state.debate, turn];
-      const turnsInRound = countTurnsInRound(debate, round);
       const activeForDebate = state.activePersonas ?? ['claude', 'codex'];
-      const roundSize = activeForDebate.length;
+      const primariesForDebate = primariesOf(activeForDebate);
+      const primarySpeakersInRound = new Set(
+        debate
+          .filter(t => t.round === round && primariesForDebate.includes(t.speaker))
+          .map(t => t.speaker),
+      );
+      const roundClosed =
+        primariesForDebate.length > 0 &&
+        primariesForDebate.every(p => primarySpeakersInRound.has(p));
 
       let next: State = {
         ...state,
@@ -241,17 +256,18 @@ export function reducer(state: State, action: Action): State {
         lgtmThisRound,
       };
 
-      if (turnsInRound === roundSize) {
+      if (roundClosed) {
         // Round closed — sum its chars-changed.
         const volume = debate
           .filter(t => t.round === round)
           .reduce((sum, t) => sum + t.charsChanged, 0);
         const roundVolumes = [...state.roundVolumes, volume];
-        // Termination check uses the just-closed round's tallies.
+        // Termination check is keyed on primaries (specialists don't gate
+        // mutual_lgtm) so consensus depends only on the spec authors.
         const reason = checkTermination({
           round,
           maxRounds: state.config.maxRounds,
-          activePersonas: activeForDebate,
+          activePersonas: primariesForDebate,
           lgtmThisRound,
           roundVolumes,
           decayThreshold: state.config.decayThreshold,
@@ -308,8 +324,12 @@ function setReady(
   return current;
 }
 
-function countTurnsInRound(debate: DebateTurn[], round: number): number {
-  let n = 0;
-  for (const t of debate) if (t.round === round) n++;
-  return n;
+function primariesOf(ids: PersonaId[]): PersonaId[] {
+  return ids.filter(id => {
+    const p = findPersona(id);
+    // Unknown personas (custom IDs we can't look up) are treated as primary
+    // so we don't silently drop them from the gate.
+    return !p || p.scope === 'primary';
+  });
 }
+

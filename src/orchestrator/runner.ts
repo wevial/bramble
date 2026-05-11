@@ -299,14 +299,19 @@ export function startDebate(opts: RunOptions): RunHandle {
         }
 
         let speaker: PersonaId;
-        // Phase-stuck guard: in interview, every persona must signal ready
-        // before the phase advances. If any persona has zero turns, force
-        // the next pick to come from the never-spoken set so the moderator
-        // can't keep skipping someone forever.
+        // Phase-stuck guard: in interview, every PRIMARY must speak at
+        // least once before the phase advances (specialists are advisory).
+        // Force the next pick from the never-spoken primaries so the
+        // moderator can't loop primaries who are already done.
         const interviewSpoken = new Set(state.interview.map(t => t.speaker));
+        const activeIds = state.activePersonas ?? personaIds;
+        const primariesActive = activeIds.filter(p => {
+          const persona = personas.find(x => x.id === p);
+          return !persona || persona.scope === 'primary';
+        });
         const neverSpoken =
           state.phase === 'interview'
-            ? state.activePersonas.filter(p => !interviewSpoken.has(p))
+            ? primariesActive.filter(p => !interviewSpoken.has(p))
             : [];
         if (neverSpoken.length > 0) {
           speaker = neverSpoken[0]!;
@@ -432,7 +437,15 @@ export function startDebate(opts: RunOptions): RunHandle {
         const parsed = parseDebateMessage(raw);
         const turnPayload = parsed.ok
           ? parsed.value
-          : { commentary: raw, edits: [], verdict: 'continue' as const };
+          : {
+              // Parse failure (truncated stream, malformed JSON, etc.).
+              // Dumping the raw JSON soup into the conversation pane is
+              // unreadable — surface a short diagnostic and try to recover
+              // any visible prose so the round still advances.
+              commentary: salvageCommentary(raw),
+              edits: [],
+              verdict: 'continue' as const,
+            };
         dispatch({
           type: 'debateTurn',
           speaker,
@@ -545,4 +558,31 @@ export function startDebate(opts: RunOptions): RunHandle {
 
 export async function runDebate(opts: RunOptions): Promise<State> {
   return startDebate(opts).done;
+}
+
+/**
+ * Last-ditch recovery for debate turns whose JSON failed to parse (stream
+ * truncated mid-output, model emitted prose-before-JSON, etc.). Strips code
+ * fences, attempts to pull a `"commentary": "..."` field out of the JSON
+ * soup, and falls back to a short diagnostic so the conversation pane
+ * doesn't render a wall of raw `{...}`.
+ */
+function salvageCommentary(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '[empty turn — agent produced no output]';
+  // If there's no `{` at all, the agent skipped the JSON envelope entirely
+  // — treat the whole thing as commentary.
+  if (!trimmed.includes('{')) return trimmed;
+  // Try to extract a "commentary": "..." value, accounting for escaped
+  // quotes inside the string. This is best-effort; the goal is just to
+  // surface SOMETHING readable.
+  const match = trimmed.match(/"commentary"\s*:\s*"((?:\\.|[^"\\])*)"/);
+  if (match && match[1]) {
+    try {
+      return JSON.parse('"' + match[1] + '"');
+    } catch {
+      return match[1];
+    }
+  }
+  return '[parse error — agent output dropped this turn; will retry next round]';
 }
