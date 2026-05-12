@@ -121,7 +121,11 @@ export function App(props: AppProps) {
       agents: activeAgents,
       personas: activePersonas,
       moderator: activeModerator ?? undefined,
-      pauseEachRound: true,
+      // Auto mode runs to signoff without pausing each round — the user
+      // can interject at any time by typing. Per-round pauses turned out
+      // to be too frequent for long debates. Collab mode still pauses
+      // per-turn for users who want explicit checkpoints.
+      pauseEachRound: false,
       prompt,
       config: props.config,
       mode,
