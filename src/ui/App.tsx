@@ -390,7 +390,9 @@ export function App(props: AppProps) {
               {state.phase === 'interview' &&
               (state.speaker === 'claude' || state.speaker === 'codex')
                 ? `${state.speaker === 'claude' ? 'Claude' : 'Codex'} is asking — input disabled until their question lands…`
-                : 'Your message (↵ to send, ⇧+↵ for newline)'}
+                : paused
+                  ? 'Paused — ↵ to continue, or type a message to weigh in'
+                  : 'Your message (↵ to send, ⇧+↵ for newline)'}
               </span>
             </text>
             <InputBox
@@ -398,9 +400,13 @@ export function App(props: AppProps) {
             state.phase === 'interview' &&
             (state.speaker === 'claude' || state.speaker === 'codex')
           }
-          allowEmptySubmit={mode === 'collab'}
+          allowEmptySubmit={paused}
           onSubmit={line => {
-            if (line === '' && mode === 'collab' && paused) {
+            // Empty submit while paused resumes the loop — covers both
+            // collab-mode (every turn) and auto-mode's pauseEachRound
+            // (between debate rounds). Typing anything goes through
+            // interject so the agents see the input next round.
+            if (line === '' && paused) {
               handleRef.current?.continue();
               return;
             }
