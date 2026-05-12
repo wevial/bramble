@@ -7,7 +7,7 @@ export type AgentName = 'claude' | 'codex';
 
 export type TurnContext = {
   /** Which loop phase this turn is for — drives the response schema. */
-  phase: 'interview' | 'debate';
+  phase: 'interview' | 'criteria' | 'debate';
   /** Full self-contained prompt for one-shot agents or a fresh session. */
   prompt: string;
   /**

@@ -56,6 +56,7 @@ describe('nextSpeaker — multi-persona', () => {
   it('phase advances when every PRIMARY signals ready — specialists are advisory', () => {
     let s: State = {
       ...initialState('x', undefined, ['claude', 'codex', 'security']),
+      criteriaStepEnabled: true,
     };
     // Only claude ready — still in interview.
     s = reducer(s, {
@@ -71,14 +72,14 @@ describe('nextSpeaker — multi-persona', () => {
       turn: { speaker: 'security', commentary: '', question: null, ready: true },
     });
     expect(s.phase).toBe('interview');
-    // …but the moment both primaries are ready, phase flips even if a
-    // specialist never spoke.
+    // …but the moment both primaries are ready, phase advances out of
+    // interview into the criteria step even if a specialist never spoke.
     s = reducer(s, {
       type: 'interviewTurn',
       timestamp: T,
       turn: { speaker: 'codex', commentary: '', question: null, ready: true },
     });
-    expect(s.phase).toBe('debate');
+    expect(s.phase).toBe('criteria');
   });
 });
 

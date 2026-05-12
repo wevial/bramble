@@ -37,6 +37,7 @@ export function statusLabel(state: State): string {
   if (state.endReason) return `done · ${state.endReason}`;
   if (state.awaitingSignoff) return 'awaiting your signoff';
   if (state.phase === 'interview') return 'clarifying requirements';
+  if (state.phase === 'criteria') return 'locking success criteria';
   if (state.phase === 'debate') {
     const total = (state.activePersonas ?? ['claude', 'codex']).length;
     return `debate · round ${state.round || 1}/${state.config.maxRounds} · ${state.lgtmThisRound.length}/${total} LGTM`;
@@ -51,6 +52,11 @@ export function nextHint(state: State): string {
     if (state.speaker === 'claude') return 'Claude is asking…';
     if (state.speaker === 'codex') return 'Codex is asking…';
     return 'awaiting next interview turn';
+  }
+  if (state.phase === 'criteria') {
+    if (state.speaker === 'claude') return 'Claude is proposing criteria…';
+    if (state.speaker === 'codex') return 'Codex is proposing criteria…';
+    return 'type to revise · /done to lock criteria';
   }
   if (state.phase === 'debate') {
     if (state.speaker === 'claude') return 'Claude is drafting…';

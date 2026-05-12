@@ -2,10 +2,12 @@ import type { Agent, TurnUsage } from '../agents/agent.js';
 import type { Persona, PersonaId } from '../personas/personas.js';
 import { defaultPersonas } from '../personas/personas.js';
 import {
+  parseCriteriaMessage,
   parseDebateMessage,
   parseInterviewMessage,
 } from '../protocol/messages.js';
 import { interviewPrompt } from '../prompts/interview.js';
+import { criteriaPrompt } from '../prompts/criteria.js';
 import { debatePrompt } from '../prompts/debate.js';
 import { reducer, type State, type DebateConfig, initialState } from './state.js';
 import { nextSpeaker } from './scheduler.js';
@@ -39,6 +41,12 @@ export type RunOptions = {
    * sets it true.
    */
   pauseEachRound?: boolean;
+  /**
+   * When true, the interview→debate transition routes through a dedicated
+   * success-criteria phase. The interactive UI defaults to true; headless
+   * tests leave it off to preserve the older fast-path behavior.
+   */
+  criteriaStep?: boolean;
   prompt: string;
   /**
    * Override the default debate config (rounds cap, decay threshold/window).
@@ -84,6 +92,12 @@ export function startDebate(opts: RunOptions): RunHandle {
   let state: State =
     opts.initialState ??
     initialState(opts.prompt, opts.config, personaIds);
+  // Stamp the criteria-step toggle onto state so the reducer can route the
+  // interview→criteria transition correctly. Resume from initialState keeps
+  // whatever the prior session set.
+  if (!opts.initialState && opts.criteriaStep) {
+    state = { ...state, criteriaStepEnabled: true };
+  }
   const mode: DebateMode = opts.mode ?? 'auto';
   const outer = new AbortController();
   opts.signal?.addEventListener('abort', () => outer.abort(), { once: true });
@@ -140,8 +154,11 @@ export function startDebate(opts: RunOptions): RunHandle {
   };
 
   const interject = (content: string): void => {
-    // Interview waiting: deliver answer, dispatch userAnswer.
-    if (state.phase === 'interview' && userAnswerResolver) {
+    // Interview / criteria waiting: deliver answer, dispatch userAnswer.
+    if (
+      (state.phase === 'interview' || state.phase === 'criteria') &&
+      userAnswerResolver
+    ) {
       const r = userAnswerResolver;
       userAnswerResolver = null;
       const ts = new Date().toISOString();
@@ -154,10 +171,10 @@ export function startDebate(opts: RunOptions): RunHandle {
       r(content);
       return;
     }
-    // Interview, but no resolver is waiting yet (agent still streaming). Queue
-    // the answer; the upcoming wait point will pick it up. Do NOT abort the
-    // turn — the agent is mid-question and aborting would lose its output.
-    if (state.phase === 'interview') {
+    // Interview / criteria, but no resolver is waiting yet (agent still
+    // streaming). Queue the answer; the upcoming wait point will pick it up.
+    // Do NOT abort — the agent is mid-output and aborting would lose work.
+    if (state.phase === 'interview' || state.phase === 'criteria') {
       const ts = new Date().toISOString();
       pendingUserAnswer = content;
       dispatch({ type: 'userAnswer', content, timestamp: ts });
@@ -194,9 +211,10 @@ export function startDebate(opts: RunOptions): RunHandle {
   };
 
   const doneInterview = (): void => {
-    // Reused for /done: ends the interview, OR finalizes the signoff pause
-    // after mutual LGTM.
-    if (state.phase === 'interview') {
+    // Reused for /done across phases: skips the rest of clarification
+    // (interview), locks the proposed criteria list (criteria), or
+    // finalizes the signoff pause after mutual LGTM (debate).
+    if (state.phase === 'interview' || state.phase === 'criteria') {
       dispatch({ type: 'userDone' });
       queueAppend({
         type: 'user_done',
@@ -304,6 +322,9 @@ export function startDebate(opts: RunOptions): RunHandle {
         // Force the next pick from the never-spoken primaries so the
         // moderator can't loop primaries who are already done.
         const interviewSpoken = new Set(state.interview.map(t => t.speaker));
+        const criteriaSpoken = new Set(
+          (state.criteriaTurns ?? []).map(t => t.speaker),
+        );
         const activeIds = state.activePersonas ?? personaIds;
         const primariesActive = activeIds.filter(p => {
           const persona = personas.find(x => x.id === p);
@@ -312,7 +333,9 @@ export function startDebate(opts: RunOptions): RunHandle {
         const neverSpoken =
           state.phase === 'interview'
             ? primariesActive.filter(p => !interviewSpoken.has(p))
-            : [];
+            : state.phase === 'criteria'
+              ? primariesActive.filter(p => !criteriaSpoken.has(p))
+              : [];
         if (neverSpoken.length > 0) {
           speaker = neverSpoken[0]!;
           dispatch({
@@ -351,7 +374,9 @@ export function startDebate(opts: RunOptions): RunHandle {
         const ctx =
           state.phase === 'interview'
             ? { phase: 'interview' as const, prompt: interviewPrompt({ state, speaker }) }
-            : { phase: 'debate' as const, prompt: debatePrompt({ state, speaker }) };
+            : state.phase === 'criteria'
+              ? { phase: 'criteria' as const, prompt: criteriaPrompt({ state, speaker }) }
+              : { phase: 'debate' as const, prompt: debatePrompt({ state, speaker }) };
 
         let displayed = '';
         let rawTail: string | undefined;
@@ -416,6 +441,47 @@ export function startDebate(opts: RunOptions): RunHandle {
           }
 
           // Wait for the user to answer (or /done) before the next turn.
+          await new Promise<string | null>(resolve => {
+            userAnswerResolver = resolve;
+            outer.signal.addEventListener(
+              'abort',
+              () => {
+                if (userAnswerResolver) {
+                  userAnswerResolver = null;
+                  resolve(null);
+                }
+              },
+              { once: true },
+            );
+          });
+          continue;
+        }
+
+        if (state.phase === 'criteria') {
+          // The success-criteria phase mirrors interview's flow: each agent
+          // proposes a list, then the runner pauses for user feedback. The
+          // user advances out of this phase by typing /done (which the
+          // reducer treats as "lock the latest proposal as the final list").
+          const parsed = parseCriteriaMessage(raw);
+          const turnPayload = parsed.ok
+            ? parsed.value
+            : { commentary: raw, proposed: [] };
+          dispatch({
+            type: 'criteriaTurn',
+            timestamp: ts,
+            turn: { speaker, ...turnPayload },
+          });
+          queueAppend({
+            type: 'criteria_turn',
+            turn: { speaker, ...turnPayload, timestamp: ts },
+          });
+
+          // If the user typed during streaming, deliver and skip the wait.
+          if (pendingUserAnswer !== null) {
+            pendingUserAnswer = null;
+            continue;
+          }
+
           await new Promise<string | null>(resolve => {
             userAnswerResolver = resolve;
             outer.signal.addEventListener(

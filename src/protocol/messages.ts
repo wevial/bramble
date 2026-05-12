@@ -11,6 +11,10 @@ export type DebateMessage = {
   edits: Edit[];
   verdict: 'continue' | 'lgtm';
 };
+export type CriteriaMessage = {
+  commentary: string;
+  proposed: string[];
+};
 
 const EditSchema = z.object({
   find: z.string(),
@@ -35,6 +39,14 @@ const DebateMessageSchema = z.object({
   verdict: z.enum(['continue', 'lgtm']),
 });
 
+const CriteriaMessageSchema = z.object({
+  commentary: z.string(),
+  proposed: z
+    .array(z.string())
+    .nullish()
+    .transform(p => p ?? []),
+});
+
 export type ParseResult<T> =
   | { ok: true; value: T }
   | { ok: false; error: string };
@@ -47,6 +59,10 @@ export function parseInterviewMessage(
 
 export function parseDebateMessage(raw: string): ParseResult<DebateMessage> {
   return parseWithSchema(raw, DebateMessageSchema);
+}
+
+export function parseCriteriaMessage(raw: string): ParseResult<CriteriaMessage> {
+  return parseWithSchema(raw, CriteriaMessageSchema);
 }
 
 function parseWithSchema<T extends z.ZodTypeAny>(

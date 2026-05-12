@@ -126,6 +126,7 @@ export function App(props: AppProps) {
       // to be too frequent for long debates. Collab mode still pauses
       // per-turn for users who want explicit checkpoints.
       pauseEachRound: false,
+      criteriaStep: true,
       prompt,
       config: props.config,
       mode,
@@ -486,9 +487,11 @@ export function App(props: AppProps) {
           <span attributes={DIM}>
           {state.phase === 'interview'
             ? 'answer the question · /context <text> to add detail · /done to skip ahead · /quit'
-            : state.awaitingSignoff
-              ? 'type to revise · /context <text> · ^G edit spec · /done to finalize · /quit'
-              : '/context <text> · ^G edit spec · /rounds N · /threshold N · /decay N · /quit'}
+            : state.phase === 'criteria'
+              ? 'refine the criteria list · /context <text> · /done to lock criteria · /quit'
+              : state.awaitingSignoff
+                ? 'type to revise · /context <text> · ^G edit spec · /done to finalize · /quit'
+                : '/context <text> · ^G edit spec · /rounds N · /threshold N · /decay N · /quit'}
           </span>
         </text>
       </box>
@@ -506,6 +509,7 @@ function specMode(state: State): SpecMode {
   if (state.phase === 'done') return { label: 'DONE', color: 'green' };
   if (state.awaitingSignoff) return { label: 'SIGNOFF', color: 'yellow' };
   if (state.phase === 'interview') return { label: 'INTERVIEW', color: 'gray' };
+  if (state.phase === 'criteria') return { label: 'CRITERIA', color: 'yellow' };
   const anyLgtm =
     state.lgtmThisRound.length > 0 ||
     state.debate.some(t => t.verdict === 'lgtm');

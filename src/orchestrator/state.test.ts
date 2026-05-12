@@ -25,8 +25,8 @@ describe('reducer — interview phase', () => {
     expect(s1.phase).toBe('interview');
   });
 
-  it('flips phase to debate once both agents are ready', () => {
-    let s = fresh();
+  it('flips phase to criteria once both primaries are ready (when criteria step enabled)', () => {
+    let s = fresh({ criteriaStepEnabled: true });
     s = reducer(s, {
       type: 'interviewTurn',
       timestamp: T,
@@ -38,8 +38,35 @@ describe('reducer — interview phase', () => {
       timestamp: T,
       turn: { speaker: 'codex', commentary: '', question: null, ready: true },
     });
-    expect(s.phase).toBe('debate');
+    // After interview ends, the session enters the success-criteria phase
+    // for an explicit user-confirmed criteria list before debate begins.
+    expect(s.phase).toBe('criteria');
     expect(s.readyAgents).toEqual(['claude', 'codex']);
+  });
+
+  it('criteriaApproved advances from criteria to debate with the locked list', () => {
+    const s = reducer(
+      { ...fresh(), phase: 'criteria' },
+      { type: 'criteriaApproved', criteria: ['exits 0 on success', 'prints heads or tails'] },
+    );
+    expect(s.phase).toBe('debate');
+    expect(s.criteria).toEqual(['exits 0 on success', 'prints heads or tails']);
+  });
+
+  it('userDone from criteria locks the latest proposal and advances to debate', () => {
+    let s: ReturnType<typeof fresh> = { ...fresh(), phase: 'criteria' };
+    s = reducer(s, {
+      type: 'criteriaTurn',
+      timestamp: T,
+      turn: {
+        speaker: 'claude',
+        commentary: '',
+        proposed: ['CLI exits 0', 'output is heads or tails'],
+      },
+    });
+    s = reducer(s, { type: 'userDone' });
+    expect(s.phase).toBe('debate');
+    expect(s.criteria).toEqual(['CLI exits 0', 'output is heads or tails']);
   });
 
   it('lets an agent rescind a ready vote on a later turn', () => {
@@ -58,7 +85,7 @@ describe('reducer — interview phase', () => {
     expect(s.phase).toBe('interview');
   });
 
-  it('userDone forces transition to debate from interview', () => {
+  it('userDone from interview skips straight past criteria into debate', () => {
     const s = reducer(fresh(), { type: 'userDone' });
     expect(s.phase).toBe('debate');
   });

@@ -39,6 +39,13 @@ export function debatePrompt(input: DebatePromptInput): string {
     }
   }
 
+  if (state.criteria && state.criteria.length > 0) {
+    const lines = state.criteria.map((c, i) => `${i + 1}. ${c}`).join('\n');
+    parts.push(
+      `# Success criteria (locked — the spec MUST satisfy each of these)\n\n${lines}`,
+    );
+  }
+
   parts.push(`# Current spec.md\n\n${renderSpec(state.spec)}`);
 
   if (state.debate.length > 0) {

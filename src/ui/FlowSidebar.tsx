@@ -2,7 +2,7 @@ import { createTextAttributes } from '@opentui/core';
 import type { State } from '../orchestrator/state.js';
 import { findPersona } from '../personas/personas.js';
 
-export type FlowStep = 1 | 2 | 3 | 4 | 5;
+export type FlowStep = 1 | 2 | 3 | 4 | 5 | 6;
 
 const STEPS: { id: FlowStep; label: string; subtitle: string[] }[] = [
   {
@@ -17,16 +17,21 @@ const STEPS: { id: FlowStep; label: string; subtitle: string[] }[] = [
   },
   {
     id: 3,
+    label: 'Success Criteria',
+    subtitle: ['Lock the measurable', 'definition of done'],
+  },
+  {
+    id: 4,
     label: 'Draft Spec',
     subtitle: ['Claude writes the', 'initial spec'],
   },
   {
-    id: 4,
+    id: 5,
     label: 'Refine Spec',
     subtitle: ['You, Claude, and Codex', 'flesh out the spec'],
   },
   {
-    id: 5,
+    id: 6,
     label: 'Export',
     subtitle: ['Save your .md file'],
   },
@@ -40,14 +45,15 @@ const BOLD = createTextAttributes({ bold: true });
 const DIM = createTextAttributes({ dim: true });
 
 export function flowStep(state: State): FlowStep {
-  if (state.phase === 'done') return 5;
-  if (state.awaitingSignoff) return 5;
+  if (state.phase === 'done') return 6;
+  if (state.awaitingSignoff) return 6;
   if (state.phase === 'interview') return 2;
+  if (state.phase === 'criteria') return 3;
   // debate phase
   const anyLgtm =
     state.lgtmThisRound.length > 0 ||
     state.debate.some(t => t.verdict === 'lgtm');
-  return anyLgtm ? 4 : 3;
+  return anyLgtm ? 5 : 4;
 }
 
 export function FlowBox({ state }: { state: State }) {

@@ -17,6 +17,13 @@ type Entry =
       timestamp: string;
     }
   | {
+      kind: 'criteria';
+      speaker: PersonaId;
+      commentary: string;
+      proposed: string[];
+      timestamp: string;
+    }
+  | {
       kind: 'debate';
       speaker: PersonaId;
       commentary: string;
@@ -56,6 +63,18 @@ export function buildConversation(state: State): Entry[] {
   for (const a of state.userAnswers) {
     out.push({ kind: 'user', content: a.content, timestamp: a.timestamp });
   }
+  for (const c of state.criteriaTurns ?? []) {
+    if (isSpecialist(c.speaker) && !c.commentary.trim() && c.proposed.length === 0) {
+      continue;
+    }
+    out.push({
+      kind: 'criteria',
+      speaker: c.speaker,
+      commentary: c.commentary,
+      proposed: c.proposed,
+      timestamp: c.timestamp,
+    });
+  }
   for (const d of state.debate) {
     // Specialists with no commentary and no edits are silent here too.
     if (
@@ -79,14 +98,23 @@ export function buildConversation(state: State): Entry[] {
   }
   out.sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
 
-  // Insert a divider where the conversation transitions from interview to
-  // spec drafting (first debate turn).
+  // Insert dividers at phase boundaries: before the first criteria turn
+  // (if any) and before the first debate turn. Inserting bottom-up keeps
+  // the earlier index stable when we splice the later one first.
   const firstDebateIdx = out.findIndex(e => e.kind === 'debate');
   if (firstDebateIdx >= 0) {
     out.splice(firstDebateIdx, 0, {
       kind: 'divider',
       label: 'Spec drafting',
       timestamp: out[firstDebateIdx]!.timestamp,
+    });
+  }
+  const firstCriteriaIdx = out.findIndex(e => e.kind === 'criteria');
+  if (firstCriteriaIdx >= 0) {
+    out.splice(firstCriteriaIdx, 0, {
+      kind: 'divider',
+      label: 'Success criteria',
+      timestamp: out[firstCriteriaIdx]!.timestamp,
     });
   }
   return out;
@@ -258,6 +286,16 @@ function renderBody(e: Exclude<Entry, { kind: 'divider' }>): React.ReactNode {
       ) : null}
       {e.kind === 'agent' && e.question ? (
         <text><span fg="yellow">? {e.question}</span></text>
+      ) : null}
+      {e.kind === 'criteria' && e.proposed.length > 0 ? (
+        <box flexDirection="column" marginTop={0}>
+          {e.proposed.map((c, i) => (
+            <text key={i}>
+              <span fg="green">{`  ${i + 1}. `}</span>
+              <span>{c}</span>
+            </text>
+          ))}
+        </box>
       ) : null}
     </>
   );

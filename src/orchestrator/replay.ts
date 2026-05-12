@@ -35,6 +35,16 @@ function applyEntry(state: State, e: TranscriptEntry): State {
           ready: e.turn.ready,
         },
       });
+    case 'criteria_turn':
+      return reducer(state, {
+        type: 'criteriaTurn',
+        timestamp: e.turn.timestamp,
+        turn: {
+          speaker: e.turn.speaker,
+          commentary: e.turn.commentary,
+          proposed: e.turn.proposed,
+        },
+      });
     case 'user_answer':
       return reducer(state, {
         type: 'userAnswer',

@@ -5,7 +5,7 @@ import { findPersona } from '../personas/personas.js';
 import { checkTermination, type EndReason } from './termination.js';
 export type { EndReason } from './termination.js';
 
-export type Phase = 'interview' | 'debate' | 'done';
+export type Phase = 'interview' | 'criteria' | 'debate' | 'done';
 
 export type Speaker = PersonaId | 'user';
 
@@ -19,6 +19,19 @@ export type InterviewTurn = {
 
 export type UserAnswer = {
   content: string;
+  timestamp: string;
+};
+
+export type CriteriaTurn = {
+  speaker: PersonaId;
+  /** Free-form notes / rationale shown in the conversation feed. */
+  commentary: string;
+  /**
+   * The agent's proposed success-criteria list at this turn. Each item is
+   * a single measurable signal (e.g. "Command exits 0 on a valid coin flip").
+   * Order is the agent's choice; the user owns final approval.
+   */
+  proposed: string[];
   timestamp: string;
 };
 
@@ -69,6 +82,27 @@ export type State = {
   interview: InterviewTurn[];
   /** User answers to interview questions, chronological. */
   userAnswers: UserAnswer[];
+  /**
+   * Per-turn proposals during the success-criteria phase. Empty until the
+   * interview ends; frozen once phase transitions to debate. The user's
+   * approved final list lives in `criteria` (below).
+   */
+  criteriaTurns: CriteriaTurn[];
+  /**
+   * The user-approved success-criteria list. Set when phase advances from
+   * 'criteria' to 'debate'. Injected into the debate prompt so agents
+   * draft against measurable signals instead of vibes. Empty if the user
+   * skipped the criteria step (toggled off in setup).
+   */
+  criteria: string[];
+  /**
+   * Whether the success-criteria step is enabled for this session. When
+   * true, the interview→debate transition routes through a dedicated
+   * 'criteria' phase. When false, interview goes straight to debate
+   * (preserves backward-compat for older transcripts and any test that
+   * doesn't opt in). Set at session start; not changed afterwards.
+   */
+  criteriaStepEnabled?: boolean;
   /** Most recent ready vote per persona (set membership). */
   readyAgents: PersonaId[];
   /** Debate turn log, chronological. */
@@ -111,6 +145,8 @@ export function initialState(
     activePersonas,
     interview: [],
     userAnswers: [],
+    criteriaTurns: [],
+    criteria: [],
     readyAgents: [],
     debate: [],
     spec: '',
@@ -126,6 +162,8 @@ export type Action =
   | { type: 'interviewTurn'; turn: Omit<InterviewTurn, 'timestamp'>; timestamp: string }
   | { type: 'userAnswer'; content: string; timestamp: string }
   | { type: 'userDone' }
+  | { type: 'criteriaTurn'; turn: Omit<CriteriaTurn, 'timestamp'>; timestamp: string }
+  | { type: 'criteriaApproved'; criteria: string[] }
   | {
       type: 'debateTurn';
       speaker: PersonaId;
@@ -151,9 +189,7 @@ export function reducer(state: State, action: Action): State {
       const active = state.activePersonas ?? ['claude', 'codex'];
       // Phase advance gates on PRIMARIES only. Specialists are advisory —
       // they may speak or stay silent in interview, but they don't block the
-      // transition to debate. Without this, a specialist who never reaches
-      // `ready` (e.g. because the user hasn't volunteered details that
-      // specialist cares about) would keep the loop spinning forever.
+      // transition out of interview.
       const primaries = primariesOf(active);
       const allReady = primaries.every(p => readyAgents.includes(p));
       return {
@@ -161,7 +197,14 @@ export function reducer(state: State, action: Action): State {
         speaker: 'idle',
         interview,
         readyAgents,
-        phase: allReady ? 'debate' : 'interview',
+        // Sessions that enabled the success-criteria step route through the
+        // 'criteria' phase first. Sessions without it (off-by-default for
+        // legacy callers / tests) go straight to debate as before.
+        phase: allReady
+          ? state.criteriaStepEnabled
+            ? 'criteria'
+            : 'debate'
+          : 'interview',
       };
     }
 
@@ -185,8 +228,21 @@ export function reducer(state: State, action: Action): State {
     }
 
     case 'userDone':
+      // /done from interview jumps straight past criteria into debate
+      // (treated as "skip the rest of clarification AND the criteria step").
       if (state.phase === 'interview') {
         return { ...state, phase: 'debate' };
+      }
+      // /done from criteria locks in whatever the latest agent proposed
+      // (or an empty list if nothing has been proposed yet) and advances
+      // to debate.
+      if (state.phase === 'criteria') {
+        const last = state.criteriaTurns[state.criteriaTurns.length - 1];
+        return {
+          ...state,
+          phase: 'debate',
+          criteria: last?.proposed ?? [],
+        };
       }
       if (state.awaitingSignoff) {
         return {
@@ -197,6 +253,28 @@ export function reducer(state: State, action: Action): State {
         };
       }
       return state;
+
+    case 'criteriaTurn': {
+      if (state.phase !== 'criteria') return state;
+      const turn: CriteriaTurn = { ...action.turn, timestamp: action.timestamp };
+      return {
+        ...state,
+        speaker: 'idle',
+        criteriaTurns: [...state.criteriaTurns, turn],
+      };
+    }
+
+    case 'criteriaApproved': {
+      // Explicit user approval of the current criteria list — advances to
+      // debate with the approved list locked into state.criteria so the
+      // debate prompt can reference it.
+      if (state.phase !== 'criteria') return state;
+      return {
+        ...state,
+        phase: 'debate',
+        criteria: action.criteria,
+      };
+    }
 
     case 'debateTurn': {
       if (state.phase !== 'debate') return state;

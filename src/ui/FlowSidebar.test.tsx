@@ -15,17 +15,21 @@ describe('flowStep', () => {
     expect(flowStep(fresh())).toBe(2);
   });
 
-  it('Draft (3) during debate before any LGTM', () => {
-    expect(flowStep(fresh({ phase: 'debate' }))).toBe(3);
+  it('Success Criteria (3) during criteria phase', () => {
+    expect(flowStep(fresh({ phase: 'criteria' }))).toBe(3);
   });
 
-  it('Refine (4) once an LGTM has been seen this round', () => {
+  it('Draft (4) during debate before any LGTM', () => {
+    expect(flowStep(fresh({ phase: 'debate' }))).toBe(4);
+  });
+
+  it('Refine (5) once an LGTM has been seen this round', () => {
     expect(
       flowStep(fresh({ phase: 'debate', lgtmThisRound: ['claude'] })),
-    ).toBe(4);
+    ).toBe(5);
   });
 
-  it('Refine (4) once an LGTM has been seen historically (across rounds)', () => {
+  it('Refine (5) once an LGTM has been seen historically (across rounds)', () => {
     const s = fresh({
       phase: 'debate',
       debate: [
@@ -43,17 +47,17 @@ describe('flowStep', () => {
       ],
       lgtmThisRound: [],
     });
-    expect(flowStep(s)).toBe(4);
+    expect(flowStep(s)).toBe(5);
   });
 
-  it('Export (5) when awaitingSignoff', () => {
+  it('Export (6) when awaitingSignoff', () => {
     expect(
       flowStep(fresh({ phase: 'debate', awaitingSignoff: true })),
-    ).toBe(5);
+    ).toBe(6);
   });
 
-  it('Export (5) when done', () => {
-    expect(flowStep(fresh({ phase: 'done' }))).toBe(5);
+  it('Export (6) when done', () => {
+    expect(flowStep(fresh({ phase: 'done' }))).toBe(6);
   });
 });
 

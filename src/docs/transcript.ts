@@ -2,6 +2,7 @@ import { appendFile, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import type { PersonaId } from '../personas/personas.js';
 import type {
+  CriteriaTurn,
   DebateConfig,
   DebateTurn,
   EndReason,
@@ -17,6 +18,7 @@ import type {
 export type TranscriptEntry =
   | { type: 'session'; prompt: string; config: DebateConfig; timestamp: string }
   | { type: 'interview_turn'; turn: InterviewTurn }
+  | { type: 'criteria_turn'; turn: CriteriaTurn }
   | { type: 'user_answer'; content: string; timestamp: string }
   | { type: 'phase_change'; phase: Phase; timestamp: string }
   | { type: 'debate_turn'; turn: DebateTurn }
