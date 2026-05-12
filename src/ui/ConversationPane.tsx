@@ -1,5 +1,6 @@
-import type React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { createTextAttributes } from '@opentui/core';
+import type { ScrollBoxRenderable } from '@opentui/core';
 import type { State } from '../orchestrator/state.js';
 import type { PersonaId } from '../personas/personas.js';
 import { findPersona } from '../personas/personas.js';
@@ -120,6 +121,18 @@ export function ConversationPane({
 }) {
   const all = buildConversation(state);
   const slice = all.slice(-maxEntries);
+  const scrollRef = useRef<ScrollBoxRenderable | null>(null);
+
+  // OpenTUI's stickyScroll engages stickiness only while the user hasn't
+  // manually scrolled. Once content grows or layout reflows it can stop
+  // pinning to the bottom. Force-scroll on every state change so new turns
+  // are always visible — the user can still scroll up between updates,
+  // but the next turn will jump them back to the latest.
+  useEffect(() => {
+    const sb = scrollRef.current;
+    if (!sb) return;
+    sb.scrollTo({ x: 0, y: sb.scrollHeight });
+  });
 
   if (slice.length === 0) {
     const speaker = state.speaker;
@@ -131,7 +144,7 @@ export function ConversationPane({
       <box flexDirection="column" paddingX={1} flexGrow={1}>
         <text><span fg="cyan" attributes={BOLD}>CONVERSATION</span></text>
         <box height={1} />
-        <scrollbox flexGrow={1} stickyScroll stickyStart="bottom" scrollY>
+        <scrollbox ref={scrollRef} flexGrow={1} stickyScroll stickyStart="bottom" scrollY>
           <text><span attributes={DIM}>{placeholder}</span></text>
         </scrollbox>
       </box>
