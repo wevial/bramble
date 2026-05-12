@@ -41,6 +41,19 @@ export function InputBox({
   onChange,
 }: InputBoxProps) {
   const [buffer, setBuffer] = useState(initialValue ?? '');
+  const [cursor, setCursor] = useState((initialValue ?? '').length);
+  // useKeyboard captures the callback once; setState reads close over the
+  // cursor value at registration time, so successive keystrokes would all
+  // insert at the same stale index. Mirror cursor and buffer into refs so
+  // the handlers always see the latest values.
+  const cursorRef = useRef(cursor);
+  const bufferRef = useRef(buffer);
+  useEffect(() => {
+    cursorRef.current = cursor;
+  }, [cursor]);
+  useEffect(() => {
+    bufferRef.current = buffer;
+  }, [buffer]);
   // Notify the parent of buffer changes via effect so the callback never fires
   // mid-render — calling a parent setState inside a child updater triggers
   // React's "Cannot update a component while rendering a different one" warning.
@@ -51,9 +64,50 @@ export function InputBox({
     onChange?.(buffer);
   }, [buffer, onChange]);
 
+  // Insert text at the cursor and move the cursor forward by its length.
+  // Reads the live cursor via the ref so back-to-back keystrokes don't all
+  // splice at the same stale index.
+  const insertAtCursor = (text: string) => {
+    const c = cursorRef.current;
+    setBuffer(b => b.slice(0, c) + text + b.slice(c));
+    cursorRef.current = c + text.length;
+    setCursor(cursorRef.current);
+  };
+
+  // Clear the buffer and reset the cursor (used on submit).
+  const resetBuffer = () => {
+    setBuffer('');
+    cursorRef.current = 0;
+    setCursor(0);
+  };
+
+  // Cursor-only updates: bypass setState's stale closure by writing the ref
+  // first, then mirroring into React state so the render reflects it.
+  const moveCursor = (next: number) => {
+    cursorRef.current = next;
+    setCursor(next);
+  };
+
+  // Word-boundary scan: walk left from `from`, skip any whitespace, then
+  // skip the word characters. Returns the index where the previous word
+  // starts. Treats non-alphanumeric as boundary (matches macOS option-left).
+  const prevWordIndex = (text: string, from: number): number => {
+    let i = from;
+    while (i > 0 && /\s/.test(text[i - 1]!)) i--;
+    while (i > 0 && !/\s/.test(text[i - 1]!)) i--;
+    return i;
+  };
+
+  const nextWordIndex = (text: string, from: number): number => {
+    let i = from;
+    while (i < text.length && /\s/.test(text[i]!)) i++;
+    while (i < text.length && !/\s/.test(text[i]!)) i++;
+    return i;
+  };
+
   usePaste(event => {
     if (disabled || !(isActive ?? true)) return;
-    setBuffer(b => b + decodePasteBytes(event.bytes));
+    insertAtCursor(decodePasteBytes(event.bytes));
   });
 
   useKeyboard(
@@ -83,11 +137,12 @@ export function InputBox({
           // multiline mode, any modifier means "newline"; in single-line mode
           // we treat it as a plain submit so users aren't surprised.
           if (multiline && mod !== 1) {
-            setBuffer(b => b + '\n');
+            insertAtCursor('\n');
             return;
           }
-          const value = multiline ? buffer : buffer.trim();
-          if (!multiline) setBuffer('');
+          const liveBuffer = bufferRef.current;
+          const value = multiline ? liveBuffer : liveBuffer.trim();
+          if (!multiline) resetBuffer();
           if (value.length > 0 || allowEmptySubmit) onSubmit(value);
           return;
         }
@@ -100,44 +155,113 @@ export function InputBox({
         const wantsNewline =
           multiline && (key.shift || key.meta);
         if (wantsNewline) {
-          setBuffer(b => b + '\n');
+          insertAtCursor('\n');
           return;
         }
-        // For multiline we preserve the buffer as-is (trailing whitespace is
-        // rarely meaningful for single-line input, so we still trim there).
-        const value = multiline ? buffer : buffer.trim();
-        if (!multiline) setBuffer('');
+        const liveBuffer = bufferRef.current;
+        const value = multiline ? liveBuffer : liveBuffer.trim();
+        if (!multiline) resetBuffer();
         if (value.length > 0 || allowEmptySubmit) onSubmit(value);
         return;
       }
       // Ctrl+J is the terminal literal for LF; treat it as a newline when
       // multiline, since some terminals collapse Shift+Enter to plain Enter.
       if (multiline && key.ctrl && key.name === 'j') {
-        setBuffer(b => b + '\n');
+        insertAtCursor('\n');
         return;
       }
-      if (key.name === 'backspace' || key.name === 'delete') {
-        setBuffer(b => b.slice(0, -1));
+      // Cursor navigation. Option/Alt+arrow jumps a word; plain arrow moves
+      // by one character. Home/End / Ctrl+A / Ctrl+E jump to line edges.
+      const liveBuffer = bufferRef.current;
+      const liveCursor = cursorRef.current;
+      if (key.name === 'left') {
+        if (key.meta || key.option) {
+          moveCursor(prevWordIndex(liveBuffer, liveCursor));
+        } else {
+          moveCursor(Math.max(0, liveCursor - 1));
+        }
+        return;
+      }
+      if (key.name === 'right') {
+        if (key.meta || key.option) {
+          moveCursor(nextWordIndex(liveBuffer, liveCursor));
+        } else {
+          moveCursor(Math.min(liveBuffer.length, liveCursor + 1));
+        }
+        return;
+      }
+      if (key.name === 'home' || (key.ctrl && key.name === 'a')) {
+        moveCursor(0);
+        return;
+      }
+      if (key.name === 'end' || (key.ctrl && key.name === 'e')) {
+        moveCursor(liveBuffer.length);
+        return;
+      }
+      if (key.name === 'backspace') {
+        // Option+backspace deletes the previous word.
+        if (key.meta || key.option) {
+          const wordStart = prevWordIndex(liveBuffer, liveCursor);
+          setBuffer(liveBuffer.slice(0, wordStart) + liveBuffer.slice(liveCursor));
+          moveCursor(wordStart);
+          return;
+        }
+        if (liveCursor === 0) return;
+        setBuffer(
+          liveBuffer.slice(0, liveCursor - 1) + liveBuffer.slice(liveCursor),
+        );
+        moveCursor(liveCursor - 1);
+        return;
+      }
+      if (key.name === 'delete') {
+        if (liveCursor >= liveBuffer.length) return;
+        setBuffer(
+          liveBuffer.slice(0, liveCursor) + liveBuffer.slice(liveCursor + 1),
+        );
         return;
       }
       if (input && input.length === 1 && !key.ctrl && !key.meta) {
-        setBuffer(b => b + input);
+        insertAtCursor(input);
       }
     },
   );
 
+  const showCursor = isActive ?? true;
+  // Split the buffer at the cursor so the rendered line can show: text-before,
+  // a reverse-attribute glyph at the cursor position, text-after. The glyph
+  // shows the char *under* the cursor (or a space if at end-of-line).
+  const before = buffer.slice(0, cursor);
+  const atCursor = buffer[cursor] ?? ' ';
+  const after = buffer.slice(cursor + 1);
+
   if (multiline) {
+    // For multiline we render line-by-line and place the cursor on the line
+    // whose offset contains it. line offsets are computed by accumulating
+    // length+1 for the trailing newline.
     const lines = buffer.length === 0 ? [''] : buffer.split('\n');
+    let offset = 0;
     return (
       <box flexDirection="column">
         {lines.map((line, i) => {
-          const isLast = i === lines.length - 1;
+          const lineStart = offset;
+          const lineEnd = offset + line.length;
+          offset = lineEnd + 1; // +1 for the \n separator
+          const cursorOnThisLine =
+            showCursor && cursor >= lineStart && cursor <= lineEnd;
+          const localCursor = cursor - lineStart;
           return (
             <box key={i} flexDirection="row">
               <text>
                 {i === 0 ? <span fg="green">{'> '}</span> : <span>{'  '}</span>}
-                <span>{line}</span>
-                {isLast && (isActive ?? true) ? <span attributes={REVERSE}> </span> : null}
+                {cursorOnThisLine ? (
+                  <>
+                    <span>{line.slice(0, localCursor)}</span>
+                    <span attributes={REVERSE}>{line[localCursor] ?? ' '}</span>
+                    <span>{line.slice(localCursor + 1)}</span>
+                  </>
+                ) : (
+                  <span>{line}</span>
+                )}
               </text>
             </box>
           );
@@ -150,8 +274,15 @@ export function InputBox({
     <box flexDirection="row">
       <text>
         <span fg="green">{'> '}</span>
-        <span>{buffer}</span>
-        {(isActive ?? true) ? <span attributes={REVERSE}> </span> : null}
+        {showCursor ? (
+          <>
+            <span>{before}</span>
+            <span attributes={REVERSE}>{atCursor}</span>
+            <span>{after}</span>
+          </>
+        ) : (
+          <span>{buffer}</span>
+        )}
       </text>
     </box>
   );
