@@ -113,6 +113,10 @@ export function SetupScreen({
 
   useKeyboard(
     key => {
+      if (key.ctrl && (key.name === 'c' || key.name === 'd')) {
+        onQuit();
+        return;
+      }
       if (editingCustom) return; // InputBox owns the keyboard
       if (key.name === 'tab' && key.shift) {
         retreat();
