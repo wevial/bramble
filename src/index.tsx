@@ -213,7 +213,10 @@ function formatSize(bytes: number): string {
 
 const name = resumeName ?? sessionName ?? generateSessionName();
 const paths = sessionPaths(storeRoot, name);
-mkdirSync(paths.dir, { recursive: true });
+// Only create the session dir up front when resuming — otherwise defer it
+// until the user actually starts the session from the setup screen so a
+// quick launch-and-quit doesn't litter the store with empty dirs.
+if (resumeName) mkdirSync(paths.dir, { recursive: true });
 
 const resumedEntries = resumeName ? await readTranscript(paths.transcriptPath) : [];
 const resumedState =

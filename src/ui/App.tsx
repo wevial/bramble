@@ -2,9 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createTextAttributes } from '@opentui/core';
 import { useKeyboard, useRenderer, useSelectionHandler, useTerminalDimensions } from '@opentui/react';
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import type { Agent } from '../agents/agent.js';
 import type { Moderator } from '../moderator/moderator.js';
 import {
@@ -112,6 +112,17 @@ export function App(props: AppProps) {
 
   useEffect(() => {
     if (phase !== 'running' || !prompt) return;
+    // First write of the session — create the session dir lazily so a
+    // launch-and-quit on the setup screen doesn't leave an empty dir.
+    const anyPath =
+      props.promptSidecarPath ??
+      props.transcriptPath ??
+      props.specPath ??
+      props.debatePath ??
+      props.interviewPath;
+    if (anyPath) {
+      try { mkdirSync(dirname(anyPath), { recursive: true }); } catch { /* ignore */ }
+    }
     if (props.promptSidecarPath) {
       import('node:fs/promises')
         .then(fs => fs.writeFile(props.promptSidecarPath!, prompt, 'utf8'))
