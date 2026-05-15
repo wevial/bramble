@@ -1,6 +1,7 @@
 import type { PersonaId } from '../personas/personas.js';
 import { findPersona } from '../personas/personas.js';
 import type { State, DebateTurn } from '../orchestrator/state.js';
+import { renderRepoContext } from './scout.js';
 
 export type DebatePromptInput = {
   state: State;
@@ -19,6 +20,11 @@ export function debatePrompt(input: DebatePromptInput): string {
   const parts: string[] = [];
 
   parts.push(`# Goal\n\n${state.prompt}`);
+
+  if (state.repoContext) {
+    const rendered = renderRepoContext(state.repoContext);
+    if (rendered) parts.push(`# Repository context (read-only snapshot)\n\n${rendered}`);
+  }
 
   if (state.interview.length > 0) {
     const qa: string[] = [];

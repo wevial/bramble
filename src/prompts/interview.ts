@@ -1,6 +1,7 @@
 import type { PersonaId } from '../personas/personas.js';
 import { findPersona } from '../personas/personas.js';
 import type { State } from '../orchestrator/state.js';
+import { renderRepoContext } from './scout.js';
 
 export type InterviewPromptInput = {
   state: State;
@@ -18,6 +19,11 @@ export function interviewPrompt(input: InterviewPromptInput): string {
   const parts: string[] = [];
 
   parts.push(`# Goal\n\n${state.prompt}`);
+
+  if (state.repoContext) {
+    const rendered = renderRepoContext(state.repoContext);
+    if (rendered) parts.push(`# Repository context (read-only snapshot)\n\n${rendered}`);
+  }
 
   if (state.interview.length > 0 || state.userAnswers.length > 0) {
     const lines: string[] = [];
