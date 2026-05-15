@@ -24,6 +24,15 @@ function applyEntry(state: State, e: TranscriptEntry): State {
     case 'session':
       // Should only appear at index 0; ignore duplicates.
       return state;
+    case 'scout_complete':
+      // The replay state starts in 'interview' (initialState default) but a
+      // recorded scout_complete means this session went through the scout
+      // phase; rewind the phase so the reducer can apply scoutComplete and
+      // re-advance to interview with repoContext populated.
+      return reducer(
+        { ...state, phase: 'scout', scoutEnabled: true },
+        { type: 'scoutComplete', context: e.context },
+      );
     case 'interview_turn':
       return reducer(state, {
         type: 'interviewTurn',

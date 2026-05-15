@@ -9,6 +9,7 @@ import {
 import { interviewPrompt } from '../prompts/interview.js';
 import { criteriaPrompt } from '../prompts/criteria.js';
 import { debatePrompt } from '../prompts/debate.js';
+import { probeRepoContext } from '../prompts/scout.js';
 import { reducer, type State, type DebateConfig, initialState } from './state.js';
 import { nextSpeaker } from './scheduler.js';
 import { appendEntry } from '../docs/transcript.js';
@@ -47,6 +48,18 @@ export type RunOptions = {
    * tests leave it off to preserve the older fast-path behavior.
    */
   criteriaStep?: boolean;
+  /**
+   * When true (and no initialState provided), the runner starts in the
+   * 'scout' phase: probes cwd for canonical project files (README, CLAUDE.md,
+   * package.json, …), pins the result into state.repoContext, and advances
+   * to interview. Off by default to preserve headless / test behavior.
+   */
+  scoutStep?: boolean;
+  /**
+   * Working directory the scout probes. Defaults to process.cwd(). Tests can
+   * pass a fixture directory; production code passes the user's invocation cwd.
+   */
+  cwd?: string;
   prompt: string;
   /**
    * Override the default debate config (rounds cap, decay threshold/window).
@@ -97,6 +110,9 @@ export function startDebate(opts: RunOptions): RunHandle {
   // whatever the prior session set.
   if (!opts.initialState && opts.criteriaStep) {
     state = { ...state, criteriaStepEnabled: true };
+  }
+  if (!opts.initialState && opts.scoutStep) {
+    state = { ...state, scoutEnabled: true, phase: 'scout' };
   }
   const mode: DebateMode = opts.mode ?? 'auto';
   const outer = new AbortController();
@@ -295,6 +311,17 @@ export function startDebate(opts: RunOptions): RunHandle {
     opts.onState?.(state);
     try {
       while (state.phase !== 'done' && !outer.signal.aborted) {
+        // Scout phase: synchronously probe cwd, pin the result into state,
+        // advance to interview. No agent dispatch — this is a deterministic
+        // file read, not an LLM call.
+        if (state.phase === 'scout') {
+          const context = probeRepoContext(opts.cwd ?? process.cwd());
+          const ts = new Date().toISOString();
+          dispatch({ type: 'scoutComplete', context });
+          queueAppend({ type: 'scout_complete', context, timestamp: ts });
+          continue;
+        }
+
         // Resume case: if we boot into a rehydrated state that's already
         // mid-signoff, hold here for the user before scheduling another
         // agent turn. The mid-loop pause below covers the live path.

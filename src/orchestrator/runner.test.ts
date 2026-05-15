@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { FakeAgent } from '../agents/fake.js';
@@ -124,6 +124,37 @@ describe('startDebate — interview → debate → done', () => {
     handle.done_interview();
     const finalState = await handle.done;
     expect(finalState.phase).toBe('done');
+  });
+
+  it('scoutStep probes cwd, pins repoContext, and advances to interview', async () => {
+    writeFileSync(join(tmp, 'README.md'), '# fixture readme');
+    const claude = new FakeAgent('claude');
+    const codex = new FakeAgent('codex');
+    claude.setResponse({ kind: 'interview', commentary: '', ready: true });
+    codex.setResponse({ kind: 'interview', commentary: '', ready: true });
+
+    let lastState: State | undefined;
+    const handle = startDebate({
+      agents: { claude, codex },
+      prompt: 'design x',
+      scoutStep: true,
+      cwd: tmp,
+      onState: s => { lastState = s; },
+      ...paths(),
+    });
+    await handle.done;
+    // Transcript writes are queued through a chain; let them drain.
+    await tick(20);
+
+    expect(lastState?.repoContext?.cwd).toBe(tmp);
+    expect(lastState?.repoContext?.files.map(f => f.path)).toContain('README.md');
+
+    const { readFile } = await import('node:fs/promises');
+    const raw = await readFile(paths().transcriptPath, 'utf8');
+    const lines = raw.split('\n').filter(l => l.length > 0).map(l => JSON.parse(l));
+    expect(lines[0].type).toBe('session');
+    expect(lines[1].type).toBe('scout_complete');
+    expect(lines[1].context.files[0].path).toBe('README.md');
   });
 
   it('writes a session entry first to the transcript', async () => {

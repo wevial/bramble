@@ -9,6 +9,7 @@ import type {
   InterviewTurn,
   Phase,
 } from '../orchestrator/state.js';
+import type { RepoContext } from '../prompts/scout.js';
 
 /**
  * Append-only typed log of every event the orchestrator ever observed. One
@@ -17,6 +18,7 @@ import type {
  */
 export type TranscriptEntry =
   | { type: 'session'; prompt: string; config: DebateConfig; timestamp: string }
+  | { type: 'scout_complete'; context: RepoContext; timestamp: string }
   | { type: 'interview_turn'; turn: InterviewTurn }
   | { type: 'criteria_turn'; turn: CriteriaTurn }
   | { type: 'user_answer'; content: string; timestamp: string }
