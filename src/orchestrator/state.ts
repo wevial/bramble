@@ -2,10 +2,11 @@ import type { Edit, RejectedEdit } from '../protocol/messages.js';
 import { applyEdits } from '../protocol/messages.js';
 import type { PersonaId } from '../personas/personas.js';
 import { findPersona } from '../personas/personas.js';
+import type { RepoContext } from '../prompts/scout.js';
 import { checkTermination, type EndReason } from './termination.js';
 export type { EndReason } from './termination.js';
 
-export type Phase = 'interview' | 'criteria' | 'debate' | 'done';
+export type Phase = 'scout' | 'interview' | 'criteria' | 'debate' | 'done';
 
 export type Speaker = PersonaId | 'user';
 
@@ -103,6 +104,20 @@ export type State = {
    * doesn't opt in). Set at session start; not changed afterwards.
    */
   criteriaStepEnabled?: boolean;
+  /**
+   * Whether the scout phase ran for this session. When true, state.phase
+   * starts as 'scout' and the runner does an initial repo probe before
+   * the interview begins. When undefined/false, phase starts at 'interview'
+   * (legacy behavior for tests and resumed sessions).
+   */
+  scoutEnabled?: boolean;
+  /**
+   * Read-only snapshot of the working directory captured during the scout
+   * phase: canonical files (README.md, CLAUDE.md, …), top-level entries,
+   * cwd. Pinned into every downstream prompt so agents draft the spec
+   * against the actual repo, not a blank slate.
+   */
+  repoContext?: RepoContext;
   /** Most recent ready vote per persona (set membership). */
   readyAgents: PersonaId[];
   /** Debate turn log, chronological. */
@@ -159,6 +174,7 @@ export function initialState(
 
 export type Action =
   | { type: 'turnStarted'; speaker: PersonaId }
+  | { type: 'scoutComplete'; context: RepoContext }
   | { type: 'interviewTurn'; turn: Omit<InterviewTurn, 'timestamp'>; timestamp: string }
   | { type: 'userAnswer'; content: string; timestamp: string }
   | { type: 'userDone' }
@@ -180,6 +196,18 @@ export function reducer(state: State, action: Action): State {
   switch (action.type) {
     case 'turnStarted':
       return { ...state, speaker: action.speaker };
+
+    case 'scoutComplete': {
+      // Scout is the entry phase when scoutEnabled is set; populating
+      // repoContext advances the session into the interview.
+      if (state.phase !== 'scout') return state;
+      return {
+        ...state,
+        speaker: 'idle',
+        repoContext: action.context,
+        phase: 'interview',
+      };
+    }
 
     case 'interviewTurn': {
       if (state.phase !== 'interview') return state;

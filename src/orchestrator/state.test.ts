@@ -7,6 +7,29 @@ function fresh(overrides: Partial<State> = {}): State {
   return { ...initialState('design x'), ...overrides };
 }
 
+describe('reducer — scout phase', () => {
+  it('scoutComplete populates repoContext and advances to interview', () => {
+    const s = reducer(fresh({ phase: 'scout', scoutEnabled: true }), {
+      type: 'scoutComplete',
+      context: { cwd: '/repo', files: [], topLevel: ['src/'] },
+    });
+    expect(s.phase).toBe('interview');
+    expect(s.repoContext?.cwd).toBe('/repo');
+    expect(s.repoContext?.topLevel).toEqual(['src/']);
+    expect(s.speaker).toBe('idle');
+  });
+
+  it('scoutComplete is a no-op outside the scout phase', () => {
+    const s = fresh({ phase: 'interview' });
+    const s2 = reducer(s, {
+      type: 'scoutComplete',
+      context: { cwd: '/x', files: [], topLevel: [] },
+    });
+    expect(s2.repoContext).toBeUndefined();
+    expect(s2.phase).toBe('interview');
+  });
+});
+
 describe('reducer — interview phase', () => {
   it('appends an interview turn and stores the ready vote', () => {
     const s1 = reducer(fresh(), {
