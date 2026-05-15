@@ -15,6 +15,10 @@ describe('flowStep', () => {
     expect(flowStep(fresh())).toBe(2);
   });
 
+  it('Intent (1) during scout phase', () => {
+    expect(flowStep(fresh({ phase: 'scout' }))).toBe(1);
+  });
+
   it('Success Criteria (3) during criteria phase', () => {
     expect(flowStep(fresh({ phase: 'criteria' }))).toBe(3);
   });

@@ -138,6 +138,7 @@ export function App(props: AppProps) {
       // per-turn for users who want explicit checkpoints.
       pauseEachRound: false,
       criteriaStep: true,
+      scoutStep: true,
       prompt,
       config: props.config,
       mode,

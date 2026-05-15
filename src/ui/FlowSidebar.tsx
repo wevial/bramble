@@ -47,6 +47,10 @@ const DIM = createTextAttributes({ dim: true });
 export function flowStep(state: State): FlowStep {
   if (state.phase === 'done') return 6;
   if (state.awaitingSignoff) return 6;
+  // Scout collapses onto step 1 (Intent) — the goal is captured and the
+  // session is gathering its starting context. Step advances to Clarify (2)
+  // as soon as the interview begins.
+  if (state.phase === 'scout') return 1;
   if (state.phase === 'interview') return 2;
   if (state.phase === 'criteria') return 3;
   // debate phase

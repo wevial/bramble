@@ -36,6 +36,7 @@ export function modelLabel(state: State, models: ModelConfig): string {
 export function statusLabel(state: State): string {
   if (state.endReason) return `done · ${state.endReason}`;
   if (state.awaitingSignoff) return 'awaiting your signoff';
+  if (state.phase === 'scout') return 'scout · scanning repo';
   if (state.phase === 'interview') return 'clarifying requirements';
   if (state.phase === 'criteria') return 'locking success criteria';
   if (state.phase === 'debate') {
@@ -48,6 +49,7 @@ export function statusLabel(state: State): string {
 export function nextHint(state: State): string {
   if (state.endReason) return 'session ended';
   if (state.awaitingSignoff) return 'type to revise · /done to finalize';
+  if (state.phase === 'scout') return 'Scout is retrieving repo context…';
   if (state.phase === 'interview') {
     if (state.speaker === 'claude') return 'Claude is asking…';
     if (state.speaker === 'codex') return 'Codex is asking…';

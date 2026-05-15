@@ -88,6 +88,29 @@ describe('ConversationPane', () => {
     unmount();
   });
 
+  it('renders the scout header when repoContext is populated', async () => {
+    const s: State = {
+      ...initialState('design x'),
+      repoContext: {
+        cwd: '/tmp/repo',
+        files: [{ path: 'README.md', bytes: 10, content: '# hi' }],
+        topLevel: ['src/', 'package.json'],
+      },
+    };
+    const { frame, unmount } = await renderFrame(<ConversationPane state={s} />);
+    expect(frame).toContain('Scout');
+    expect(frame).toContain('/tmp/repo');
+    expect(frame).toContain('README.md');
+    unmount();
+  });
+
+  it('shows the scout placeholder while in the scout phase', async () => {
+    const s: State = { ...initialState('design x'), phase: 'scout' };
+    const { frame, unmount } = await renderFrame(<ConversationPane state={s} />);
+    expect(frame).toContain('Scout is retrieving repo context');
+    unmount();
+  });
+
   it('shows lgtm verdict pill on a debate turn', async () => {
     const { frame, unmount } = await renderFrame(<ConversationPane state={withMix()} />);
     expect(frame).toContain('lgtm');

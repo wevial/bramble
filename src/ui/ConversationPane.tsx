@@ -165,14 +165,17 @@ export function ConversationPane({
   if (slice.length === 0) {
     const speaker = state.speaker;
     const placeholder =
-      speaker === 'idle'
-        ? 'Waiting for the first turn…'
-        : `${speakerLabel(speaker)} is starting up…`;
+      state.phase === 'scout'
+        ? 'Scout is retrieving repo context…'
+        : speaker === 'idle'
+          ? 'Waiting for the first turn…'
+          : `${speakerLabel(speaker)} is starting up…`;
     return (
       <box flexDirection="column" paddingX={1} flexGrow={1}>
         <text><span fg="cyan" attributes={BOLD}>CONVERSATION</span></text>
         <box height={1} />
         <scrollbox ref={scrollRef} flexGrow={1} stickyScroll stickyStart="bottom" scrollY>
+          {renderScoutHeader(state)}
           <text><span attributes={DIM}>{placeholder}</span></text>
         </scrollbox>
       </box>
@@ -185,6 +188,7 @@ export function ConversationPane({
       <box height={1} />
       <scrollbox flexGrow={1} stickyScroll stickyStart="bottom" scrollY>
         <box flexDirection="column">
+        {renderScoutHeader(state)}
         {slice.map((e, i) => {
           if (e.kind === 'divider') {
             return (
@@ -223,6 +227,33 @@ export function ConversationPane({
         ) : null}
         </box>
       </scrollbox>
+    </box>
+  );
+}
+
+function renderScoutHeader(state: State): React.ReactNode {
+  const ctx = state.repoContext;
+  if (!ctx) return null;
+  const fileNames = ctx.files.map(f => f.path).join(', ');
+  return (
+    <box flexDirection="column" marginBottom={1} flexShrink={0}>
+      <text>
+        <span fg="cyan" attributes={BOLD}>⌕ Scout</span>
+        <span attributes={DIM}> · repo context</span>
+      </text>
+      <text>
+        <span attributes={DIM}>{`  ${ctx.cwd}`}</span>
+      </text>
+      {fileNames ? (
+        <text>
+          <span attributes={DIM}>{`  files: ${fileNames}`}</span>
+        </text>
+      ) : null}
+      {ctx.topLevel.length > 0 ? (
+        <text>
+          <span attributes={DIM}>{`  top-level: ${ctx.topLevel.length} entries`}</span>
+        </text>
+      ) : null}
     </box>
   );
 }
