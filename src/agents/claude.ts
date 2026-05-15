@@ -30,6 +30,8 @@ export type ClaudeAgentOptions = {
    * debate. Used by the --isolated flag.
    */
   cwd?: string;
+  /** Read-only tool allow-list. See ClaudeTransportOptions.allowedTools. */
+  allowedTools?: string[];
 };
 
 /** Exposed for tests — returns the argv shape the long-lived transport uses. */
@@ -99,6 +101,7 @@ export class ClaudeAgent implements Agent {
         reasoningEffort: opts.reasoningEffort,
         cwd: opts.cwd,
         appendSystemPrompt: systemInstructions,
+        allowedTools: opts.allowedTools,
       });
     }
   }

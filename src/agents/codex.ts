@@ -17,17 +17,28 @@ export type CodexAgentOptions = {
    * debate. Used by the --isolated flag.
    */
   cwd?: string;
+  /**
+   * Sandbox mode passed via `-s`. Use 'read-only' to let codex grep/read
+   * the repo while drafting the spec without granting writes.
+   */
+  sandbox?: 'read-only' | 'workspace-write' | 'danger-full-access';
 };
 
 export function codexSpawnSpec(
   prompt: string,
-  opts: { model?: string; reasoningEffort?: string; cwd?: string } = {},
+  opts: {
+    model?: string;
+    reasoningEffort?: string;
+    cwd?: string;
+    sandbox?: 'read-only' | 'workspace-write' | 'danger-full-access';
+  } = {},
 ): SpawnSpec {
   const args = ['exec', '--json'];
   if (opts.model) args.push('-m', opts.model);
   if (opts.reasoningEffort) {
     args.push('-c', `model_reasoning_effort=${opts.reasoningEffort}`);
   }
+  if (opts.sandbox) args.push('-s', opts.sandbox);
   args.push(prompt);
   const spec: SpawnSpec = { cmd: 'codex', args };
   if (opts.cwd) spec.cwd = opts.cwd;
@@ -44,9 +55,10 @@ function defaultSpawn(
   model: string | undefined,
   reasoningEffort: string | undefined,
   cwd: string | undefined,
+  sandbox: 'read-only' | 'workspace-write' | 'danger-full-access' | undefined,
 ): AsyncIterable<string> {
   return streamProcessLines(
-    codexSpawnSpec(prompt, { model, reasoningEffort, cwd }),
+    codexSpawnSpec(prompt, { model, reasoningEffort, cwd, sandbox }),
     signal,
   );
 }
@@ -63,7 +75,7 @@ export class CodexAgent implements Agent {
     this.streamLines =
       opts.streamLines ??
       ((p, s) =>
-        defaultSpawn(p, s, opts.model, opts.reasoningEffort, opts.cwd));
+        defaultSpawn(p, s, opts.model, opts.reasoningEffort, opts.cwd, opts.sandbox));
     this.systemInstructions = opts.systemInstructions ?? DEFAULT_PROTOCOL;
   }
 

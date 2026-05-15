@@ -73,4 +73,17 @@ describe('codexSpawnSpec', () => {
     });
     expect(spec.args[spec.args.length - 1]).toBe('my prompt');
   });
+
+  it('threads -s <sandbox> before the prompt when set', () => {
+    const spec = codexSpawnSpec('p', { sandbox: 'read-only' });
+    const i = spec.args.indexOf('-s');
+    expect(i).toBeGreaterThanOrEqual(0);
+    expect(spec.args[i + 1]).toBe('read-only');
+    expect(spec.args[spec.args.length - 1]).toBe('p');
+  });
+
+  it('omits -s when sandbox is undefined', () => {
+    const spec = codexSpawnSpec('p');
+    expect(spec.args.includes('-s')).toBe(false);
+  });
 });

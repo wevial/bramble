@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  claudeTransportArgs,
   encodeUserMessage,
   isTurnTerminatorLine,
 } from './claude-transport.js';
@@ -18,6 +19,18 @@ describe('claude-transport helpers', () => {
         content: [{ type: 'text', text: 'hello' }],
       },
     });
+  });
+
+  it('appends --allowed-tools when allowedTools is set', () => {
+    const args = claudeTransportArgs({ allowedTools: ['Read', 'Grep', 'Glob'] });
+    const idx = args.indexOf('--allowed-tools');
+    expect(idx).toBeGreaterThanOrEqual(0);
+    expect(args[idx + 1]).toBe('Read Grep Glob');
+  });
+
+  it('omits --allowed-tools when allowedTools is empty or undefined', () => {
+    expect(claudeTransportArgs({}).includes('--allowed-tools')).toBe(false);
+    expect(claudeTransportArgs({ allowedTools: [] }).includes('--allowed-tools')).toBe(false);
   });
 
   it('flags only `type: "result"` lines as turn terminators', () => {

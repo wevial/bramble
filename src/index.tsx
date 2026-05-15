@@ -252,6 +252,12 @@ let claude: Agent;
 let codex: Agent;
 const isoCwd =
   real && isolated ? mkdtempSync(join(tmpdir(), 'bramble-iso-')) : undefined;
+// Primaries get read-only repo access (Read/Grep/Glob for claude, sandbox
+// 'read-only' for codex) when the session is NOT isolated — i.e. when bramble
+// is running inside the user's actual repo. Specialists stay tool-less for
+// now: they're advisory and don't need to spelunk files. Isolated mode keeps
+// the legacy tool-less behavior since the cwd is an empty tmp dir anyway.
+const repoToolsEnabled = real && !isolated;
 const buildRealAgents = real
   ? (
       config: {
@@ -266,12 +272,14 @@ const buildRealAgents = real
       for (const persona of personas) {
         const others = personas.filter(p => p.id !== persona.id);
         const sys = systemInstructions(persona, others);
+        const grantTools = repoToolsEnabled && persona.scope === 'primary';
         if (persona.transport === 'claude') {
           result[persona.id] = new ClaudeAgent({
             model: config.claudeModel ?? undefined,
             reasoningEffort: config.claudeEffort ?? undefined,
             cwd: isoCwd,
             systemInstructions: sys,
+            allowedTools: grantTools ? ['Read', 'Grep', 'Glob'] : undefined,
           });
         } else {
           result[persona.id] = new CodexAgent({
@@ -279,6 +287,7 @@ const buildRealAgents = real
             reasoningEffort: config.codexEffort ?? undefined,
             cwd: isoCwd,
             systemInstructions: sys,
+            sandbox: grantTools ? 'read-only' : undefined,
           });
         }
       }

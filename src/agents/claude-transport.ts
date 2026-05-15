@@ -41,6 +41,13 @@ export type ClaudeTransportOptions = {
   cwd?: string;
   /** Appended to the CLI's default system prompt — stable across the session. */
   appendSystemPrompt?: string;
+  /**
+   * Allow-list of tool names passed via `--allowed-tools`. Used to give
+   * primaries read-only access to the repo (e.g. `['Read','Grep','Glob']`)
+   * so they can inspect actual code while drafting the spec. Leave undefined
+   * to keep the CLI's default policy.
+   */
+  allowedTools?: string[];
 };
 
 export function claudeTransportArgs(opts: ClaudeTransportOptions): string[] {
@@ -61,6 +68,9 @@ export function claudeTransportArgs(opts: ClaudeTransportOptions): string[] {
   }
   if (opts.model) args.push('--model', opts.model);
   if (opts.reasoningEffort) args.push('--effort', opts.reasoningEffort);
+  if (opts.allowedTools && opts.allowedTools.length > 0) {
+    args.push('--allowed-tools', opts.allowedTools.join(' '));
+  }
   return args;
 }
 
