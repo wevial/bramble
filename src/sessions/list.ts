@@ -1,6 +1,6 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { type OutputFormat, formatExtension } from '../docs/format.js';
+import { type OutputFormat, formatExtension, OUTPUT_FORMATS } from '../docs/format.js';
 
 export type SessionRow = {
   name: string;
@@ -63,7 +63,7 @@ export async function listSessions(root: string): Promise<SessionRow[]> {
     const [turns, goal, accepted, mtime] = await Promise.all([
       countLines(p.transcriptPath),
       readFileSafe(p.promptPath).then(t => t.trim()),
-      hasContent(p.specPath),
+      hasAnySpec(p.dir),
       stat(p.transcriptPath).then(s => s.mtime).catch(() => new Date(0)),
     ]);
 
@@ -99,4 +99,12 @@ async function exists(path: string): Promise<boolean> {
 async function hasContent(path: string): Promise<boolean> {
   const s = await readFileSafe(path);
   return s.trim().length > 0;
+}
+
+/** Check all possible spec file extensions so --list works for any format. */
+async function hasAnySpec(dir: string): Promise<boolean> {
+  for (const fmt of OUTPUT_FORMATS) {
+    if (await hasContent(join(dir, `spec.${formatExtension(fmt)}`))) return true;
+  }
+  return false;
 }
