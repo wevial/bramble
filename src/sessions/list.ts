@@ -1,5 +1,6 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { type OutputFormat, formatExtension } from '../docs/format.js';
 
 export type SessionRow = {
   name: string;
@@ -24,13 +25,17 @@ export type SessionPaths = {
  * `./.bramble/`) and a session name. Filenames are bare (no per-session
  * prefix) since the directory scopes them.
  */
-export function sessionPaths(root: string, name: string): SessionPaths {
+export function sessionPaths(
+  root: string,
+  name: string,
+  specFormat: OutputFormat = 'md',
+): SessionPaths {
   const dir = join(root, name);
   return {
     root,
     dir,
     transcriptPath: join(dir, 'transcript.jsonl'),
-    specPath: join(dir, 'spec.md'),
+    specPath: join(dir, `spec.${formatExtension(specFormat)}`),
     debatePath: join(dir, 'debate.md'),
     interviewPath: join(dir, 'interview.md'),
     promptPath: join(dir, 'prompt.txt'),

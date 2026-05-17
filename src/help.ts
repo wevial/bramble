@@ -22,6 +22,9 @@ Agents:
   --isolated                            spawn agent CLIs in a tmpdir so repo
                                         CLAUDE.md / AGENTS.md don't leak in
 
+Output:
+  --format <md|xml|json|html>           spec output format (default: md)
+
 Session:
   --name <name>                         override the generated session name
   --resume <name>                       resume an existing session
