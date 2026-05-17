@@ -93,12 +93,13 @@ export function createCodexTransport(
         if (!resp.ok) {
           const errText = await resp.text().catch(() => '');
           // Stale session — reset so the caller retries with a full prompt.
+          // Only clear previousResponseId here; the catch block handles the
+          // generation bump so we don't double-increment.
           if (
             previousResponseId &&
             (resp.status === 400 || resp.status === 404)
           ) {
             previousResponseId = null;
-            generation++;
           }
           throw new Error(
             `OpenAI API error ${resp.status}: ${errText.slice(0, 500)}`,
