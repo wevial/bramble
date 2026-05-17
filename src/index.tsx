@@ -180,7 +180,7 @@ async function printSessionSummary(
     { label: 'interview.md', path: p.interviewPath },
     { label: 'debate.md', path: p.debatePath },
     { label: 'transcript.jsonl', path: p.transcriptPath },
-    { label: 'prompt.md', path: p.promptPath },
+    { label: basename(p.promptPath), path: p.promptPath },
   ];
   const sized: { label: string; path: string; size: number | null }[] = [];
   for (const f of files) {
