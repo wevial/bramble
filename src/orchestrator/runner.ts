@@ -6,9 +6,9 @@ import {
   parseDebateMessage,
   parseInterviewMessage,
 } from '../protocol/messages.js';
-import { interviewPrompt } from '../prompts/interview.js';
-import { criteriaPrompt } from '../prompts/criteria.js';
-import { debatePrompt } from '../prompts/debate.js';
+import { interviewPrompt, interviewDeltaPrompt } from '../prompts/interview.js';
+import { criteriaPrompt, criteriaDeltaPrompt } from '../prompts/criteria.js';
+import { debatePrompt, debateDeltaPrompt } from '../prompts/debate.js';
 import { probeRepoContext } from '../prompts/scout.js';
 import { reducer, type State, type DebateConfig, initialState } from './state.js';
 import { nextSpeaker } from './scheduler.js';
@@ -400,10 +400,22 @@ export function startDebate(opts: RunOptions): RunHandle {
 
         const ctx =
           state.phase === 'interview'
-            ? { phase: 'interview' as const, prompt: interviewPrompt({ state, speaker }) }
+            ? {
+                phase: 'interview' as const,
+                prompt: interviewPrompt({ state, speaker }),
+                deltaPrompt: interviewDeltaPrompt({ state, speaker }),
+              }
             : state.phase === 'criteria'
-              ? { phase: 'criteria' as const, prompt: criteriaPrompt({ state, speaker }) }
-              : { phase: 'debate' as const, prompt: debatePrompt({ state, speaker }) };
+              ? {
+                  phase: 'criteria' as const,
+                  prompt: criteriaPrompt({ state, speaker }),
+                  deltaPrompt: criteriaDeltaPrompt({ state, speaker }),
+                }
+              : {
+                  phase: 'debate' as const,
+                  prompt: debatePrompt({ state, speaker }),
+                  deltaPrompt: debateDeltaPrompt({ state, speaker }),
+                };
 
         let displayed = '';
         let rawTail: string | undefined;

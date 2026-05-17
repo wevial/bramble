@@ -62,6 +62,30 @@ export class LLMModerator implements Moderator {
 
   async pick(state: State, signal?: AbortSignal): Promise<ModeratorPick> {
     const ids = state.activePersonas ?? this.personas.map(p => p.id);
+
+    // Fast path: with only 2 personas, round-robin is the only sensible
+    // schedule — skip the LLM call entirely.
+    if (ids.length <= 2) {
+      const next = nextSpeaker(state);
+      this.recordPick(next);
+      return { next, reason: '', fallback: true };
+    }
+
+    // Rule-based fast path: in interview, if any persona hasn't spoken yet
+    // the runner already forces that pick (see runner.ts neverSpoken guard).
+    // Skip the LLM call since the result will be overridden anyway.
+    // Only applies once the interview has started (non-empty log) — the very
+    // first speaker is selected by the runner's own logic, not the moderator.
+    if (state.phase === 'interview' && state.interview.length > 0) {
+      const spoken = new Set(state.interview.map(t => t.speaker));
+      const unspoken = ids.filter(id => !spoken.has(id));
+      if (unspoken.length > 0) {
+        const next = unspoken[0]!;
+        this.recordPick(next);
+        return { next, reason: `${next} hasn't spoken yet`, fallback: true };
+      }
+    }
+
     const personaSet = this.personas.filter(p => ids.includes(p.id));
     const prompt = moderatorPrompt({
       state,

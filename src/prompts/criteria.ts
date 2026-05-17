@@ -70,6 +70,35 @@ export function criteriaPrompt(input: CriteriaPromptInput): string {
   return parts.join('\n\n');
 }
 
+/**
+ * Compact delta prompt for criteria turns after the first. Omits the stable
+ * goal, repo context, and interview transcript that are already in the
+ * persistent session's conversation history — only sends prior criteria
+ * proposals and the turn instruction.
+ */
+export function criteriaDeltaPrompt(input: CriteriaPromptInput): string {
+  const { state, speaker } = input;
+  const parts: string[] = [];
+
+  if (state.criteriaTurns.length > 0) {
+    const lines: string[] = [];
+    for (const t of state.criteriaTurns) {
+      const tag = t.speaker === speaker
+        ? `${personaLabel(t.speaker)} (you)`
+        : personaLabel(t.speaker);
+      lines.push(`## ${tag}`);
+      if (t.commentary) lines.push(t.commentary);
+      if (t.proposed.length > 0) {
+        lines.push(t.proposed.map((c, i) => `${i + 1}. ${c}`).join('\n'));
+      }
+    }
+    parts.push(`# Criteria proposed so far\n\n${lines.join('\n\n')}`);
+  }
+
+  parts.push(buildCriteriaInstruction(state, speaker));
+  return parts.join('\n\n');
+}
+
 function buildCriteriaInstruction(state: State, speaker: PersonaId): string {
   const priorCount = state.criteriaTurns.length;
   const intro =

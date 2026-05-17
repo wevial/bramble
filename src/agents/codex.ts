@@ -2,10 +2,16 @@ import type { Agent, AgentName, StreamTail, Token, TurnContext, TurnUsage } from
 import { streamProcessLines, type SpawnSpec } from './subprocess.js';
 import { parseCodexEvent } from './codex-events.js';
 import { systemInstructions } from '../prompts/system.js';
+import {
+  createCodexTransport,
+  type CodexTransport,
+} from './codex-transport.js';
 
 export type CodexAgentOptions = {
   /** Override the line-stream source for testing. Default spawns `codex`. */
   streamLines?: (prompt: string, signal: AbortSignal) => AsyncIterable<string>;
+  /** Inject a transport directly (for tests of the persistent path). */
+  transport?: CodexTransport;
   systemInstructions?: string;
   /** Pinned model id. Default uses the CLI default from ~/.codex/config.toml. */
   model?: string;
@@ -63,33 +69,92 @@ function defaultSpawn(
   );
 }
 
+/**
+ * Wrap a legacy per-turn `streamLines` callback as a CodexTransport. Every
+ * turn spawns a fresh line source — identical to the old behavior. Only used
+ * by existing tests that predate the persistent transport.
+ */
+function perTurnTransport(
+  streamLines: (prompt: string, signal: AbortSignal) => AsyncIterable<string>,
+): CodexTransport {
+  let gen = 0;
+  return {
+    runTurn(prompt, signal) {
+      gen++;
+      return streamLines(prompt, signal);
+    },
+    sessionGeneration() {
+      return gen;
+    },
+    lastTurnGeneration() {
+      return gen;
+    },
+    dispose() {
+      /* nothing to tear down per turn */
+    },
+  };
+}
+
 export class CodexAgent implements Agent {
   readonly name: AgentName = 'codex';
-  private readonly streamLines: (
-    prompt: string,
-    signal: AbortSignal,
-  ) => AsyncIterable<string>;
+  private readonly transport: CodexTransport;
+  private readonly supportsDeltaPrompts: boolean;
   private readonly systemInstructions: string;
+  private hasSessionContext = false;
+  private seededGeneration = -1;
 
   constructor(opts: CodexAgentOptions = {}) {
-    this.streamLines =
-      opts.streamLines ??
-      ((p, s) =>
-        defaultSpawn(p, s, opts.model, opts.reasoningEffort, opts.cwd, opts.sandbox));
     this.systemInstructions = opts.systemInstructions ?? DEFAULT_PROTOCOL;
+
+    if (opts.transport) {
+      // Injected transport (tests or external config).
+      this.transport = opts.transport;
+      this.supportsDeltaPrompts = true;
+    } else if (opts.streamLines) {
+      // Legacy per-turn line source — no delta prompt support.
+      this.transport = perTurnTransport(opts.streamLines);
+      this.supportsDeltaPrompts = false;
+    } else if (process.env.OPENAI_API_KEY) {
+      // Persistent API transport — delta prompts enabled.
+      this.transport = createCodexTransport({
+        model: opts.model,
+        reasoningEffort: opts.reasoningEffort,
+        systemInstructions: this.systemInstructions,
+      });
+      this.supportsDeltaPrompts = true;
+    } else {
+      // Default: spawn `codex exec` per turn via CLI.
+      this.transport = perTurnTransport((p, s) =>
+        defaultSpawn(p, s, opts.model, opts.reasoningEffort, opts.cwd, opts.sandbox),
+      );
+      this.supportsDeltaPrompts = false;
+    }
   }
 
   async *stream(
     ctx: TurnContext,
     signal: AbortSignal,
   ): AsyncGenerator<Token, StreamTail | void, void> {
-    const prompt = `${this.systemInstructions}\n\n---\n\n${ctx.prompt}`;
+    const generation = this.transport.sessionGeneration();
+    const sessionStillAlive =
+      this.hasSessionContext && generation === this.seededGeneration;
+    const useDelta =
+      this.supportsDeltaPrompts && sessionStillAlive && !!ctx.deltaPrompt;
+
+    // For CLI-based transports, prepend system instructions to the prompt.
+    // API-based transports receive them via the `instructions` field.
+    const rawPrompt = useDelta ? ctx.deltaPrompt! : ctx.prompt;
+    const prompt = this.supportsDeltaPrompts
+      ? rawPrompt
+      : `${this.systemInstructions}\n\n---\n\n${rawPrompt}`;
+    const promptMode = useDelta ? 'delta' : 'full';
+
     let fullText = '';
     let usage: TurnUsage | undefined;
     let subprocessError: string | null = null;
 
     try {
-      for await (const line of this.streamLines(prompt, signal)) {
+      for await (const line of this.transport.runTurn(prompt, signal)) {
         if (signal.aborted) break;
         const evt = parseCodexEvent(line);
         if (evt === null) continue;
@@ -103,8 +168,20 @@ export class CodexAgent implements Agent {
     } catch (err) {
       subprocessError = (err as Error)?.message ?? String(err);
     }
-    // Codex spawns a fresh subprocess per turn, so there's no full-vs-delta
-    // distinction to report — leave the claude-only debug fields off.
+
+    this.hasSessionContext = !signal.aborted && subprocessError === null;
+    this.seededGeneration = this.transport.lastTurnGeneration();
+
+    if (this.supportsDeltaPrompts && usage) {
+      usage = {
+        ...usage,
+        promptMode,
+        promptChars: prompt.length,
+        fullPromptChars: ctx.prompt.length,
+        deltaPromptChars: ctx.deltaPrompt?.length,
+      };
+    }
+
     if (subprocessError && fullText.length === 0) {
       const errMsg = `⚠ codex subprocess failed: ${subprocessError}`;
       yield { text: errMsg };
@@ -114,5 +191,10 @@ export class CodexAgent implements Agent {
       };
     }
     return { raw: fullText, usage };
+  }
+
+  dispose() {
+    this.hasSessionContext = false;
+    this.transport.dispose();
   }
 }

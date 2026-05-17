@@ -59,6 +59,45 @@ export function interviewPrompt(input: InterviewPromptInput): string {
   return parts.join('\n\n');
 }
 
+/**
+ * Compact delta prompt for interview turns after the first. Omits the stable
+ * goal and repo context that are already in the persistent session's
+ * conversation history — only sends recent Q&A and the turn instruction.
+ */
+export function interviewDeltaPrompt(input: InterviewPromptInput): string {
+  const { state, speaker } = input;
+  const parts: string[] = [];
+
+  if (state.interview.length > 0 || state.userAnswers.length > 0) {
+    const lines: string[] = [];
+    let answerIdx = 0;
+    for (const turn of state.interview) {
+      const turnLabel = personaLabel(turn.speaker);
+      const tag = turn.speaker === speaker ? `${turnLabel} (you)` : turnLabel;
+      lines.push(`## ${tag}`);
+      if (turn.commentary) lines.push(turn.commentary);
+      if (turn.question) lines.push(`> ${turn.question}`);
+      if (turn.ready) lines.push(`→ signaled ready`);
+      const ans = state.userAnswers[answerIdx];
+      if (
+        ans &&
+        Date.parse(ans.timestamp) >= Date.parse(turn.timestamp)
+      ) {
+        lines.push(`## user\n${ans.content}`);
+        answerIdx++;
+      }
+    }
+    while (answerIdx < state.userAnswers.length) {
+      lines.push(`## user\n${state.userAnswers[answerIdx]!.content}`);
+      answerIdx++;
+    }
+    parts.push(`# Interview so far\n\n${lines.join('\n\n')}`);
+  }
+
+  parts.push(buildInterviewInstruction(state, speaker));
+  return parts.join('\n\n');
+}
+
 function buildInterviewInstruction(state: State, speaker: PersonaId): string {
   const active = state.activePersonas ?? ['claude', 'codex'];
   const others = active.filter(p => p !== speaker);
