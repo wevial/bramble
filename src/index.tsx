@@ -2,7 +2,7 @@
 import React from 'react';
 import { createCliRenderer } from '@opentui/core';
 import { createRoot } from '@opentui/react';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import type { Agent } from './agents/agent.js';
 import { FakeAgent } from './agents/fake.js';
 import { ClaudeAgent } from './agents/claude.js';
@@ -11,7 +11,7 @@ import { App } from './ui/App.js';
 import { generateSessionName } from './util/name.js';
 import { readTranscript } from './docs/transcript.js';
 import { rehydrateState } from './orchestrator/replay.js';
-import { listSessions, sessionPaths } from './sessions/list.js';
+import { listSessions, sessionPaths, detectSessionFormat } from './sessions/list.js';
 import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -176,7 +176,7 @@ async function printSessionSummary(
   }
 
   const files: { label: string; path: string }[] = [
-    { label: 'spec.md', path: p.specPath },
+    { label: basename(p.specPath), path: p.specPath },
     { label: 'interview.md', path: p.interviewPath },
     { label: 'debate.md', path: p.debatePath },
     { label: 'transcript.jsonl', path: p.transcriptPath },
@@ -223,6 +223,14 @@ function formatSize(bytes: number): string {
 }
 
 const name = resumeName ?? sessionName ?? generateSessionName();
+// When resuming, auto-detect the format used by the original session so
+// the spec file extension stays consistent unless the user explicitly
+// overrides it with --format.
+const userExplicitFormat = argv.includes('--format');
+if (resumeName && !userExplicitFormat) {
+  const detected = await detectSessionFormat(join(storeRoot, resumeName));
+  if (detected) outputFormat = detected;
+}
 const paths = sessionPaths(storeRoot, name, outputFormat);
 // Only create the session dir up front when resuming — otherwise defer it
 // until the user actually starts the session from the setup screen so a

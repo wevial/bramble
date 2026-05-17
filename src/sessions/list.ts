@@ -108,3 +108,13 @@ async function hasAnySpec(dir: string): Promise<boolean> {
   }
   return false;
 }
+
+/** Detect which output format was used for an existing session. */
+export async function detectSessionFormat(dir: string): Promise<OutputFormat | null> {
+  for (const fmt of OUTPUT_FORMATS) {
+    if (fmt === 'md') continue;
+    if (await exists(join(dir, `spec.${formatExtension(fmt)}`))) return fmt;
+  }
+  if (await exists(join(dir, 'spec.md'))) return 'md';
+  return null;
+}
