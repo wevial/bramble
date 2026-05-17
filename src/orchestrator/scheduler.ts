@@ -14,7 +14,12 @@ export function nextSpeaker(state: State): PersonaId {
   if (order.length === 0) {
     throw new Error('nextSpeaker: state.activePersonas is empty');
   }
-  const log = state.phase === 'interview' ? state.interview : state.debate;
+  const log =
+    state.phase === 'interview'
+      ? state.interview
+      : state.phase === 'criteria'
+        ? state.criteriaTurns
+        : state.debate;
   const last = log[log.length - 1];
   if (!last) return order[0]!;
   const idx = order.indexOf(last.speaker);
