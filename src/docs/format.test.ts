@@ -108,6 +108,7 @@ describe('toJson', () => {
   it('produces valid JSON with title and sections', () => {
     const result = JSON.parse(toJson(SAMPLE_MD));
     expect(result.title).toBe('Auth Spec');
+    expect(result.description).toBe('');
     expect(Array.isArray(result.sections)).toBe(true);
     expect(result.sections.length).toBe(2);
     expect(result.sections[0].heading).toBe('Goals');
@@ -118,6 +119,15 @@ describe('toJson', () => {
     const result = JSON.parse(toJson(SAMPLE_MD));
     expect(result.sections[0].content).toBe('A minimal auth system.');
     expect(result.sections[1].content).toContain('Credential stuffing');
+  });
+
+  it('hoists level-1 body text to description instead of sections', () => {
+    const md = '# My Spec\nIntro paragraph.\n\n## Details\nSome details.';
+    const result = JSON.parse(toJson(md));
+    expect(result.title).toBe('My Spec');
+    expect(result.description).toBe('Intro paragraph.');
+    expect(result.sections.length).toBe(1);
+    expect(result.sections[0].heading).toBe('Details');
   });
 });
 

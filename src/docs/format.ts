@@ -137,19 +137,20 @@ export function toXml(md: string): string {
 export function toJson(md: string): string {
   const sections = parseSections(md);
   let title = '';
+  let description = '';
   const body: { heading: string; level: number; content: string }[] = [];
 
   for (const s of sections) {
     if (s.level === 1 && !title) {
       title = s.heading;
-      if (s.content) body.push({ heading: s.heading, level: s.level, content: s.content });
+      if (s.content) description = s.content;
     } else if (s.level === 0 && s.content) {
       body.push({ heading: '', level: 0, content: s.content });
     } else {
       body.push({ heading: s.heading, level: s.level, content: s.content });
     }
   }
-  return JSON.stringify({ title, sections: body }, null, 2);
+  return JSON.stringify({ title, description, sections: body }, null, 2);
 }
 
 export function toHtml(md: string): string {

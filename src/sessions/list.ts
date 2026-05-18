@@ -103,10 +103,18 @@ async function hasContent(path: string): Promise<boolean> {
 
 /** Check all possible spec file extensions so --list works for any format. */
 async function hasAnySpec(dir: string): Promise<boolean> {
-  for (const fmt of OUTPUT_FORMATS) {
-    if (await hasContent(join(dir, `spec.${formatExtension(fmt)}`))) return true;
+  try {
+    await Promise.any(
+      OUTPUT_FORMATS.map(fmt =>
+        hasContent(join(dir, `spec.${formatExtension(fmt)}`)).then(ok => {
+          if (!ok) throw new Error();
+        }),
+      ),
+    );
+    return true;
+  } catch {
+    return false;
   }
-  return false;
 }
 
 /** Detect which output format was used for an existing session. */
