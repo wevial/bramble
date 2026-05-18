@@ -70,10 +70,12 @@ export function criteriaPrompt(input: CriteriaPromptInput): string {
   return parts.join('\n\n');
 }
 
+const RECENT_TURN_LIMIT = 6;
+
 /**
  * Compact delta prompt for criteria turns after the first. Omits the stable
  * goal, repo context, and interview transcript that are already in the
- * persistent session's conversation history — only sends prior criteria
+ * persistent session's conversation history — only sends recent criteria
  * proposals and the turn instruction.
  */
 export function criteriaDeltaPrompt(input: CriteriaPromptInput): string {
@@ -81,8 +83,9 @@ export function criteriaDeltaPrompt(input: CriteriaPromptInput): string {
   const parts: string[] = [];
 
   if (state.criteriaTurns.length > 0) {
+    const recent = state.criteriaTurns.slice(-RECENT_TURN_LIMIT);
     const lines: string[] = [];
-    for (const t of state.criteriaTurns) {
+    for (const t of recent) {
       const tag = t.speaker === speaker
         ? `${personaLabel(t.speaker)} (you)`
         : personaLabel(t.speaker);
@@ -92,7 +95,7 @@ export function criteriaDeltaPrompt(input: CriteriaPromptInput): string {
         lines.push(t.proposed.map((c, i) => `${i + 1}. ${c}`).join('\n'));
       }
     }
-    parts.push(`# Criteria proposed so far\n\n${lines.join('\n\n')}`);
+    parts.push(`# Recent criteria proposals\n\n${lines.join('\n\n')}`);
   }
 
   parts.push(buildCriteriaInstruction(state, speaker));

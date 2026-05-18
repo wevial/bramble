@@ -71,9 +71,9 @@ export class LLMModerator implements Moderator {
       return { next, reason: '', fallback: true };
     }
 
-    // Rule-based fast path: in interview, if any persona hasn't spoken yet
-    // the runner already forces that pick (see runner.ts neverSpoken guard).
-    // Skip the LLM call since the result will be overridden anyway.
+    // Rule-based fast path: in interview, ensure every persona speaks before
+    // the LLM decides ordering. The runner's neverSpoken guard covers primaries;
+    // this extends the same policy to specialists so no persona is skipped.
     // Only applies once the interview has started (non-empty log) — the very
     // first speaker is selected by the runner's own logic, not the moderator.
     if (state.phase === 'interview' && state.interview.length > 0) {

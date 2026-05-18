@@ -61,6 +61,7 @@ export function createCodexTransport(
       });
       await prior;
 
+      let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
       try {
         if (disposed || signal.aborted) return;
         turnGen = generation;
@@ -106,7 +107,7 @@ export function createCodexTransport(
           );
         }
 
-        const reader = resp.body?.getReader();
+        reader = resp.body?.getReader();
         if (!reader) throw new Error('No response body from OpenAI API');
 
         const decoder = new TextDecoder();
@@ -188,6 +189,7 @@ export function createCodexTransport(
           throw err;
         }
       } finally {
+        reader?.cancel().catch(() => {});
         release();
       }
     })();

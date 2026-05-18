@@ -59,6 +59,8 @@ export function interviewPrompt(input: InterviewPromptInput): string {
   return parts.join('\n\n');
 }
 
+const RECENT_TURN_LIMIT = 6;
+
 /**
  * Compact delta prompt for interview turns after the first. Omits the stable
  * goal and repo context that are already in the persistent session's
@@ -69,9 +71,11 @@ export function interviewDeltaPrompt(input: InterviewPromptInput): string {
   const parts: string[] = [];
 
   if (state.interview.length > 0 || state.userAnswers.length > 0) {
+    const recent = state.interview.slice(-RECENT_TURN_LIMIT);
+    const firstRecentIdx = state.interview.length - recent.length;
     const lines: string[] = [];
-    let answerIdx = 0;
-    for (const turn of state.interview) {
+    let answerIdx = firstRecentIdx;
+    for (const turn of recent) {
       const turnLabel = personaLabel(turn.speaker);
       const tag = turn.speaker === speaker ? `${turnLabel} (you)` : turnLabel;
       lines.push(`## ${tag}`);
@@ -91,7 +95,7 @@ export function interviewDeltaPrompt(input: InterviewPromptInput): string {
       lines.push(`## user\n${state.userAnswers[answerIdx]!.content}`);
       answerIdx++;
     }
-    parts.push(`# Interview so far\n\n${lines.join('\n\n')}`);
+    parts.push(`# Recent interview turns\n\n${lines.join('\n\n')}`);
   }
 
   parts.push(buildInterviewInstruction(state, speaker));
