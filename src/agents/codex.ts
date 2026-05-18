@@ -124,6 +124,13 @@ function createPersistentCliTransport(opts: {
             }
             yield line;
           }
+          // If no thread_id was captured, the CLI doesn't support --resume
+          // (or the event was missing). Bump generation so the agent sees a
+          // mismatch and falls back to full prompts instead of sending deltas
+          // to a fresh subprocess with no prior context.
+          if (sessionId === null) {
+            generation++;
+          }
         } catch (err) {
           // Subprocess crashed — session is lost.
           sessionId = null;
