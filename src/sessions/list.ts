@@ -1,5 +1,6 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { type OutputFormat, formatExtension, OUTPUT_FORMATS } from '../docs/format.js';
 
 export type SessionRow = {
   name: string;
@@ -24,13 +25,17 @@ export type SessionPaths = {
  * `./.bramble/`) and a session name. Filenames are bare (no per-session
  * prefix) since the directory scopes them.
  */
-export function sessionPaths(root: string, name: string): SessionPaths {
+export function sessionPaths(
+  root: string,
+  name: string,
+  specFormat: OutputFormat = 'md',
+): SessionPaths {
   const dir = join(root, name);
   return {
     root,
     dir,
     transcriptPath: join(dir, 'transcript.jsonl'),
-    specPath: join(dir, 'spec.md'),
+    specPath: join(dir, `spec.${formatExtension(specFormat)}`),
     debatePath: join(dir, 'debate.md'),
     interviewPath: join(dir, 'interview.md'),
     promptPath: join(dir, 'prompt.txt'),
@@ -58,7 +63,7 @@ export async function listSessions(root: string): Promise<SessionRow[]> {
     const [turns, goal, accepted, mtime] = await Promise.all([
       countLines(p.transcriptPath),
       readFileSafe(p.promptPath).then(t => t.trim()),
-      hasContent(p.specPath),
+      hasAnySpec(p.dir),
       stat(p.transcriptPath).then(s => s.mtime).catch(() => new Date(0)),
     ]);
 
@@ -94,4 +99,30 @@ async function exists(path: string): Promise<boolean> {
 async function hasContent(path: string): Promise<boolean> {
   const s = await readFileSafe(path);
   return s.trim().length > 0;
+}
+
+/** Check all possible spec file extensions so --list works for any format. */
+async function hasAnySpec(dir: string): Promise<boolean> {
+  try {
+    await Promise.any(
+      OUTPUT_FORMATS.map(fmt =>
+        hasContent(join(dir, `spec.${formatExtension(fmt)}`)).then(ok => {
+          if (!ok) throw new Error();
+        }),
+      ),
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Detect which output format was used for an existing session. */
+export async function detectSessionFormat(dir: string): Promise<OutputFormat | null> {
+  for (const fmt of OUTPUT_FORMATS) {
+    if (fmt === 'md') continue;
+    if (await exists(join(dir, `spec.${formatExtension(fmt)}`))) return fmt;
+  }
+  if (await exists(join(dir, 'spec.md'))) return 'md';
+  return null;
 }

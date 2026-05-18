@@ -2,7 +2,7 @@
 import React from 'react';
 import { createCliRenderer } from '@opentui/core';
 import { createRoot } from '@opentui/react';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import type { Agent } from './agents/agent.js';
 import { FakeAgent } from './agents/fake.js';
 import { ClaudeAgent } from './agents/claude.js';
@@ -11,11 +11,12 @@ import { App } from './ui/App.js';
 import { generateSessionName } from './util/name.js';
 import { readTranscript } from './docs/transcript.js';
 import { rehydrateState } from './orchestrator/replay.js';
-import { listSessions, sessionPaths } from './sessions/list.js';
+import { listSessions, sessionPaths, detectSessionFormat } from './sessions/list.js';
 import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { helpText } from './help.js';
+import { type OutputFormat, isOutputFormat, convertSpec } from './docs/format.js';
 import { loadSavedSetup, defaultSetupPath } from './ui/setup-store.js';
 import {
   CLAUDE_PERSONA,
@@ -50,6 +51,7 @@ let cliMode: 'auto' | 'collab' | undefined;
 let listMode = false;
 let dirFlag: string | undefined;
 let isolated = false;
+let outputFormat: OutputFormat = 'md';
 const positional: string[] = [];
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
@@ -93,6 +95,15 @@ for (let i = 0; i < argv.length; i++) {
     i++;
   } else if (a === '--isolated') {
     isolated = true;
+  } else if (a === '--format' && argv[i + 1]) {
+    const f = argv[i + 1]!;
+    if (isOutputFormat(f)) {
+      outputFormat = f;
+    } else {
+      console.error(`unknown --format value: ${f}  (expected md, xml, json, or html)`);
+      process.exit(1);
+    }
+    i++;
   } else {
     positional.push(a!);
   }
@@ -165,11 +176,11 @@ async function printSessionSummary(
   }
 
   const files: { label: string; path: string }[] = [
-    { label: 'spec.md', path: p.specPath },
+    { label: basename(p.specPath), path: p.specPath },
     { label: 'interview.md', path: p.interviewPath },
     { label: 'debate.md', path: p.debatePath },
     { label: 'transcript.jsonl', path: p.transcriptPath },
-    { label: 'prompt.md', path: p.promptPath },
+    { label: basename(p.promptPath), path: p.promptPath },
   ];
   const sized: { label: string; path: string; size: number | null }[] = [];
   for (const f of files) {
@@ -212,7 +223,15 @@ function formatSize(bytes: number): string {
 }
 
 const name = resumeName ?? sessionName ?? generateSessionName();
-const paths = sessionPaths(storeRoot, name);
+// When resuming, auto-detect the format used by the original session so
+// the spec file extension stays consistent unless the user explicitly
+// overrides it with --format.
+const userExplicitFormat = argv.includes('--format');
+if (resumeName && !userExplicitFormat) {
+  const detected = await detectSessionFormat(join(storeRoot, resumeName));
+  if (detected) outputFormat = detected;
+}
+const paths = sessionPaths(storeRoot, name, outputFormat);
 // Only create the session dir up front when resuming — otherwise defer it
 // until the user actually starts the session from the setup screen so a
 // quick launch-and-quit doesn't litter the store with empty dirs.
@@ -593,6 +612,7 @@ root.render(
     promptSidecarPath={paths.promptPath}
     transcriptPath={paths.transcriptPath}
     specPath={paths.specPath}
+    outputFormat={outputFormat}
     debatePath={paths.debatePath}
     interviewPath={paths.interviewPath}
     buildAgents={buildRealAgents ?? buildFakeAgents}

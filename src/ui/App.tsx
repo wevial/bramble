@@ -13,6 +13,7 @@ import {
   type DebateMode,
 } from '../orchestrator/runner.js';
 import { writeSpec } from '../docs/spec.js';
+import { type OutputFormat, convertSpec } from '../docs/format.js';
 import { writeInterviewMd } from '../docs/interview.js';
 import { writeDebateLedger } from '../docs/debate.js';
 import { type State, type DebateConfig } from '../orchestrator/state.js';
@@ -46,6 +47,7 @@ export type AppProps = {
   promptSidecarPath?: string;
   transcriptPath: string;
   specPath: string;
+  outputFormat?: OutputFormat;
   debatePath: string;
   interviewPath: string;
   onDone?: () => void;
@@ -159,8 +161,9 @@ export function App(props: AppProps) {
           clearTimeout(savedTimerRef.current);
           savedTimerRef.current = null;
         }
+        const outputFmt: OutputFormat = props.outputFormat ?? 'md';
         writesRef.current = writesRef.current
-          .then(() => writeSpec(props.specPath, spec))
+          .then(() => writeSpec(props.specPath, convertSpec(spec, outputFmt)))
           .then(() => writeInterviewMd(props.interviewPath, interview, answers))
           .then(() => writeDebateLedger(props.debatePath, debate))
           .then(() => {
