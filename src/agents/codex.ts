@@ -2,10 +2,13 @@ import type { Agent, AgentName, StreamTail, Token, TurnContext, TurnUsage } from
 import { streamProcessLines, type SpawnSpec } from './subprocess.js';
 import { parseCodexEvent } from './codex-events.js';
 import { systemInstructions } from '../prompts/system.js';
-import {
-  createCodexTransport,
-  type CodexTransport,
-} from './codex-transport.js';
+
+export interface CodexTransport {
+  runTurn(promptText: string, signal: AbortSignal): AsyncIterable<string>;
+  sessionGeneration(): number;
+  lastTurnGeneration(): number;
+  dispose(): void;
+}
 
 export type CodexAgentOptions = {
   /** Override the line-stream source for testing. Default spawns `codex`. */
@@ -114,14 +117,6 @@ export class CodexAgent implements Agent {
       // Legacy per-turn line source — no delta prompt support.
       this.transport = perTurnTransport(opts.streamLines);
       this.supportsDeltaPrompts = false;
-    } else if (process.env.OPENAI_API_KEY) {
-      // Persistent API transport — delta prompts enabled.
-      this.transport = createCodexTransport({
-        model: opts.model,
-        reasoningEffort: opts.reasoningEffort,
-        systemInstructions: this.systemInstructions,
-      });
-      this.supportsDeltaPrompts = true;
     } else {
       // Default: spawn `codex exec` per turn via CLI.
       this.transport = perTurnTransport((p, s) =>
