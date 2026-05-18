@@ -72,9 +72,18 @@ export function interviewDeltaPrompt(input: InterviewPromptInput): string {
 
   if (state.interview.length > 0 || state.userAnswers.length > 0) {
     const recent = state.interview.slice(-RECENT_TURN_LIMIT);
-    const firstRecentIdx = state.interview.length - recent.length;
+    const skipped = state.interview.length - recent.length;
     const lines: string[] = [];
-    let answerIdx = firstRecentIdx;
+    // Replay timestamp-based pairing for skipped turns to find the correct
+    // starting answerIdx (not every turn consumes an answer).
+    let answerIdx = 0;
+    for (let i = 0; i < skipped; i++) {
+      const turn = state.interview[i]!;
+      const ans = state.userAnswers[answerIdx];
+      if (ans && Date.parse(ans.timestamp) >= Date.parse(turn.timestamp)) {
+        answerIdx++;
+      }
+    }
     for (const turn of recent) {
       const turnLabel = personaLabel(turn.speaker);
       const tag = turn.speaker === speaker ? `${turnLabel} (you)` : turnLabel;
