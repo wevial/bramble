@@ -73,9 +73,81 @@ function defaultSpawn(
 }
 
 /**
- * Wrap a legacy per-turn `streamLines` callback as a CodexTransport. Every
- * turn spawns a fresh line source — identical to the old behavior. Only used
- * by existing tests that predate the persistent transport.
+ * Persistent CLI transport that captures the `thread_id` from `codex exec`
+ * output and passes `--resume <id>` on subsequent turns, giving Codex
+ * conversation continuity while staying on the user's CLI subscription.
+ */
+function createPersistentCliTransport(opts: {
+  model?: string;
+  reasoningEffort?: string;
+  cwd?: string;
+  sandbox?: 'read-only' | 'workspace-write' | 'danger-full-access';
+}): CodexTransport {
+  let sessionId: string | null = null;
+  let generation = 0;
+  let turnGen = 0;
+
+  return {
+    runTurn(prompt, signal) {
+      const args = ['exec', '--json'];
+      if (opts.model) args.push('-m', opts.model);
+      if (opts.reasoningEffort) {
+        args.push('-c', `model_reasoning_effort=${opts.reasoningEffort}`);
+      }
+      if (opts.sandbox) args.push('-s', opts.sandbox);
+      if (sessionId) args.push('--resume', sessionId);
+      args.push(prompt);
+      const spec: SpawnSpec = { cmd: 'codex', args };
+      if (opts.cwd) spec.cwd = opts.cwd;
+
+      const currentGen = generation;
+      turnGen = currentGen;
+
+      return (async function* () {
+        try {
+          for await (const line of streamProcessLines(spec, signal)) {
+            // Capture thread_id so subsequent turns can --resume.
+            if (sessionId === null) {
+              try {
+                const obj = JSON.parse(line.trim());
+                if (
+                  typeof obj === 'object' &&
+                  obj !== null &&
+                  obj.type === 'thread.started' &&
+                  typeof obj.thread_id === 'string'
+                ) {
+                  sessionId = obj.thread_id;
+                }
+              } catch {
+                /* not JSON — ignore */
+              }
+            }
+            yield line;
+          }
+        } catch (err) {
+          // Subprocess crashed — session is lost.
+          sessionId = null;
+          generation++;
+          throw err;
+        }
+      })();
+    },
+    sessionGeneration() {
+      return generation;
+    },
+    lastTurnGeneration() {
+      return turnGen;
+    },
+    dispose() {
+      sessionId = null;
+    },
+  };
+}
+
+/**
+ * Wrap a per-turn `streamLines` callback as a CodexTransport. Every turn
+ * spawns a fresh line source with no conversation continuity. Used by tests
+ * that inject a custom line source via `opts.streamLines`.
  */
 function perTurnTransport(
   streamLines: (prompt: string, signal: AbortSignal) => AsyncIterable<string>,
@@ -118,11 +190,15 @@ export class CodexAgent implements Agent {
       this.transport = perTurnTransport(opts.streamLines);
       this.supportsDeltaPrompts = false;
     } else {
-      // Default: spawn `codex exec` per turn via CLI.
-      this.transport = perTurnTransport((p, s) =>
-        defaultSpawn(p, s, opts.model, opts.reasoningEffort, opts.cwd, opts.sandbox),
-      );
-      this.supportsDeltaPrompts = false;
+      // Default: persistent CLI transport — captures thread_id from
+      // `codex exec` and passes `--resume` on subsequent turns.
+      this.transport = createPersistentCliTransport({
+        model: opts.model,
+        reasoningEffort: opts.reasoningEffort,
+        cwd: opts.cwd,
+        sandbox: opts.sandbox,
+      });
+      this.supportsDeltaPrompts = true;
     }
   }
 
@@ -136,10 +212,10 @@ export class CodexAgent implements Agent {
     const useDelta =
       this.supportsDeltaPrompts && sessionStillAlive && !!ctx.deltaPrompt;
 
-    // For CLI-based transports, prepend system instructions to the prompt.
-    // API-based transports receive them via the `instructions` field.
+    // Always prepend system instructions on full (non-delta) prompts.
+    // Delta prompts omit them — the persistent session already has them.
     const rawPrompt = useDelta ? ctx.deltaPrompt! : ctx.prompt;
-    const prompt = this.supportsDeltaPrompts
+    const prompt = useDelta
       ? rawPrompt
       : `${this.systemInstructions}\n\n---\n\n${rawPrompt}`;
     const promptMode = useDelta ? 'delta' : 'full';
