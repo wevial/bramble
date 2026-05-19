@@ -2,13 +2,12 @@ import type { PersonaId } from '../personas/personas.js';
 import { findPersona } from '../personas/personas.js';
 import type { State, DebateTurn } from '../orchestrator/state.js';
 import { renderRepoContext } from './scout.js';
+import { RECENT_TURN_LIMIT } from './constants.js';
 
 export type DebatePromptInput = {
   state: State;
   speaker: PersonaId;
 };
-
-const RECENT_TURN_LIMIT = 6;
 
 /**
  * Build the debate-phase prompt. The interview Q&A is pinned at the top so

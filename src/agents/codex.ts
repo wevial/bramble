@@ -58,20 +58,6 @@ import { CLAUDE_PERSONA, CODEX_PERSONA } from '../personas/personas.js';
 
 const DEFAULT_PROTOCOL = systemInstructions(CODEX_PERSONA, [CLAUDE_PERSONA]);
 
-function defaultSpawn(
-  prompt: string,
-  signal: AbortSignal,
-  model: string | undefined,
-  reasoningEffort: string | undefined,
-  cwd: string | undefined,
-  sandbox: 'read-only' | 'workspace-write' | 'danger-full-access' | undefined,
-): AsyncIterable<string> {
-  return streamProcessLines(
-    codexSpawnSpec(prompt, { model, reasoningEffort, cwd, sandbox }),
-    signal,
-  );
-}
-
 /**
  * Persistent CLI transport that captures the `thread_id` from `codex exec`
  * output and passes `--resume <id>` on subsequent turns, giving Codex
@@ -100,8 +86,7 @@ function createPersistentCliTransport(opts: {
       const spec: SpawnSpec = { cmd: 'codex', args };
       if (opts.cwd) spec.cwd = opts.cwd;
 
-      const currentGen = generation;
-      turnGen = currentGen;
+      turnGen = generation;
 
       return (async function* () {
         try {
@@ -124,11 +109,21 @@ function createPersistentCliTransport(opts: {
             }
             yield line;
           }
-          // If no thread_id was captured, the CLI doesn't support --resume
-          // (or the event was missing). Bump generation so the agent sees a
-          // mismatch and falls back to full prompts instead of sending deltas
-          // to a fresh subprocess with no prior context.
-          if (sessionId === null) {
+          if (signal.aborted) {
+            // Abort killed the subprocess mid-turn — discard the session so
+            // the next turn starts fresh (avoids system-instructions duplication
+            // from sending a full prompt via --resume to a session that already
+            // has them).
+            sessionId = null;
+            generation++;
+          } else if (sessionId === null) {
+            // No thread_id captured — the CLI doesn't support --resume (or the
+            // event was missing). Bump generation so the agent falls back to
+            // full prompts instead of sending deltas to a contextless subprocess.
+            console.warn(
+              '[bramble] codex exec did not emit thread.started — ' +
+              'persistent session disabled for this turn',
+            );
             generation++;
           }
         } catch (err) {
