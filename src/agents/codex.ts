@@ -89,6 +89,7 @@ function createPersistentCliTransport(opts: {
       turnGen = generation;
 
       return (async function* () {
+        let threw = false;
         try {
           for await (const line of streamProcessLines(spec, signal)) {
             // Capture thread_id so subsequent turns can --resume.
@@ -109,14 +110,7 @@ function createPersistentCliTransport(opts: {
             }
             yield line;
           }
-          if (signal.aborted) {
-            // Abort killed the subprocess mid-turn — discard the session so
-            // the next turn starts fresh (avoids system-instructions duplication
-            // from sending a full prompt via --resume to a session that already
-            // has them).
-            sessionId = null;
-            generation++;
-          } else if (sessionId === null) {
+          if (sessionId === null) {
             // No thread_id captured — the CLI doesn't support --resume (or the
             // event was missing). Bump generation so the agent falls back to
             // full prompts instead of sending deltas to a contextless subprocess.
@@ -128,9 +122,21 @@ function createPersistentCliTransport(opts: {
           }
         } catch (err) {
           // Subprocess crashed — session is lost.
+          threw = true;
           sessionId = null;
           generation++;
           throw err;
+        } finally {
+          // Runs on normal completion, early .return() from consumer break,
+          // AND after the catch re-throws. Skip if catch already cleaned up.
+          if (!threw && signal.aborted) {
+            // Abort killed the subprocess mid-turn — discard the session so
+            // the next turn starts fresh (avoids system-instructions duplication
+            // from sending a full prompt via --resume to a session that already
+            // has them).
+            sessionId = null;
+            generation++;
+          }
         }
       })();
     },
