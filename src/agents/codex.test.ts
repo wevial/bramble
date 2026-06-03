@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { CodexAgent, type CodexTransport } from './codex.js';
+import { CodexAgent, createPersistentCliTransport, type CodexTransport } from './codex.js';
+import type { SpawnSpec } from './subprocess.js';
 import { runAgentContract } from './agent.contract.js';
 
 describe('CodexAgent', () => {
@@ -231,6 +232,69 @@ describe('Persistent transport (CodexTransport injection)', () => {
     await drain(agent, { phase: 'debate', prompt: 'p' });
     // The agent itself doesn't warn — the transport does. Since we're
     // injecting, the warn won't fire, but the test proves the agent works.
+    warnSpy.mockRestore();
+  });
+});
+
+describe('createPersistentCliTransport arg construction', () => {
+  /** Capture the args of each spawned turn; replay a thread.started + done. */
+  function makeSpawn(threadId = 'sess-abc') {
+    const specs: SpawnSpec[] = [];
+    const spawn = (spec: SpawnSpec, _signal: AbortSignal) => {
+      specs.push(spec);
+      return (async function* () {
+        yield JSON.stringify({ type: 'thread.started', thread_id: threadId });
+        yield JSON.stringify({ type: 'turn.completed', usage: {} });
+      })();
+    };
+    return { specs, spawn };
+  }
+
+  async function drainTurn(t: CodexTransport, prompt: string) {
+    for await (const _ of t.runTurn(prompt, new AbortController().signal)) {
+      /* drive the generator to completion */
+    }
+  }
+
+  it('first turn omits resume; subsequent turns use the `resume <id>` subcommand', async () => {
+    const { specs, spawn } = makeSpawn('sess-abc');
+    const transport = createPersistentCliTransport({ sandbox: 'read-only', spawn });
+
+    await drainTurn(transport, 'prompt-1');
+    await drainTurn(transport, 'prompt-2');
+
+    expect(specs).toHaveLength(2);
+
+    // Turn 1: no resume, prompt is the trailing positional.
+    expect(specs[0]!.args).toEqual(['exec', '--json', '-s', 'read-only', 'prompt-1']);
+
+    // Turn 2: `resume <id>` is a subcommand AFTER the options and BEFORE the
+    // prompt. The flag form `--resume` is rejected by the real CLI with
+    // "unexpected argument '--resume'", so guard against a regression.
+    expect(specs[1]!.args).toEqual([
+      'exec', '--json', '-s', 'read-only', 'resume', 'sess-abc', 'prompt-2',
+    ]);
+    expect(specs[1]!.args).not.toContain('--resume');
+  });
+
+  it('falls back to a fresh (no-resume) turn when no thread.started is emitted', async () => {
+    const specs: SpawnSpec[] = [];
+    const spawn = (spec: SpawnSpec) => {
+      specs.push(spec);
+      return (async function* () {
+        // No thread.started — id never captured.
+        yield JSON.stringify({ type: 'turn.completed', usage: {} });
+      })();
+    };
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const transport = createPersistentCliTransport({ spawn });
+
+    await drainTurn(transport, 'p1');
+    await drainTurn(transport, 'p2');
+
+    // Without a captured id, neither turn carries `resume`.
+    expect(specs[1]!.args).not.toContain('resume');
+    expect(transport.sessionGeneration()).toBeGreaterThan(0);
     warnSpy.mockRestore();
   });
 });

@@ -60,15 +60,20 @@ const DEFAULT_PROTOCOL = systemInstructions(CODEX_PERSONA, [CLAUDE_PERSONA]);
 
 /**
  * Persistent CLI transport that captures the `thread_id` from `codex exec`
- * output and passes `--resume <id>` on subsequent turns, giving Codex
- * conversation continuity while staying on the user's CLI subscription.
+ * output and `resume <id>`s on subsequent turns, giving Codex conversation
+ * continuity while staying on the user's CLI subscription.
+ *
+ * Exported for tests; `spawn` is injectable so the arg construction (notably
+ * the `resume` subcommand syntax) can be asserted without a live `codex` CLI.
  */
-function createPersistentCliTransport(opts: {
+export function createPersistentCliTransport(opts: {
   model?: string;
   reasoningEffort?: string;
   cwd?: string;
   sandbox?: 'read-only' | 'workspace-write' | 'danger-full-access';
+  spawn?: (spec: SpawnSpec, signal: AbortSignal) => AsyncIterable<string>;
 }): CodexTransport {
+  const spawn = opts.spawn ?? streamProcessLines;
   let sessionId: string | null = null;
   let generation = 0;
   let turnGen = 0;
@@ -81,7 +86,11 @@ function createPersistentCliTransport(opts: {
         args.push('-c', `model_reasoning_effort=${opts.reasoningEffort}`);
       }
       if (opts.sandbox) args.push('-s', opts.sandbox);
-      if (sessionId) args.push('--resume', sessionId);
+      // `resume` is an `exec` subcommand (`codex exec [OPTIONS] resume
+      // <SESSION_ID> [PROMPT]`), not a `--resume` flag — the flag form is
+      // rejected with "unexpected argument '--resume'". It must follow the
+      // options and precede the prompt.
+      if (sessionId) args.push('resume', sessionId);
       args.push(prompt);
       const spec: SpawnSpec = { cmd: 'codex', args };
       if (opts.cwd) spec.cwd = opts.cwd;
@@ -91,8 +100,8 @@ function createPersistentCliTransport(opts: {
       return (async function* () {
         let threw = false;
         try {
-          for await (const line of streamProcessLines(spec, signal)) {
-            // Capture thread_id so subsequent turns can --resume.
+          for await (const line of spawn(spec, signal)) {
+            // Capture thread_id so subsequent turns can `resume`.
             if (sessionId === null) {
               try {
                 const obj = JSON.parse(line.trim());
@@ -111,7 +120,7 @@ function createPersistentCliTransport(opts: {
             yield line;
           }
           if (sessionId === null) {
-            // No thread_id captured — the CLI doesn't support --resume (or the
+            // No thread_id captured — the CLI doesn't support resume (or the
             // event was missing). Bump generation so the agent falls back to
             // full prompts instead of sending deltas to a contextless subprocess.
             console.warn(
