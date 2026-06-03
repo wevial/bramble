@@ -2,13 +2,12 @@ import type { PersonaId } from '../personas/personas.js';
 import { findPersona } from '../personas/personas.js';
 import type { State, DebateTurn } from '../orchestrator/state.js';
 import { renderRepoContext } from './scout.js';
+import { RECENT_TURN_LIMIT } from './constants.js';
 
 export type DebatePromptInput = {
   state: State;
   speaker: PersonaId;
 };
-
-const RECENT_TURN_LIMIT = 6;
 
 /**
  * Build the debate-phase prompt. The interview Q&A is pinned at the top so
@@ -63,6 +62,36 @@ export function debatePrompt(input: DebatePromptInput): string {
   // Surface rejected edits from the immediate prior turn so the agent can
   // retry intelligently. A failed find is almost always due to whitespace
   // or content drift; the agent should re-look at the current spec.
+  const lastByMe = [...state.debate].reverse().find(t => t.speaker === speaker);
+  if (lastByMe && lastByMe.rejected.length > 0) {
+    const reasons = lastByMe.rejected
+      .map(r => `- (${r.kind}, ${r.count} matches) find=${JSON.stringify(r.edit.find)}`)
+      .join('\n');
+    parts.push(`# Your previous edits that did NOT apply\n\n${reasons}\n\nCheck the current spec body above and adjust your find strings.`);
+  }
+
+  parts.push(buildDebateInstruction(state, speaker));
+  return parts.join('\n\n');
+}
+
+/**
+ * Build a compact delta prompt for debate turns after the first. Omits the
+ * stable context (goal, repo context, interview, criteria) that is already in
+ * the persistent session's conversation history — only sends the current spec
+ * body, recent debate turns, rejected-edit feedback, and the turn instruction.
+ */
+export function debateDeltaPrompt(input: DebatePromptInput): string {
+  const { state, speaker } = input;
+  const parts: string[] = [];
+
+  parts.push(`# Current spec.md\n\n${renderSpec(state.spec)}`);
+
+  if (state.debate.length > 0) {
+    const recent = state.debate.slice(-RECENT_TURN_LIMIT);
+    const lines = recent.map(t => renderDebateTurn(t, speaker));
+    parts.push(`# Recent debate turns\n\n${lines.join('\n\n')}`);
+  }
+
   const lastByMe = [...state.debate].reverse().find(t => t.speaker === speaker);
   if (lastByMe && lastByMe.rejected.length > 0) {
     const reasons = lastByMe.rejected

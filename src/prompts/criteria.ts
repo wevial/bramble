@@ -2,6 +2,7 @@ import type { PersonaId } from '../personas/personas.js';
 import { findPersona } from '../personas/personas.js';
 import type { State } from '../orchestrator/state.js';
 import { renderRepoContext } from './scout.js';
+import { RECENT_TURN_LIMIT } from './constants.js';
 
 export type CriteriaPromptInput = {
   state: State;
@@ -64,6 +65,36 @@ export function criteriaPrompt(input: CriteriaPromptInput): string {
       }
     }
     parts.push(`# Criteria proposed so far\n\n${lines.join('\n\n')}`);
+  }
+
+  parts.push(buildCriteriaInstruction(state, speaker));
+  return parts.join('\n\n');
+}
+
+/**
+ * Compact delta prompt for criteria turns after the first. Omits the stable
+ * goal, repo context, and interview transcript that are already in the
+ * persistent session's conversation history — only sends recent criteria
+ * proposals and the turn instruction.
+ */
+export function criteriaDeltaPrompt(input: CriteriaPromptInput): string {
+  const { state, speaker } = input;
+  const parts: string[] = [];
+
+  if (state.criteriaTurns.length > 0) {
+    const recent = state.criteriaTurns.slice(-RECENT_TURN_LIMIT);
+    const lines: string[] = [];
+    for (const t of recent) {
+      const tag = t.speaker === speaker
+        ? `${personaLabel(t.speaker)} (you)`
+        : personaLabel(t.speaker);
+      lines.push(`## ${tag}`);
+      if (t.commentary) lines.push(t.commentary);
+      if (t.proposed.length > 0) {
+        lines.push(t.proposed.map((c, i) => `${i + 1}. ${c}`).join('\n'));
+      }
+    }
+    parts.push(`# Recent criteria proposals\n\n${lines.join('\n\n')}`);
   }
 
   parts.push(buildCriteriaInstruction(state, speaker));
