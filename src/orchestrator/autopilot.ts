@@ -190,7 +190,9 @@ async function answerQuestion(
     `reasonable defaults. Do not ask questions back. Plain prose, no JSON.`;
   let text = '';
   let tail: { raw?: string } | void;
-  const iter = user.stream({ phase: 'debate', prompt }, signal);
+  // This runs during the interview phase — label the turn accordingly so an
+  // agent that branches on TurnContext.phase applies the right expectations.
+  const iter = user.stream({ phase: 'interview', prompt }, signal);
   while (true) {
     const r = await iter.next();
     if (r.done) {

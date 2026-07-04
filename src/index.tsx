@@ -99,7 +99,13 @@ for (let i = 0; i < argv.length; i++) {
     autopilot = true;
   } else if (a === '--autopilot-answers' && argv[i + 1]) {
     const n = Number(argv[i + 1]);
-    if (Number.isInteger(n) && n >= 0) autopilotAnswers = n;
+    if (Number.isInteger(n) && n >= 0) {
+      autopilotAnswers = n;
+    } else {
+      console.warn(
+        `[bramble] --autopilot-answers: invalid value "${argv[i + 1]}", using default ${autopilotAnswers}`,
+      );
+    }
     i++;
   } else {
     positional.push(a!);
