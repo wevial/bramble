@@ -25,6 +25,13 @@ Agents:
 Output:
   --format <md|xml|json|html>           spec output format (default: md)
 
+Autopilot (headless — no TUI, no prompts):
+  --autopilot                           run to completion with a cheap LLM
+                                        answering the interview for you; prints
+                                        the spec and exits. Pairs with --test.
+  --autopilot-answers <n>               interview questions to answer before
+                                        forcing the debate (default 3)
+
 Session:
   --name <name>                         override the generated session name
   --resume <name>                       resume an existing session
