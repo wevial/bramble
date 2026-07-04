@@ -50,6 +50,8 @@ let cliMode: 'auto' | 'collab' | undefined;
 let listMode = false;
 let dirFlag: string | undefined;
 let isolated = false;
+let autopilot = false;
+let autopilotAnswers = 3;
 const positional: string[] = [];
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
@@ -93,6 +95,12 @@ for (let i = 0; i < argv.length; i++) {
     i++;
   } else if (a === '--isolated') {
     isolated = true;
+  } else if (a === '--autopilot') {
+    autopilot = true;
+  } else if (a === '--autopilot-answers' && argv[i + 1]) {
+    const n = Number(argv[i + 1]);
+    if (Number.isInteger(n) && n >= 0) autopilotAnswers = n;
+    i++;
   } else {
     positional.push(a!);
   }
@@ -556,6 +564,69 @@ function buildModerator(personas: Persona[]): Moderator {
       };
     },
   };
+}
+
+// Autopilot: run headless (no TUI). A cheap simulated user answers the
+// interview so a full interview→criteria→debate run completes with zero
+// prompts — for smoke-testing the loop and watching delta prompts engage.
+if (autopilot) {
+  if (resumeName) {
+    console.error('--autopilot cannot be combined with --resume');
+    process.exit(1);
+  }
+  mkdirSync(paths.dir, { recursive: true });
+  const personas = [CLAUDE_PERSONA, CODEX_PERSONA];
+  const modelConfig = {
+    claudeModel: claudeModel ?? null,
+    claudeEffort: claudeEffort ?? null,
+    codexModel: codexModel ?? null,
+    codexEffort: codexEffort ?? null,
+  };
+  const buildAgents = real ? buildRealAgents! : buildFakeAgents!;
+  const agents = buildAgents(modelConfig, personas);
+  const moderator = buildModerator(personas);
+  // Simulated user: cheap Codex in real mode (runs in the trusted repo cwd,
+  // NOT the isolated tmpdir, so it doesn't trip codex's trusted-dir check);
+  // a canned responder in fake mode so no CLI is needed.
+  const simulatedUser: Agent = real
+    ? new CodexAgent({
+        model: 'gpt-5.4-mini',
+        reasoningEffort: 'low',
+        systemInstructions:
+          'You role-play a product owner answering a builder\'s clarifying ' +
+          'questions. Reply in 1–2 concrete sentences with sensible defaults. ' +
+          'Never ask questions back. Plain prose only.',
+      })
+    : {
+        name: 'codex' as const,
+        // eslint-disable-next-line require-yield
+        async *stream() {
+          return { raw: 'Use sensible defaults and proceed.' };
+        },
+      };
+
+  console.log(`✦ bramble autopilot — "${prompt}"`);
+  console.log(`  agents: ${real ? `claude=${claudeModel ?? 'default'}, codex=${codexModel ?? 'default'}` : 'fakes'} · answers: ${autopilotAnswers} · rounds: ${maxRounds}`);
+
+  const { runAutopilot } = await import('./orchestrator/autopilot.js');
+  const final = await runAutopilot({
+    agents,
+    personas,
+    moderator,
+    prompt,
+    transcriptPath: paths.transcriptPath,
+    simulatedUser,
+    maxAnswers: autopilotAnswers,
+    maxRounds,
+  });
+
+  const { writeFile } = await import('node:fs/promises');
+  await writeFile(paths.specPath, final.spec, 'utf8').catch(() => {});
+  console.log(`\n=== FINAL (phase: ${final.phase}${final.endReason ? `, ${final.endReason}` : ''}) ===`);
+  console.log(`spec: ${final.spec.length} chars → ${paths.specPath}`);
+  console.log('\n' + (final.spec || '(empty spec)'));
+  await printSessionSummary(paths, name);
+  process.exit(0);
 }
 
 const renderer = await createCliRenderer({
