@@ -73,7 +73,7 @@ export async function runAutopilot(opts: AutopilotOptions): Promise<State> {
     criteriaStep: opts.criteriaStep ?? true,
     scoutStep: opts.scoutStep ?? true,
     prompt: opts.prompt,
-    config: opts.maxRounds ? { maxRounds: opts.maxRounds } : undefined,
+    config: opts.maxRounds != null ? { maxRounds: opts.maxRounds } : undefined,
     mode: 'auto',
     transcriptPath: opts.transcriptPath,
     signal: ac.signal,
