@@ -43,12 +43,23 @@ export async function runAutopilot(opts: AutopilotOptions): Promise<State> {
     ac.abort();
   }, opts.timeoutMs ?? 360_000);
 
+  // onState fires synchronously inside the runner's reducer dispatch, before
+  // the runner reaches its await and installs the answer/signoff resolver.
+  // interject() tolerates that (it queues), but done_interview() does not — if
+  // it runs before the resolver exists, the userDone lands but the runner then
+  // parks on a wait nothing resolves. Defer done_interview() to a macrotask so
+  // the runner is already awaiting. Guard flags are still set synchronously to
+  // prevent re-entry.
+  const deferDone = () => setTimeout(() => handle.done_interview(), 0);
+
   let answers = 0;
   let forcedDebate = false;
   let finalizedSignoff = false;
-  // Interview turns we've already reacted to, by index, so a repeated onState
-  // for the same turn doesn't double-answer.
+  let lockedCriteria = false;
+  // Turns we've already reacted to, by index, so a repeated onState for the
+  // same turn doesn't double-answer. Interview and criteria track separately.
   const handled = new Set<number>();
+  const handledCriteria = new Set<number>();
   let lastPhase = '';
 
   const label = (id: PersonaId) =>
@@ -83,7 +94,27 @@ export async function runAutopilot(opts: AutopilotOptions): Promise<State> {
       if (next.phase === 'debate' && next.awaitingSignoff && !finalizedSignoff) {
         finalizedSignoff = true;
         log(`\n[autopilot] mutual LGTM — finalizing spec`);
-        handle.done_interview();
+        deferDone();
+        return;
+      }
+
+      // Criteria: the runner pauses for user input after every proposal, and
+      // only advances when the user "locks" the list. Let each persona propose
+      // once, then lock via done_interview() so the debate can start.
+      if (next.phase === 'criteria') {
+        const cidx = next.criteriaTurns.length - 1;
+        if (cidx < 0 || handledCriteria.has(cidx)) return;
+        handledCriteria.add(cidx);
+        if (next.criteriaTurns.length >= opts.personas.length) {
+          if (!lockedCriteria) {
+            lockedCriteria = true;
+            log(`\n[autopilot] criteria proposed — locking and starting the debate`);
+            deferDone();
+          }
+        } else {
+          // Release the wait so the next persona proposes.
+          handle.interject('Looks reasonable — please continue.');
+        }
         return;
       }
 
@@ -106,7 +137,7 @@ export async function runAutopilot(opts: AutopilotOptions): Promise<State> {
         if (!forcedDebate) {
           forcedDebate = true;
           log(`\n[autopilot] ${maxAnswers} answers given — starting the debate`);
-          handle.done_interview();
+          deferDone();
         }
         return;
       }

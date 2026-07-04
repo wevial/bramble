@@ -99,4 +99,39 @@ describe('runAutopilot', () => {
     expect(user.asked.length).toBe(2);
     expect(final.phase).toBe('done');
   }, 25_000);
+
+  it('drives the criteria phase (locks it) instead of hanging on its wait', async () => {
+    // With criteriaStep on, a natural interview end routes through criteria,
+    // which pauses for user input after every proposal. Autopilot must lock it
+    // (done_interview) or the run hangs — this is the regression that showed up
+    // as "stuck on codex" in a live run. Fakes emit debate-shaped JSON in the
+    // criteria phase; it parses to an empty proposal, which is enough to
+    // exercise the propose→lock→debate handoff.
+    const mk = (name: 'claude' | 'codex') => {
+      const a = new FakeAgent(name);
+      a.setResponses([
+        { kind: 'interview', commentary: 'q', question: `${name}?` },
+        { kind: 'interview', commentary: 'ready', ready: true },
+        { kind: 'debate', commentary: 'lgtm', verdict: 'lgtm' },
+      ]);
+      return a;
+    };
+    const final = await runAutopilot({
+      agents: { claude: mk('claude'), codex: mk('codex') },
+      personas: [CLAUDE_PERSONA, CODEX_PERSONA],
+      prompt: 'goal',
+      transcriptPath: tmpTranscript(),
+      simulatedUser: stubUser(),
+      maxAnswers: 5,
+      maxRounds: 2,
+      timeoutMs: 20_000,
+      criteriaStep: true,
+      scoutStep: false,
+      log: silent,
+    });
+
+    // Reached a terminal phase — did not hang on the criteria wait.
+    expect(final.phase).toBe('done');
+    expect(final.criteriaTurns.length).toBeGreaterThanOrEqual(2);
+  }, 25_000);
 });
