@@ -21,6 +21,8 @@ describe('helpText', () => {
       '--codex-model',
       '--codex-effort',
       '--isolated',
+      '--autopilot',
+      '--autopilot-answers',
       '--name',
       '--resume',
       '--list',

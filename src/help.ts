@@ -7,7 +7,7 @@ Usage:
   bramble --list [--dir <path>]        list sessions in ./.bramble
 
 Debate:
-  --rounds <n>                          max round cap (default 3)
+  --rounds <n>                          max round cap (default 8)
   --auto                                agents run back-to-back (default)
   --collab                              pause between turns for user review
 
@@ -24,6 +24,13 @@ Agents:
 
 Output:
   --format <md|xml|json|html>           spec output format (default: md)
+
+Autopilot (headless — no TUI, no prompts):
+  --autopilot                           run to completion with a cheap LLM
+                                        answering the interview for you; prints
+                                        the spec and exits. Pairs with --test.
+  --autopilot-answers <n>               interview questions to answer before
+                                        forcing the debate (default 3)
 
 Session:
   --name <name>                         override the generated session name
