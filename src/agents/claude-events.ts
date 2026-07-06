@@ -1,70 +1,64 @@
-import { z } from 'zod';
 import type { TurnUsage } from './agent.js';
 
 export type ClaudeEvent =
   | { kind: 'text'; text: string }
   | { kind: 'result'; result: string; isError: boolean; usage: TurnUsage | undefined };
 
-const TextDeltaSchema = z
-  .object({
-    type: z.literal('stream_event'),
-    event: z.object({
-      type: z.literal('content_block_delta'),
-      delta: z.object({
-        type: z.literal('text_delta'),
-        text: z.string(),
-      }),
-    }),
-  })
-  .passthrough();
-
-const UsageSchema = z
-  .object({
-    input_tokens: z.number().optional(),
-    output_tokens: z.number().optional(),
-    cache_read_input_tokens: z.number().optional(),
-    cache_creation_input_tokens: z.number().optional(),
-  })
-  .passthrough();
-
-const ResultSchema = z
-  .object({
-    type: z.literal('result'),
-    result: z.string(),
-    is_error: z.boolean().optional(),
-    usage: UsageSchema.optional(),
-  })
-  .passthrough();
-
+/**
+ * Parse a single JSONL line from the Claude CLI's stream-json output.
+ *
+ * Uses manual type checks instead of Zod schemas on the hot path — text
+ * deltas fire hundreds of times per turn, and avoiding Zod's validation
+ * overhead keeps the per-line cost near zero.
+ */
 export function parseClaudeEvent(line: string): ClaudeEvent | null {
   const trimmed = line.trim();
   if (trimmed.length === 0) return null;
-  let obj: unknown;
+  let obj: Record<string, unknown>;
   try {
     obj = JSON.parse(trimmed);
   } catch {
     return null;
   }
+  if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return null;
 
-  const td = TextDeltaSchema.safeParse(obj);
-  if (td.success) {
-    return { kind: 'text', text: td.data.event.delta.text };
+  // Hot path: text delta — the most frequent event type.
+  if (
+    obj.type === 'stream_event' &&
+    typeof obj.event === 'object' && obj.event !== null
+  ) {
+    const evt = obj.event as Record<string, unknown>;
+    if (
+      evt.type === 'content_block_delta' &&
+      typeof evt.delta === 'object' && evt.delta !== null
+    ) {
+      const delta = evt.delta as Record<string, unknown>;
+      if (delta.type === 'text_delta' && typeof delta.text === 'string') {
+        return { kind: 'text', text: delta.text };
+      }
+    }
+    return null;
   }
-  const r = ResultSchema.safeParse(obj);
-  if (r.success) {
+
+  // Cold path: result — fires once at the end of a turn.
+  if (obj.type === 'result' && typeof obj.result === 'string') {
+    const usage = typeof obj.usage === 'object' && obj.usage !== null
+      ? obj.usage as Record<string, unknown>
+      : undefined;
     return {
       kind: 'result',
-      result: r.data.result,
-      isError: r.data.is_error === true,
-      usage: r.data.usage
+      result: obj.result,
+      isError: obj.is_error === true,
+      usage: usage
         ? {
-            inputTokens: r.data.usage.input_tokens ?? 0,
-            outputTokens: r.data.usage.output_tokens ?? 0,
-            cacheReadTokens: r.data.usage.cache_read_input_tokens ?? 0,
-            cacheCreationTokens: r.data.usage.cache_creation_input_tokens ?? 0,
+            inputTokens: typeof usage.input_tokens === 'number' ? usage.input_tokens : 0,
+            outputTokens: typeof usage.output_tokens === 'number' ? usage.output_tokens : 0,
+            cacheReadTokens: typeof usage.cache_read_input_tokens === 'number' ? usage.cache_read_input_tokens : 0,
+            cacheCreationTokens: typeof usage.cache_creation_input_tokens === 'number' ? usage.cache_creation_input_tokens : 0,
           }
         : undefined,
     };
   }
+
   return null;
 }

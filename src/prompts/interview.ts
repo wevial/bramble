@@ -1,7 +1,8 @@
 import type { PersonaId } from '../personas/personas.js';
 import { findPersona } from '../personas/personas.js';
-import type { State } from '../orchestrator/state.js';
+import type { State, InterviewTurn, UserAnswer } from '../orchestrator/state.js';
 import { renderRepoContext } from './scout.js';
+import { RECENT_TURN_LIMIT } from './constants.js';
 
 export type InterviewPromptInput = {
   state: State;
@@ -27,36 +28,99 @@ export function interviewPrompt(input: InterviewPromptInput): string {
 
   if (state.interview.length > 0 || state.userAnswers.length > 0) {
     const lines: string[] = [];
-    // Render interleaved Q&A in chronological order. Each interview turn
-    // pairs with the user answer that immediately followed it (if any).
+    // Render interleaved Q&A in chronological order.
     let answerIdx = 0;
     for (const turn of state.interview) {
-      const turnLabel = personaLabel(turn.speaker);
-      const tag = turn.speaker === speaker ? `${turnLabel} (you)` : turnLabel;
-      lines.push(`## ${tag}`);
-      if (turn.commentary) lines.push(turn.commentary);
-      if (turn.question) lines.push(`> ${turn.question}`);
-      if (turn.ready) lines.push(`→ signaled ready`);
-      // The user answer that landed AFTER this turn (if any).
-      const ans = state.userAnswers[answerIdx];
-      if (
-        ans &&
-        Date.parse(ans.timestamp) >= Date.parse(turn.timestamp)
-      ) {
-        lines.push(`## user\n${ans.content}`);
-        answerIdx++;
-      }
+      answerIdx = renderTurnWithAnswer(lines, turn, state.userAnswers, answerIdx, speaker);
     }
-    // Any user answers that came before the first interview turn.
-    while (answerIdx < state.userAnswers.length) {
-      lines.push(`## user\n${state.userAnswers[answerIdx]!.content}`);
-      answerIdx++;
-    }
+    renderTrailingAnswers(lines, state.userAnswers, answerIdx);
     parts.push(`# Interview so far\n\n${lines.join('\n\n')}`);
   }
 
   parts.push(buildInterviewInstruction(state, speaker));
   return parts.join('\n\n');
+}
+
+/**
+ * Compact delta prompt for interview turns after the first. Omits the stable
+ * goal and repo context that are already in the persistent session's
+ * conversation history — only sends recent Q&A and the turn instruction.
+ */
+export function interviewDeltaPrompt(input: InterviewPromptInput): string {
+  const { state, speaker } = input;
+  const parts: string[] = [];
+
+  if (state.interview.length > 0 || state.userAnswers.length > 0) {
+    const recent = state.interview.slice(-RECENT_TURN_LIMIT);
+    const skipped = state.interview.length - recent.length;
+    const lines: string[] = [];
+    // Replay timestamp-based pairing for skipped turns to find the correct
+    // starting answerIdx (not every turn consumes an answer).
+    let answerIdx = pairAnswerIndex(state.interview, state.userAnswers, skipped);
+    for (const turn of recent) {
+      answerIdx = renderTurnWithAnswer(lines, turn, state.userAnswers, answerIdx, speaker);
+    }
+    renderTrailingAnswers(lines, state.userAnswers, answerIdx);
+    parts.push(`# Recent interview turns\n\n${lines.join('\n\n')}`);
+  }
+
+  parts.push(buildInterviewInstruction(state, speaker));
+  return parts.join('\n\n');
+}
+
+/**
+ * Walk `turns[0..count)` and return the answerIdx that would result from
+ * the timestamp-based pairing. Used by the delta prompt to skip over turns
+ * already in the persistent session's context.
+ */
+function pairAnswerIndex(
+  turns: InterviewTurn[],
+  answers: UserAnswer[],
+  count: number,
+): number {
+  let idx = 0;
+  for (let i = 0; i < count; i++) {
+    const ans = answers[idx];
+    if (ans && Date.parse(ans.timestamp) >= Date.parse(turns[i]!.timestamp)) {
+      idx++;
+    }
+  }
+  return idx;
+}
+
+/**
+ * Render a single interview turn and its paired user answer (if any).
+ * Returns the next answerIdx.
+ */
+function renderTurnWithAnswer(
+  lines: string[],
+  turn: InterviewTurn,
+  answers: UserAnswer[],
+  answerIdx: number,
+  speaker: PersonaId,
+): number {
+  const turnLabel = personaLabel(turn.speaker);
+  const tag = turn.speaker === speaker ? `${turnLabel} (you)` : turnLabel;
+  lines.push(`## ${tag}`);
+  if (turn.commentary) lines.push(turn.commentary);
+  if (turn.question) lines.push(`> ${turn.question}`);
+  if (turn.ready) lines.push(`→ signaled ready`);
+  const ans = answers[answerIdx];
+  if (ans && Date.parse(ans.timestamp) >= Date.parse(turn.timestamp)) {
+    lines.push(`## user\n${ans.content}`);
+    return answerIdx + 1;
+  }
+  return answerIdx;
+}
+
+function renderTrailingAnswers(
+  lines: string[],
+  answers: UserAnswer[],
+  startIdx: number,
+): void {
+  for (let i = startIdx; i < answers.length; i++) {
+    lines.push(`## user\n${answers[i]!.content}`);
+  }
 }
 
 function buildInterviewInstruction(state: State, speaker: PersonaId): string {

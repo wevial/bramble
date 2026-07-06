@@ -1,63 +1,54 @@
-import { z } from 'zod';
 import type { TurnUsage } from './agent.js';
 
 export type CodexEvent =
   | { kind: 'message'; text: string }
   | { kind: 'turnDone'; usage: TurnUsage | undefined };
 
-const AgentMessageSchema = z
-  .object({
-    type: z.literal('item.completed'),
-    item: z
-      .object({
-        type: z.literal('agent_message'),
-        text: z.string(),
-      })
-      .passthrough(),
-  })
-  .passthrough();
-
-const UsageSchema = z
-  .object({
-    input_tokens: z.number().optional(),
-    output_tokens: z.number().optional(),
-    cached_input_tokens: z.number().optional(),
-  })
-  .passthrough();
-
-const TurnCompletedSchema = z
-  .object({
-    type: z.literal('turn.completed'),
-    usage: UsageSchema.optional(),
-  })
-  .passthrough();
-
+/**
+ * Parse a single JSONL line from the Codex CLI's `--json` output.
+ *
+ * Uses manual type checks instead of Zod schemas — `item.completed` events
+ * fire on every message chunk, and avoiding Zod's validation overhead keeps
+ * the per-line cost near zero.
+ */
 export function parseCodexEvent(line: string): CodexEvent | null {
   const trimmed = line.trim();
   if (trimmed.length === 0) return null;
-  let obj: unknown;
+  let obj: Record<string, unknown>;
   try {
     obj = JSON.parse(trimmed);
   } catch {
     return null;
   }
-  const msg = AgentMessageSchema.safeParse(obj);
-  if (msg.success) return { kind: 'message', text: msg.data.item.text };
-  const turn = TurnCompletedSchema.safeParse(obj);
-  if (turn.success) {
+  if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return null;
+
+  // Agent message — the primary content event.
+  if (obj.type === 'item.completed' && typeof obj.item === 'object' && obj.item !== null) {
+    const item = obj.item as Record<string, unknown>;
+    if (item.type === 'agent_message' && typeof item.text === 'string') {
+      return { kind: 'message', text: item.text };
+    }
+    return null;
+  }
+
+  // Turn completed — fires once at the end, carries usage stats.
+  if (obj.type === 'turn.completed') {
+    const usage = typeof obj.usage === 'object' && obj.usage !== null
+      ? obj.usage as Record<string, unknown>
+      : undefined;
     return {
       kind: 'turnDone',
-      usage: turn.data.usage
+      usage: usage
         ? (() => {
             // Codex `input_tokens` already includes `cached_input_tokens`.
             // Normalize to the claude convention where `inputTokens` is
             // uncached-only, so both agents share one semantic for downstream
             // math (denominator = inputTokens + cacheReadTokens + cacheCreationTokens).
-            const rawInput = turn.data.usage.input_tokens ?? 0;
-            const cached = turn.data.usage.cached_input_tokens ?? 0;
+            const rawInput = typeof usage.input_tokens === 'number' ? usage.input_tokens : 0;
+            const cached = typeof usage.cached_input_tokens === 'number' ? usage.cached_input_tokens : 0;
             return {
               inputTokens: Math.max(0, rawInput - cached),
-              outputTokens: turn.data.usage.output_tokens ?? 0,
+              outputTokens: typeof usage.output_tokens === 'number' ? usage.output_tokens : 0,
               cacheReadTokens: cached,
               cacheCreationTokens: 0,
             };
@@ -65,5 +56,6 @@ export function parseCodexEvent(line: string): CodexEvent | null {
         : undefined,
     };
   }
+
   return null;
 }
