@@ -1,4 +1,5 @@
 import type { Agent, AgentName, StreamTail, Token, TurnContext, TurnUsage } from './agent.js';
+import { createAppServerTransport } from './codex-appserver.js';
 import { streamProcessLines, type SpawnSpec } from './subprocess.js';
 import { parseCodexEvent } from './codex-events.js';
 import { systemInstructions } from '../prompts/system.js';
@@ -31,6 +32,13 @@ export type CodexAgentOptions = {
    * the repo while drafting the spec without granting writes.
    */
   sandbox?: 'read-only' | 'workspace-write' | 'danger-full-access';
+  /**
+   * Which CLI transport to use. 'app-server' (default) keeps one persistent
+   * `codex app-server` process per debate — no per-turn CLI cold start and
+   * real streaming deltas. 'exec' spawns `codex exec … resume <id>` per turn
+   * (the legacy path, kept as an escape hatch via --codex-transport exec).
+   */
+  transportKind?: 'exec' | 'app-server';
 };
 
 export function codexSpawnSpec(
@@ -206,10 +214,19 @@ export class CodexAgent implements Agent {
       // Legacy per-turn line source — no delta prompt support.
       this.transport = perTurnTransport(opts.streamLines);
       this.supportsDeltaPrompts = false;
-    } else {
-      // Default: persistent CLI transport — captures thread_id from
-      // `codex exec` and passes `--resume` on subsequent turns.
+    } else if (opts.transportKind === 'exec') {
+      // Legacy: per-turn `codex exec` with thread_id capture + `resume`.
       this.transport = createPersistentCliTransport({
+        model: opts.model,
+        reasoningEffort: opts.reasoningEffort,
+        cwd: opts.cwd,
+        sandbox: opts.sandbox,
+      });
+      this.supportsDeltaPrompts = true;
+    } else {
+      // Default: persistent `codex app-server` JSON-RPC process — one
+      // long-lived thread per debate, no per-turn CLI startup.
+      this.transport = createAppServerTransport({
         model: opts.model,
         reasoningEffort: opts.reasoningEffort,
         cwd: opts.cwd,

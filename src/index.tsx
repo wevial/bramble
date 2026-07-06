@@ -45,6 +45,7 @@ let claudeModel: string | undefined;
 let claudeEffort: string | undefined;
 let codexModel: string | undefined;
 let codexEffort: string | undefined;
+let codexTransport: 'exec' | 'app-server' | undefined;
 let sessionName: string | undefined;
 let resumeName: string | undefined;
 let cliMode: 'auto' | 'collab' | undefined;
@@ -78,6 +79,15 @@ for (let i = 0; i < argv.length; i++) {
     i++;
   } else if (a === '--codex-effort' && argv[i + 1]) {
     codexEffort = argv[i + 1];
+    i++;
+  } else if (a === '--codex-transport' && argv[i + 1]) {
+    const t = argv[i + 1]!;
+    if (t === 'exec' || t === 'app-server') {
+      codexTransport = t;
+    } else {
+      console.error(`unknown --codex-transport value: ${t}  (expected exec or app-server)`);
+      process.exit(1);
+    }
     i++;
   } else if (a === '--claude-effort' && argv[i + 1]) {
     claudeEffort = argv[i + 1];
@@ -321,6 +331,7 @@ const buildRealAgents = real
             cwd: isoCwd,
             systemInstructions: sys,
             sandbox: grantTools ? 'read-only' : undefined,
+            transportKind: codexTransport,
           });
         }
       }
@@ -337,6 +348,7 @@ if (real) {
     model: codexModel,
     reasoningEffort: codexEffort,
     cwd: isoCwd,
+    transportKind: codexTransport,
   });
 } else {
   const fClaude = new FakeAgent('claude');
@@ -574,6 +586,7 @@ function buildModerator(personas: Persona[]): Moderator {
       cwd: isoCwd,
       systemInstructions:
         'You are a debate moderator. Output one JSON object per request, nothing else.',
+      transportKind: codexTransport,
     });
     return new LLMModerator({ agent, personas });
   }
@@ -621,6 +634,7 @@ if (autopilot) {
           'You role-play a product owner answering a builder\'s clarifying ' +
           'questions. Reply in 1–2 concrete sentences with sensible defaults. ' +
           'Never ask questions back. Plain prose only.',
+        transportKind: codexTransport,
       })
     : {
         name: 'codex' as const,
