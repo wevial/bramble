@@ -41,7 +41,10 @@ export function translateNotification(
   state: { deltaItems: Set<string>; lastUsage: TokenUsageLast | null },
 ): { line?: string; done?: boolean; error?: string } {
   if (method === 'item/agentMessage/delta') {
+    if (typeof params.delta !== 'string') return {};
     const itemId = typeof params.itemId === 'string' ? params.itemId : '';
+    // Only mark the item as streamed when we actually emitted its text, so
+    // a malformed delta still falls back to item/completed's full text.
     state.deltaItems.add(itemId);
     return {
       line: JSON.stringify({
@@ -169,6 +172,13 @@ export function createAppServerTransport(
   const spawnChild = () => {
     generation++;
     queue = [];
+    // Reject requests addressed to a prior child that hasn't fired `close`
+    // yet (the abort path kills it asynchronously) — its close/error
+    // handlers are identity-guarded below, so nobody else will.
+    for (const { reject } of pending.values()) {
+      reject(new Error('codex app-server restarted'));
+    }
+    pending.clear();
     const c = spawn('codex', ['app-server'], {
       env: process.env,
       cwd: opts.cwd,
@@ -179,6 +189,7 @@ export function createAppServerTransport(
     let buffer = '';
     c.stdout.setEncoding('utf8');
     c.stdout.on('data', (chunk: string) => {
+      if (child !== c) return; // stale flush from a replaced child
       buffer += chunk;
       let nl = buffer.indexOf('\n');
       while (nl >= 0) {
@@ -227,6 +238,9 @@ export function createAppServerTransport(
       stderrBuf += chunk;
     });
     c.on('close', code => {
+      // A replaced child (abort → SIGTERM → respawn before `close` fires)
+      // must not tear down the new one's state.
+      if (child !== c) return;
       const err =
         code === 0 || code === null
           ? null
@@ -240,6 +254,7 @@ export function createAppServerTransport(
       teardown(err);
     });
     c.on('error', spawnErr => {
+      if (child !== c) return;
       teardown(
         new Error(`failed to spawn \`codex\`: ${(spawnErr as Error).message}`),
       );

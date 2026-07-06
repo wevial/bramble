@@ -43,6 +43,24 @@ describe('translateNotification', () => {
     expect(evt).toEqual({ kind: 'message', text: 'full reply' });
   });
 
+  it('drops malformed deltas and lets item/completed provide the full text', () => {
+    const state = freshState();
+    const t = translateNotification(
+      'item/agentMessage/delta',
+      { itemId: 'item_1', delta: 42 },
+      state,
+    );
+    expect(t).toEqual({});
+    expect(state.deltaItems.has('item_1')).toBe(false);
+    // Full text still arrives via item/completed since no delta was emitted.
+    const done = translateNotification(
+      'item/completed',
+      { item: { id: 'item_1', type: 'agentMessage', text: 'recovered' } },
+      state,
+    );
+    expect(parseCodexEvent(done.line!)).toEqual({ kind: 'message', text: 'recovered' });
+  });
+
   it('ignores non-agentMessage items', () => {
     const state = freshState();
     const t = translateNotification(
