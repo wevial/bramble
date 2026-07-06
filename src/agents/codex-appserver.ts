@@ -320,6 +320,11 @@ export function createAppServerTransport(
         if (disposed || signal.aborted) return;
 
         await ensureSession();
+        // An abort that landed during the handshake never triggers onAbort
+        // (once-listeners don't fire retroactively) — bail before sending
+        // turn/start so the server doesn't run a turn nobody consumes. The
+        // session stays alive for the next turn.
+        if (signal.aborted) return;
         const active = child;
         if (!active || !threadId) return;
         turnGeneration = generation;
