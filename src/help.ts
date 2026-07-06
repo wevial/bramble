@@ -19,6 +19,9 @@ Agents:
                                         claude reasoning effort
   --codex-model <id>                    e.g. gpt-5.4-mini
   --codex-effort <low|medium|high>      codex reasoning effort
+  --codex-transport <app-server|exec>   app-server: one persistent codex
+                                        process per debate (default, fastest);
+                                        exec: legacy per-turn codex exec
   --isolated                            spawn agent CLIs in a tmpdir so repo
                                         CLAUDE.md / AGENTS.md don't leak in
 
