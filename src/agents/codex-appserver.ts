@@ -265,25 +265,37 @@ export function createAppServerTransport(
   /** Spawn + handshake + thread/start if we don't have a live session. */
   const ensureSession = async () => {
     if (child && !child.killed && child.exitCode === null && threadId) return;
+    // A prior half-alive child (e.g. its handshake failed) must not outlive
+    // its replacement — kill it before spawning anew.
+    if (child && !child.killed) child.kill('SIGTERM');
     spawnChild();
-    await request('initialize', {
-      clientInfo: { name: 'bramble', version: '0.1.0' },
-    });
-    send({ jsonrpc: '2.0', method: 'initialized' });
-    const params: Record<string, unknown> = {
-      cwd: opts.cwd ?? process.cwd(),
-      approvalPolicy: 'never',
-      // Don't persist debate threads into the user's codex session list.
-      ephemeral: true,
-    };
-    if (opts.model) params.model = opts.model;
-    if (opts.sandbox) params.sandbox = opts.sandbox;
-    const res = await request('thread/start', params);
-    const thread = res.thread as Record<string, unknown> | undefined;
-    if (typeof thread?.id !== 'string') {
-      throw new Error('codex app-server: thread/start returned no thread id');
+    try {
+      await request('initialize', {
+        clientInfo: { name: 'bramble', version: '0.1.0' },
+      });
+      send({ jsonrpc: '2.0', method: 'initialized' });
+      const params: Record<string, unknown> = {
+        cwd: opts.cwd ?? process.cwd(),
+        approvalPolicy: 'never',
+        // Don't persist debate threads into the user's codex session list.
+        ephemeral: true,
+      };
+      if (opts.model) params.model = opts.model;
+      if (opts.sandbox) params.sandbox = opts.sandbox;
+      const res = await request('thread/start', params);
+      const thread = res.thread as Record<string, unknown> | undefined;
+      if (typeof thread?.id !== 'string') {
+        throw new Error('codex app-server: thread/start returned no thread id');
+      }
+      threadId = thread.id;
+    } catch (err) {
+      // Failed handshake — don't leak the process; next turn respawns.
+      const c = child;
+      child = null;
+      threadId = null;
+      if (c && !c.killed) c.kill('SIGTERM');
+      throw err;
     }
-    threadId = thread.id;
   };
 
   const runTurn = (
