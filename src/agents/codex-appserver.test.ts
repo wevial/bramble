@@ -103,6 +103,18 @@ describe('translateNotification', () => {
     });
   });
 
+  it('surfaces interrupted (and any non-completed) turns as errors', () => {
+    const state = freshState();
+    const t = translateNotification(
+      'turn/completed',
+      { turn: { id: 't1', status: 'interrupted', error: null } },
+      state,
+    );
+    expect(t.done).toBe(true);
+    expect(t.error).toBe('codex turn interrupted');
+    expect(t.line).toBeUndefined();
+  });
+
   it('surfaces failed turns as errors', () => {
     const state = freshState();
     const t = translateNotification(

@@ -79,9 +79,15 @@ export function translateNotification(
   }
   if (method === 'turn/completed') {
     const turn = params.turn as Record<string, unknown> | undefined;
-    if (turn?.status === 'failed') {
-      const err = turn.error as { message?: string } | null;
-      return { done: true, error: err?.message ?? 'codex turn failed' };
+    // Anything other than a clean completion (failed, interrupted, …) must
+    // surface as an error so CodexAgent doesn't mark the session healthy
+    // and accept partial text as a full turn.
+    if (turn?.status !== 'completed') {
+      const err = turn?.error as { message?: string } | null | undefined;
+      return {
+        done: true,
+        error: err?.message ?? `codex turn ${String(turn?.status ?? 'unknown')}`,
+      };
     }
     const u = state.lastUsage;
     return {
@@ -388,6 +394,15 @@ export function createAppServerTransport(
       const c = child;
       child = null;
       threadId = null;
+      // The killed child's close handler is identity-guarded out once
+      // `child` is null, so unblock any in-flight turn here: reject pending
+      // requests and push a terminal queue item to wake the consumer.
+      for (const { reject } of pending.values()) {
+        reject(new Error('codex app-server transport disposed'));
+      }
+      pending.clear();
+      queue.push({ kind: 'end', error: null });
+      wake();
       if (c && !c.killed) {
         try {
           c.stdin.end();
