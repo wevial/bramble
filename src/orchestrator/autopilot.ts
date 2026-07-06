@@ -60,6 +60,7 @@ export async function runAutopilot(opts: AutopilotOptions): Promise<State> {
   // same turn doesn't double-answer. Interview and criteria track separately.
   const handled = new Set<number>();
   const handledCriteria = new Set<number>();
+  const criteriaSpeakers = new Set<PersonaId>();
   let lastPhase = '';
 
   const label = (id: PersonaId) =>
@@ -100,18 +101,24 @@ export async function runAutopilot(opts: AutopilotOptions): Promise<State> {
 
       // Criteria: the runner pauses for user input after every proposal, and
       // only advances when the user "locks" the list. Let each persona propose
-      // once, then lock via done_interview() so the debate can start.
+      // once, then lock via done_interview() so the debate can start. We lock
+      // when a persona proposes a second time — that means the scheduler has
+      // cycled through everyone who's going to speak. This is robust to any
+      // persona count (counting personas.length could hang if a specialist
+      // never gets scheduled in criteria).
       if (next.phase === 'criteria') {
         const cidx = next.criteriaTurns.length - 1;
         if (cidx < 0 || handledCriteria.has(cidx)) return;
         handledCriteria.add(cidx);
-        if (next.criteriaTurns.length >= opts.personas.length) {
+        const speaker = next.criteriaTurns[cidx]!.speaker;
+        if (criteriaSpeakers.has(speaker)) {
           if (!lockedCriteria) {
             lockedCriteria = true;
             log(`\n[autopilot] criteria proposed — locking and starting the debate`);
             deferDone();
           }
         } else {
+          criteriaSpeakers.add(speaker);
           // Release the wait so the next persona proposes.
           handle.interject('Looks reasonable — please continue.');
         }

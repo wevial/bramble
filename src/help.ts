@@ -7,7 +7,7 @@ Usage:
   bramble --list [--dir <path>]        list sessions in ./.bramble
 
 Debate:
-  --rounds <n>                          max round cap (default 3)
+  --rounds <n>                          max round cap (default 8)
   --auto                                agents run back-to-back (default)
   --collab                              pause between turns for user review
 

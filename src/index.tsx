@@ -646,7 +646,13 @@ if (autopilot) {
   });
 
   const { writeFile } = await import('node:fs/promises');
-  await writeFile(paths.specPath, final.spec, 'utf8').catch(() => {});
+  // paths.specPath already carries the right extension for outputFormat;
+  // convert the markdown spec to match (mirrors the TUI write path).
+  await writeFile(
+    paths.specPath,
+    convertSpec(final.spec, outputFormat),
+    'utf8',
+  ).catch(() => {});
   console.log(`\n=== FINAL (phase: ${final.phase}${final.endReason ? `, ${final.endReason}` : ''}) ===`);
   console.log(`spec: ${final.spec.length} chars → ${paths.specPath}`);
   console.log('\n' + (final.spec || '(empty spec)'));
