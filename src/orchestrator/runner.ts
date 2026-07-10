@@ -660,6 +660,11 @@ export function startDebate(opts: RunOptions): RunHandle {
       }
     } finally {
       disposeAgents();
+      // Flush the transcript chain before `done` resolves — callers (and
+      // tests) treat done as "session fully persisted", and resolving early
+      // races the final appends against whatever the caller does next
+      // (reading the file, deleting the session dir).
+      await transcriptWrites;
     }
     return state;
   })();
