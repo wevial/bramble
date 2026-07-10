@@ -24,6 +24,10 @@ Agents:
                                         exec: legacy per-turn codex exec
   --isolated                            spawn agent CLIs in a tmpdir so repo
                                         CLAUDE.md / AGENTS.md don't leak in
+  --specialist <id>                     add a specialist critic persona to the
+                                        debate: security, perf, ux, naming,
+                                        ops. Repeatable or comma-separated;
+                                        also toggleable on the setup screen
   --turn-timeout <seconds>              kill an agent turn if it produces no
                                         output for this long (default 300;
                                         0 disables)
