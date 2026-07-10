@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { FlowSidebar, flowStep } from './FlowSidebar.js';
 import { initialState, type State } from '../orchestrator/state.js';
 import { renderFrame } from './test-renderer.js';

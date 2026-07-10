@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { translateNotification } from './codex-appserver.js';
 import { parseCodexEvent } from './codex-events.js';
 

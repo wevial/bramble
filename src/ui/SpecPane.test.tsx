@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { SpecPane, specStats, lineRangeLabel } from './SpecPane.js';
 import { renderFrame } from './test-renderer.js';
 

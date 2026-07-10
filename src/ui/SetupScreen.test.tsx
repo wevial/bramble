@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { SetupScreen, type SetupSubmit } from './SetupScreen.js';
 import type { ModelConfig } from './models.js';
 import { renderSetup } from './test-renderer.js';
