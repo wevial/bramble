@@ -190,6 +190,10 @@ export function startDebate(opts: RunOptions): RunHandle {
       type: 'session',
       prompt: state.prompt,
       config: state.config,
+      // Persist phase toggles so a resume BEFORE the gated phase begins
+      // still routes through it (JSON.stringify drops undefined keys).
+      criteriaStep: state.criteriaStepEnabled || undefined,
+      caucusStep: state.caucusEnabled || undefined,
       timestamp: new Date().toISOString(),
     });
   }

@@ -185,6 +185,61 @@ describe('caucus prompts', () => {
   });
 });
 
+describe('resume before the caucus begins', () => {
+  it('restores caucusEnabled (and criteriaStepEnabled) from the session entry', () => {
+    // Regression for the Greptile P1 on #15: a --caucus session resumed
+    // mid-interview has no caucus turns to infer the toggle from — it must
+    // come from the session entry, or the caucus is silently skipped.
+    const entries: TranscriptEntry[] = [
+      {
+        type: 'session',
+        prompt: 'goal',
+        config: { maxRounds: 8, decayThreshold: 50, decayWindow: 2 },
+        caucusStep: true,
+        timestamp: '2026-07-01T00:00:00.000Z',
+      },
+      {
+        type: 'interview_turn',
+        turn: {
+          speaker: 'claude',
+          commentary: '',
+          question: 'q?',
+          ready: false,
+          timestamp: '2026-07-01T00:00:01.000Z',
+        },
+      },
+    ];
+    let s = rehydrateState(entries)!;
+    expect(s.caucusEnabled).toBe(true);
+    // Finishing the interview after resume routes into the caucus.
+    for (const speaker of ['claude', 'codex'] as const) {
+      s = reducer(s, {
+        type: 'interviewTurn',
+        timestamp: '2026-07-01T00:00:02.000Z',
+        turn: { speaker, commentary: '', question: null, ready: true },
+      });
+    }
+    expect(s.phase).toBe('caucus');
+
+    const withCriteria = rehydrateState([
+      { ...entries[0]!, criteriaStep: true } as TranscriptEntry,
+    ])!;
+    expect(withCriteria.criteriaStepEnabled).toBe(true);
+
+    // Older transcripts without the fields keep legacy behavior.
+    const legacy = rehydrateState([
+      {
+        type: 'session',
+        prompt: 'goal',
+        config: { maxRounds: 8, decayThreshold: 50, decayWindow: 2 },
+        timestamp: '2026-07-01T00:00:00.000Z',
+      },
+    ])!;
+    expect(legacy.caucusEnabled).toBeUndefined();
+    expect(legacy.criteriaStepEnabled).toBeUndefined();
+  });
+});
+
 describe('caucus end-to-end through the runner', () => {
   it('runs proposals → synthesis → debate and survives transcript replay', async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'bramble-caucus-'));

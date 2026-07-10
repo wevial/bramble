@@ -12,6 +12,12 @@ export function rehydrateState(entries: TranscriptEntry[]): State | null {
   if (!first || first.type !== 'session') return null;
 
   let state = initialState(first.prompt, first.config);
+  // Restore phase toggles recorded at session start — without these, a
+  // session resumed before its criteria/caucus phase began would silently
+  // skip that phase (replay can only infer a toggle from its turns, which
+  // don't exist yet). Older transcripts lack the fields → unchanged.
+  if (first.criteriaStep) state = { ...state, criteriaStepEnabled: true };
+  if (first.caucusStep) state = { ...state, caucusEnabled: true };
   for (let i = 1; i < entries.length; i++) {
     const e = entries[i]!;
     state = applyEntry(state, e);

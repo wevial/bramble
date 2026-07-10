@@ -18,7 +18,21 @@ import type { RepoContext } from '../prompts/scout.js';
  * the reducer in order.
  */
 export type TranscriptEntry =
-  | { type: 'session'; prompt: string; config: DebateConfig; timestamp: string }
+  | {
+      type: 'session';
+      prompt: string;
+      config: DebateConfig;
+      /**
+       * Phase toggles chosen at session start. Persisted so --resume can
+       * restore them BEFORE the phase they gate is reached — replay can
+       * only infer a toggle from its turns once those turns exist, which
+       * is too late for a session resumed mid-interview. Absent in older
+       * transcripts (same as false).
+       */
+      criteriaStep?: boolean;
+      caucusStep?: boolean;
+      timestamp: string;
+    }
   | { type: 'scout_complete'; context: RepoContext; timestamp: string }
   | { type: 'interview_turn'; turn: InterviewTurn }
   | { type: 'criteria_turn'; turn: CriteriaTurn }
