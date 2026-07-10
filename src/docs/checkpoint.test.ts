@@ -109,6 +109,33 @@ describe('generateCheckpoint', () => {
     expect(doc).not.toContain('not a heading');
   });
 
+  it('handles nested fences: a ```` block quoting ``` does not end early', () => {
+    const s: State = {
+      ...doneState(),
+      spec: [
+        '# Spec',
+        '## Real section',
+        '````md',
+        'Example doc:',
+        '```',
+        '# fenced heading — must not leak',
+        '```',
+        '## also fenced',
+        '````',
+        '## After the block',
+        '~~~',
+        '# tilde-fenced heading',
+        '~~~',
+      ].join('\n'),
+    };
+    const doc = generateCheckpoint(s, PERSONAS);
+    expect(doc).toContain('Real section');
+    expect(doc).toContain('After the block');
+    expect(doc).not.toContain('fenced heading');
+    expect(doc).not.toContain('also fenced');
+    expect(doc).not.toContain('tilde-fenced');
+  });
+
   it('quotes the last substantive comment, not a bare lgtm', () => {
     const doc = generateCheckpoint(doneState(), PERSONAS);
     // claude's final turn said only "lgtm"; the quote falls back to the

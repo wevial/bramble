@@ -144,17 +144,39 @@ function lastTimestamp(state: State): string | null {
   return stamps.reduce((a, b) => (a > b ? a : b));
 }
 
+/**
+ * Per-line "inside a fenced code block" mask, CommonMark-style: a fence
+ * opens with 3+ backticks or tildes and only closes on a marker of the
+ * SAME character at least as long. That keeps nested fences right — a
+ * ```` block quoting ``` examples doesn't end at the inner marker.
+ * Delimiter lines themselves count as fenced.
+ */
+function fenceMask(lines: string[]): boolean[] {
+  let open: { char: string; len: number } | null = null;
+  return lines.map(line => {
+    const m = /^\s*(`{3,}|~{3,})/.exec(line);
+    if (m) {
+      const char = m[1]![0]!;
+      const len = m[1]!.length;
+      if (open === null) {
+        open = { char, len };
+      } else if (open.char === char && len >= open.len) {
+        open = null;
+      }
+      return true;
+    }
+    return open !== null;
+  });
+}
+
 /** Top-two-level headings of the spec, indented to show nesting. */
 function specOutline(spec: string): string[] {
   const out: string[] = [];
-  let inFence = false;
-  for (const line of spec.split('\n')) {
-    if (/^```/.test(line.trim())) {
-      inFence = !inFence;
-      continue;
-    }
-    if (inFence) continue;
-    const m = /^(#{1,3})\s+(.*)/.exec(line);
+  const lines = spec.split('\n');
+  const fenced = fenceMask(lines);
+  for (let i = 0; i < lines.length; i++) {
+    if (fenced[i]) continue;
+    const m = /^(#{1,3})\s+(.*)/.exec(lines[i]!);
     if (!m) continue;
     const depth = m[1]!.length;
     out.push(`${'  '.repeat(Math.max(0, depth - 1))}${m[2]!.trim()}`);
@@ -245,11 +267,11 @@ function collectDeferred(state: State): string[] {
 function openSections(spec: string): { heading: string; body: string }[] {
   const sections: { heading: string; body: string }[] = [];
   const lines = spec.split('\n');
+  const fenced = fenceMask(lines);
   let current: { heading: string; body: string[] } | null = null;
-  let inFence = false;
-  for (const line of lines) {
-    if (/^```/.test(line.trim())) inFence = !inFence;
-    const m = !inFence && /^#{1,3}\s+(.*)/.exec(line);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const m = !fenced[i] && /^#{1,3}\s+(.*)/.exec(line);
     if (m) {
       if (current) {
         sections.push({ heading: current.heading, body: current.body.join('\n') });
