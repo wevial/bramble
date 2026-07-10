@@ -39,6 +39,11 @@ export type CodexAgentOptions = {
    * (the legacy path, kept as an escape hatch via --codex-transport exec).
    */
   transportKind?: 'exec' | 'app-server';
+  /**
+   * Kill the subprocess and fail the turn if it produces no output for this
+   * long during an in-flight turn. <= 0 disables. Default 5 minutes.
+   */
+  idleTimeoutMs?: number;
 };
 
 export function codexSpawnSpec(
@@ -79,9 +84,16 @@ export function createPersistentCliTransport(opts: {
   reasoningEffort?: string;
   cwd?: string;
   sandbox?: 'read-only' | 'workspace-write' | 'danger-full-access';
+  idleTimeoutMs?: number;
   spawn?: (spec: SpawnSpec, signal: AbortSignal) => AsyncIterable<string>;
 }): CodexTransport {
-  const spawn = opts.spawn ?? streamProcessLines;
+  const spawn =
+    opts.spawn ??
+    ((spec: SpawnSpec, signal: AbortSignal) =>
+      streamProcessLines(spec, signal, {
+        idleTimeoutMs: opts.idleTimeoutMs,
+        what: '`codex exec` turn',
+      }));
   let sessionId: string | null = null;
   let generation = 0;
   let turnGen = 0;
@@ -221,6 +233,7 @@ export class CodexAgent implements Agent {
         reasoningEffort: opts.reasoningEffort,
         cwd: opts.cwd,
         sandbox: opts.sandbox,
+        idleTimeoutMs: opts.idleTimeoutMs,
       });
       this.supportsDeltaPrompts = true;
     } else {
@@ -231,6 +244,7 @@ export class CodexAgent implements Agent {
         reasoningEffort: opts.reasoningEffort,
         cwd: opts.cwd,
         sandbox: opts.sandbox,
+        idleTimeoutMs: opts.idleTimeoutMs,
       });
       this.supportsDeltaPrompts = true;
     }

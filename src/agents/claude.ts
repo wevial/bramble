@@ -32,6 +32,11 @@ export type ClaudeAgentOptions = {
   cwd?: string;
   /** Read-only tool allow-list. See ClaudeTransportOptions.allowedTools. */
   allowedTools?: string[];
+  /**
+   * Kill the subprocess and fail the turn if it produces no output for this
+   * long during an in-flight turn. <= 0 disables. Default 5 minutes.
+   */
+  idleTimeoutMs?: number;
 };
 
 /** Exposed for tests — returns the argv shape the long-lived transport uses. */
@@ -102,6 +107,7 @@ export class ClaudeAgent implements Agent {
         cwd: opts.cwd,
         appendSystemPrompt: systemInstructions,
         allowedTools: opts.allowedTools,
+        idleTimeoutMs: opts.idleTimeoutMs,
       });
     }
   }

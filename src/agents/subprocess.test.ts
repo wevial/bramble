@@ -77,4 +77,55 @@ describe('streamProcessLines', () => {
     }
     expect(lines).toEqual([big]);
   });
+
+  it('kills a silent process once the idle timeout elapses', async () => {
+    const signal = new AbortController().signal;
+    const lines: string[] = [];
+    let caught: Error | null = null;
+    const started = Date.now();
+    try {
+      for await (const line of streamProcessLines(
+        { cmd: 'sh', args: ['-c', 'echo one; sleep 30'] },
+        signal,
+        { idleTimeoutMs: 150, what: '`codex exec` turn' },
+      )) {
+        lines.push(line);
+      }
+    } catch (e) {
+      caught = e as Error;
+    }
+    expect(lines).toEqual(['one']);
+    expect(caught?.message).toMatch(/`codex exec` turn produced no output/);
+    // Bounded well below the sleep — proves the watchdog cut it short.
+    expect(Date.now() - started).toBeLessThan(5000);
+  });
+
+  it('does not kill a process that keeps producing output', async () => {
+    const signal = new AbortController().signal;
+    const lines: string[] = [];
+    for await (const line of streamProcessLines(
+      {
+        cmd: 'sh',
+        args: ['-c', 'for i in 1 2 3 4 5; do echo $i; sleep 0.05; done'],
+      },
+      signal,
+      { idleTimeoutMs: 500 },
+    )) {
+      lines.push(line);
+    }
+    expect(lines).toEqual(['1', '2', '3', '4', '5']);
+  });
+
+  it('idleTimeoutMs 0 disables the watchdog', async () => {
+    const signal = new AbortController().signal;
+    const lines: string[] = [];
+    for await (const line of streamProcessLines(
+      { cmd: 'sh', args: ['-c', 'sleep 0.3; echo done'] },
+      signal,
+      { idleTimeoutMs: 0 },
+    )) {
+      lines.push(line);
+    }
+    expect(lines).toEqual(['done']);
+  });
 });

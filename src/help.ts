@@ -24,6 +24,9 @@ Agents:
                                         exec: legacy per-turn codex exec
   --isolated                            spawn agent CLIs in a tmpdir so repo
                                         CLAUDE.md / AGENTS.md don't leak in
+  --turn-timeout <seconds>              kill an agent turn if it produces no
+                                        output for this long (default 300;
+                                        0 disables)
 
 Output:
   --format <md|xml|json|html>           spec output format (default: md)
