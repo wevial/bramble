@@ -14,10 +14,10 @@ Debate:
 Agents:
   --real                                use real claude + codex CLIs (default: fakes)
   --test                                --real pinned to cheap/fast models
-  --claude-model <id>                   e.g. claude-sonnet-4-6
+  --claude-model <id>                   e.g. claude-fable-5
   --claude-effort <low|medium|high|xhigh|max>
                                         claude reasoning effort
-  --codex-model <id>                    e.g. gpt-5.4-mini
+  --codex-model <id>                    e.g. gpt-5.6-sol
   --codex-effort <low|medium|high>      codex reasoning effort
   --codex-transport <app-server|exec>   app-server: one persistent codex
                                         process per debate (default, fastest);

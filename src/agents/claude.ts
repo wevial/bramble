@@ -20,7 +20,7 @@ export type ClaudeAgentOptions = {
    * Stable across turns, so it sits inside the cacheable system prefix.
    */
   systemInstructions?: string;
-  /** Pinned model id (e.g. "claude-sonnet-4-6"). Default uses the CLI default. */
+  /** Pinned model id (e.g. "claude-fable-5"). Default uses the CLI default. */
   model?: string;
   /** Reasoning effort: "low" | "medium" | "high" | "xhigh" | "max". */
   reasoningEffort?: string;

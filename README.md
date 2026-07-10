@@ -52,9 +52,9 @@ bramble --list                       list sessions in ./.bramble
 --auto / --collab                    back-to-back turns vs. pause-between
 --real                               use real claude + codex CLIs
 --test                               --real with cheap/fast models pinned
---claude-model <id>                  e.g. claude-opus-4-7
+--claude-model <id>                  e.g. claude-fable-5
 --claude-effort <low|medium|high|xhigh|max>
---codex-model <id>                   e.g. gpt-5.5
+--codex-model <id>                   e.g. gpt-5.6-sol
 --codex-effort <low|medium|high>
 --isolated                           spawn agents in a tmpdir so repo
                                      CLAUDE.md / AGENTS.md don't leak in

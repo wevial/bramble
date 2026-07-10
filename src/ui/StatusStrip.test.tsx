@@ -14,9 +14,9 @@ import { renderFrame } from './test-renderer.js';
 const T = '2026-04-28T00:00:00.000Z';
 
 const models: ModelConfig = {
-  claudeModel: 'claude-opus-4-7',
+  claudeModel: 'claude-opus-4-8',
   claudeEffort: null,
-  codexModel: 'gpt-5.4-mini',
+  codexModel: 'gpt-5.6-luna',
   codexEffort: null,
 };
 
@@ -60,10 +60,10 @@ describe('lastSpeaker', () => {
 describe('modelLabel', () => {
   it('returns the speaker model when available', () => {
     expect(modelLabel(fresh({ speaker: 'claude' }), models)).toBe(
-      'claude-opus-4-7',
+      'claude-opus-4-8',
     );
     expect(modelLabel(fresh({ speaker: 'codex' }), models)).toBe(
-      'gpt-5.4-mini',
+      'gpt-5.6-luna',
     );
   });
 
@@ -103,7 +103,7 @@ describe('StatusStrip', () => {
     );
     const out = frame;
     expect(out).toContain('Model:');
-    expect(out).toContain('claude-opus-4-7');
+    expect(out).toContain('claude-opus-4-8');
     expect(out).toContain('Status:');
     expect(out).toContain('Next:');
     unmount();

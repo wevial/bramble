@@ -163,9 +163,9 @@ describe('SetupScreen', () => {
       initialPrompt: 'remembered',
       initialMode: 'collab',
       initialModels: {
-        claudeModel: 'claude-sonnet-4-6',
+        claudeModel: 'claude-sonnet-5',
         claudeEffort: 'high',
-        codexModel: 'gpt-5.4',
+        codexModel: 'gpt-5.6-terra',
         codexEffort: 'high',
       },
     });
@@ -174,8 +174,8 @@ describe('SetupScreen', () => {
     expect(out).toContain('[● collab]');
     // Each model row is now rendered inline with all its options visible,
     // and the seeded values appear among them.
-    expect(out).toContain('sonnet 4.6');
-    expect(out).toContain('gpt-5.4');
+    expect(out).toContain('sonnet 5');
+    expect(out).toContain('gpt-5.6-terra');
     expect(out).toContain('high');
     unmount();
   });
@@ -187,7 +187,7 @@ describe('SetupScreen', () => {
     input.pressTab(); // → models
     await update();
     // Default focus is on the first row (claude model). Right arrow advances
-    // claude model: default → opus 4.7.
+    // claude model: default → fable 5.
     input.pressArrow('right');
     await update();
     expect(frame()).toMatch(/›\s*claude model/);
@@ -204,7 +204,7 @@ describe('SetupScreen', () => {
     input.pressEnter();
     await update();
     expect(submissions).toHaveLength(1);
-    expect(submissions[0]!.models.claudeModel).toBe('claude-opus-4-7');
+    expect(submissions[0]!.models.claudeModel).toBe('claude-fable-5');
     expect(submissions[0]!.models.claudeEffort).toBe('low');
     unmount();
   });
@@ -215,8 +215,8 @@ describe('SetupScreen', () => {
     input.pressTab(); // mode
     input.pressTab(); // models (claude model row)
     await update();
-    // Cycle claude model all the way to "custom…" — there are 5 options;
-    // pressing left from index 0 wraps to the last option (custom).
+    // Cycle claude model all the way to "custom…" — pressing left from
+    // index 0 wraps to the last option (custom), whatever the list length.
     input.pressArrow('left');
     input.pressKey('e'); // enter custom edit
     await update();

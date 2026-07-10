@@ -36,8 +36,8 @@ describe('model presets', () => {
 
 describe('findOptionIndex', () => {
   it('returns the exact-match index', () => {
-    expect(findOptionIndex(CLAUDE_MODELS, 'claude-sonnet-4-6')).toBe(
-      CLAUDE_MODELS.findIndex(o => o.value === 'claude-sonnet-4-6'),
+    expect(findOptionIndex(CLAUDE_MODELS, 'claude-fable-5')).toBe(
+      CLAUDE_MODELS.findIndex(o => o.value === 'claude-fable-5'),
     );
   });
 

@@ -18,9 +18,9 @@ describe('setup-store', () => {
     const path = freshFile();
     const saved: SavedSetup = {
       mode: 'collab',
-      claudeModel: 'claude-sonnet-4-6',
+      claudeModel: 'claude-sonnet-5',
       claudeEffort: 'high',
-      codexModel: 'gpt-5.4',
+      codexModel: 'gpt-5.6-terra',
       codexEffort: 'medium',
     };
     saveSetup(path, saved);
