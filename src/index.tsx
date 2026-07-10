@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 import React from 'react';
 import { createCliRenderer } from '@opentui/core';
 import { createRoot } from '@opentui/react';
@@ -12,7 +12,7 @@ import { generateSessionName } from './util/name.js';
 import { readTranscript } from './docs/transcript.js';
 import { rehydrateState } from './orchestrator/replay.js';
 import { listSessions, sessionPaths, detectSessionFormat } from './sessions/list.js';
-import { mkdirSync, mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { helpText } from './help.js';
@@ -36,6 +36,14 @@ const argv = process.argv.slice(2);
 
 if (argv.includes('--help') || argv.includes('-h')) {
   console.log(helpText());
+  process.exit(0);
+}
+
+if (argv.includes('--version') || argv.includes('-v')) {
+  const pkg = JSON.parse(
+    readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+  ) as { version: string };
+  console.log(pkg.version);
   process.exit(0);
 }
 
@@ -90,7 +98,15 @@ for (let i = 0; i < argv.length; i++) {
     }
     i++;
   } else if (a === '--claude-effort' && argv[i + 1]) {
-    claudeEffort = argv[i + 1];
+    const e = argv[i + 1]!;
+    if (['low', 'medium', 'high', 'xhigh', 'max'].includes(e)) {
+      claudeEffort = e;
+    } else {
+      console.error(
+        `unknown --claude-effort value: ${e}  (expected low, medium, high, xhigh, or max)`,
+      );
+      process.exit(1);
+    }
     i++;
   } else if (a === '--name' && argv[i + 1]) {
     sessionName = argv[i + 1];
@@ -123,9 +139,10 @@ for (let i = 0; i < argv.length; i++) {
     if (Number.isInteger(n) && n >= 0) {
       autopilotAnswers = n;
     } else {
-      console.warn(
-        `[bramble] --autopilot-answers: invalid value "${argv[i + 1]}", using default ${autopilotAnswers}`,
+      console.error(
+        `unknown --autopilot-answers value: ${argv[i + 1]}  (expected an integer >= 0)`,
       );
+      process.exit(1);
     }
     i++;
   } else {

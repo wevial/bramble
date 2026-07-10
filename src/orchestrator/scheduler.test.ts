@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { nextSpeaker } from './scheduler.js';
 import { initialState, reducer, type State } from './state.js';
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { ConversationPane, buildConversation } from './ConversationPane.js';
 import { initialState, type State } from '../orchestrator/state.js';
 import { renderFrame } from './test-renderer.js';

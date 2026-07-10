@@ -15,7 +15,7 @@ Agents:
   --real                                use real claude + codex CLIs (default: fakes)
   --test                                --real pinned to cheap/fast models
   --claude-model <id>                   e.g. claude-sonnet-4-6
-  --claude-effort <low|med|high|xhigh|max>
+  --claude-effort <low|medium|high|xhigh|max>
                                         claude reasoning effort
   --codex-model <id>                    e.g. gpt-5.4-mini
   --codex-effort <low|medium|high>      codex reasoning effort
@@ -42,6 +42,7 @@ Session:
 
 Other:
   -h, --help                            show this help
+  -v, --version                         show version
 
 TUI keys:
   i / Esc                               insert / scroll mode

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import type { Agent } from './agent.js';
 
 export type AgentFactory = () => {

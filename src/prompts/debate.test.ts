@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { initialState, reducer, type State } from '../orchestrator/state.js';
 import { debatePrompt } from './debate.js';
 

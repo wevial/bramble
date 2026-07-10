@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { initialState, reducer, type State } from './state.js';
 
 const T = '2026-04-25T00:00:00.000Z';

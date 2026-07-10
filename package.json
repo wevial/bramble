@@ -4,13 +4,12 @@
   "private": true,
   "type": "module",
   "bin": {
-    "bramble": "./dist/index.js"
+    "bramble": "./src/index.tsx"
   },
   "scripts": {
     "dev": "bun src/index.tsx",
-    "build": "tsc",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -21,9 +20,9 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@types/bun": "^1.3.14",
     "@types/node": "^22.0.0",
     "@types/react": "^18.3.0",
-    "typescript": "^5.6.0",
-    "vitest": "^2.1.0"
+    "typescript": "^5.6.0"
   }
 }
