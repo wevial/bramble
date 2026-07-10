@@ -188,21 +188,29 @@ describe('ClaudeAgent with a long-lived transport', () => {
 
     const first = await drain(agent, 'full first', 'delta first');
     expect(first.tail?.notice).toBeUndefined();
+    // Healthy delta turn — the session demonstrably had continuity.
+    const second = await drain(agent, 'full second', 'delta second');
+    expect(second.tail?.notice).toBeUndefined();
 
     recorder.bumpGeneration();
-    const second = await drain(agent, 'full second', 'delta second');
-    expect(second.tail?.notice).toContain('session restarted');
+    const third = await drain(agent, 'full third', 'delta third');
+    expect(third.tail?.notice).toContain('session restarted');
 
     // Notice is a one-shot: once reseeded, healthy turns stay quiet.
-    const third = await drain(agent, 'full third', 'delta third');
-    expect(third.tail?.notice).toBeUndefined();
+    const fourth = await drain(agent, 'full fourth', 'delta fourth');
+    expect(fourth.tail?.notice).toBeUndefined();
   });
 
-  it('does not report a reset notice on the very first turn', async () => {
+  it('does not report a reset notice before delta continuity was ever achieved', async () => {
     const recorder = makeRecordingTransport();
     const agent = new ClaudeAgent({ transport: recorder.transport });
     const first = await drain(agent, 'full first', 'delta first');
     expect(first.tail?.notice).toBeUndefined();
+    // Session lost before any delta turn ran — the full-prompt fallback is
+    // correct, but there was no continuity to lose, so stay quiet.
+    recorder.bumpGeneration();
+    const second = await drain(agent, 'full second', 'delta second');
+    expect(second.tail?.notice).toBeUndefined();
   });
 
   // Reviewer-identified race: the child can exit cleanly right after the

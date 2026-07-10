@@ -214,6 +214,7 @@ export class CodexAgent implements Agent {
   private readonly systemInstructions: string;
   private hasSessionContext = false;
   private seededGeneration = -1;
+  private everUsedDelta = false;
 
   constructor(opts: CodexAgentOptions = {}) {
     this.systemInstructions = opts.systemInstructions ?? DEFAULT_PROTOCOL;
@@ -271,6 +272,7 @@ export class CodexAgent implements Agent {
       ? rawPrompt
       : `${this.systemInstructions}\n\n---\n\n${rawPrompt}`;
     const promptMode = useDelta ? 'delta' : 'full';
+    if (useDelta) this.everUsedDelta = true;
 
     let fullText = '';
     let usage: TurnUsage | undefined;
@@ -305,10 +307,13 @@ export class CodexAgent implements Agent {
       };
     }
 
-    // Guarded on supportsDeltaPrompts: legacy per-turn transports bump the
-    // generation every turn by design — that's not a lost session.
+    // Guarded on everUsedDelta: a transport that never achieved delta
+    // continuity (legacy per-turn transports, or a codex CLI that emits no
+    // thread.started and so bumps the generation after every turn) was never
+    // a live session — reporting "restarted" there would be false and, in
+    // the no-resume case, would repeat on every turn.
     const notice =
-      contextWasReset && this.supportsDeltaPrompts
+      contextWasReset && this.everUsedDelta
         ? 'codex session restarted — context reseeded with a full prompt'
         : undefined;
 

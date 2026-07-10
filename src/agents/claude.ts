@@ -92,6 +92,7 @@ export class ClaudeAgent implements Agent {
    * stored conversation history was lost and we must send a full prompt.
    */
   private seededGeneration = -1;
+  private everUsedDelta = false;
 
   constructor(opts: ClaudeAgentOptions = {}) {
     const systemInstructions = opts.systemInstructions ?? DEFAULT_PROTOCOL;
@@ -135,6 +136,7 @@ export class ClaudeAgent implements Agent {
       this.supportsDeltaPrompts && sessionStillAlive && !!ctx.deltaPrompt;
     const prompt = useDelta ? ctx.deltaPrompt! : ctx.prompt;
     const promptMode = useDelta ? 'delta' : 'full';
+    if (useDelta) this.everUsedDelta = true;
     let accumulated = '';
     let finalResult: string | null = null;
     let usage: TurnUsage | undefined;
@@ -171,10 +173,12 @@ export class ClaudeAgent implements Agent {
       };
     }
 
-    // Guarded on supportsDeltaPrompts: legacy per-turn transports bump the
-    // generation every turn by design — that's not a lost session.
+    // Guarded on everUsedDelta: a transport that never achieved delta
+    // continuity (e.g. the legacy per-turn path, which bumps the generation
+    // every turn by design) was never a live session — "restarted" would be
+    // false there.
     const notice =
-      contextWasReset && this.supportsDeltaPrompts
+      contextWasReset && this.everUsedDelta
         ? 'claude session restarted — context reseeded with a full prompt'
         : undefined;
 
