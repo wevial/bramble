@@ -53,11 +53,11 @@ describe('codexSpawnSpec', () => {
 
   it('appends -m and reasoning-effort when set', () => {
     const spec = codexSpawnSpec('x', {
-      model: 'gpt-5.4-mini',
+      model: 'gpt-5.6-luna',
       reasoningEffort: 'low',
     });
     expect(spec.args).toContain('-m');
-    expect(spec.args).toContain('gpt-5.4-mini');
+    expect(spec.args).toContain('gpt-5.6-luna');
     expect(spec.args.join(' ')).toContain('model_reasoning_effort=low');
   });
 
@@ -68,7 +68,7 @@ describe('codexSpawnSpec', () => {
 
   it('keeps the prompt as the final positional arg even with flags', () => {
     const spec = codexSpawnSpec('my prompt', {
-      model: 'gpt-5.4-mini',
+      model: 'gpt-5.6-luna',
       reasoningEffort: 'low',
     });
     expect(spec.args[spec.args.length - 1]).toBe('my prompt');

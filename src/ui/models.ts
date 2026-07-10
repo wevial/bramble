@@ -25,19 +25,31 @@ export type EffortOption = {
 
 export const CLAUDE_MODELS: ModelOption[] = [
   { label: 'default', value: null },
-  { label: 'opus 4.7', value: 'claude-opus-4-7' },
-  { label: 'sonnet 4.6', value: 'claude-sonnet-4-6' },
+  { label: 'fable 5', value: 'claude-fable-5' },
+  { label: 'opus 4.8', value: 'claude-opus-4-8' },
+  { label: 'sonnet 5', value: 'claude-sonnet-5' },
   { label: 'haiku 4.5', value: 'claude-haiku-4-5' },
   { label: 'custom…', value: 'custom' },
 ];
 
 export const CODEX_MODELS: ModelOption[] = [
   { label: 'default', value: null },
+  { label: 'gpt-5.6-sol', value: 'gpt-5.6-sol' },
+  { label: 'gpt-5.6-terra', value: 'gpt-5.6-terra' },
+  { label: 'gpt-5.6-luna', value: 'gpt-5.6-luna' },
   { label: 'gpt-5.5', value: 'gpt-5.5' },
-  { label: 'gpt-5.4', value: 'gpt-5.4' },
-  { label: 'gpt-5.4-mini', value: 'gpt-5.4-mini' },
   { label: 'custom…', value: 'custom' },
 ];
+
+/**
+ * Cheapest current codex model — used wherever bramble needs a fast, low-cost
+ * turn (moderator picks, autopilot's simulated user, --test defaults).
+ * gpt-5.6-luna replaced gpt-5.4-mini as the small tier.
+ */
+export const CHEAP_CODEX_MODEL = 'gpt-5.6-luna';
+
+/** Cheapest current claude model — used by --test defaults. */
+export const CHEAP_CLAUDE_MODEL = 'claude-haiku-4-5';
 
 export const CLAUDE_EFFORTS: EffortOption[] = [
   { label: 'default', value: null },

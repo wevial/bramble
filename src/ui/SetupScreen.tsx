@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { createTextAttributes } from '@opentui/core';
 import { useKeyboard, useTerminalDimensions } from '@opentui/react';
 import { InputBox } from './InputBox.js';
-import { type ModelConfig } from './models.js';
+import { CHEAP_CODEX_MODEL, type ModelConfig } from './models.js';
 import {
   buildRows,
   resolveRows,
@@ -366,7 +366,7 @@ export function SetupScreen({
             {focusMarker(4)}Moderator (optional)
           </text>
         </box>
-        <text><span attributes={DIM}>   when on, an LLM picks the next speaker each turn (uses gpt-5.4-mini)</span></text>
+        <text><span attributes={DIM}>   when on, an LLM picks the next speaker each turn (uses {CHEAP_CODEX_MODEL})</span></text>
         <box flexDirection="row">
           <text>
             <span>   </span>

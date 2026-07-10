@@ -18,6 +18,7 @@ import { spawnSync } from 'node:child_process';
 import { helpText } from './help.js';
 import { type OutputFormat, isOutputFormat, convertSpec } from './docs/format.js';
 import { loadSavedSetup, defaultSetupPath } from './ui/setup-store.js';
+import { CHEAP_CLAUDE_MODEL, CHEAP_CODEX_MODEL } from './ui/models.js';
 import {
   CLAUDE_PERSONA,
   CODEX_PERSONA,
@@ -78,8 +79,8 @@ for (let i = 0; i < argv.length; i++) {
     real = true;
   } else if (a === '--test') {
     real = true;
-    claudeModel = claudeModel ?? 'claude-haiku-4-5';
-    codexModel = codexModel ?? 'gpt-5.4-mini';
+    claudeModel = claudeModel ?? CHEAP_CLAUDE_MODEL;
+    codexModel = codexModel ?? CHEAP_CODEX_MODEL;
     codexEffort = codexEffort ?? 'low';
   } else if (a === '--claude-model' && argv[i + 1]) {
     claudeModel = argv[i + 1];
@@ -629,15 +630,15 @@ const buildFakeAgents = real
     };
 
 /**
- * In real mode the moderator is a Codex subprocess pinned to gpt-5.4-mini
- * — cheap and fast, since we're only asking "who speaks next?" In fake
+ * In real mode the moderator is a Codex subprocess pinned to the cheap
+ * model — fast, since we're only asking "who speaks next?" In fake
  * mode it's a round-robin wrapped with a canned reason so the UI surface
  * still demos the moderator attribution row.
  */
 function buildModerator(personas: Persona[]): Moderator {
   if (real) {
     const agent = new CodexAgent({
-      model: 'gpt-5.4-mini',
+      model: CHEAP_CODEX_MODEL,
       reasoningEffort: 'low',
       cwd: isoCwd,
       systemInstructions:
@@ -689,7 +690,7 @@ if (autopilot) {
   // a canned responder in fake mode so no CLI is needed.
   const simulatedUser: Agent = real
     ? new CodexAgent({
-        model: 'gpt-5.4-mini',
+        model: CHEAP_CODEX_MODEL,
         reasoningEffort: 'low',
         systemInstructions:
           'You role-play a product owner answering a builder\'s clarifying ' +
