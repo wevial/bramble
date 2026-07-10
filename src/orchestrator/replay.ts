@@ -54,6 +54,46 @@ function applyEntry(state: State, e: TranscriptEntry): State {
           proposed: e.turn.proposed,
         },
       });
+    case 'caucus_turn':
+      // Like scout_complete: the replay state can't know caucusEnabled (it
+      // isn't in the session entry), so a recorded caucus turn itself is the
+      // evidence — force the phase so the reducer accepts it. Synthesis
+      // turns re-apply through caucusSynthesis to restore caucusSummary.
+      if (e.turn.synthesis) {
+        return reducer(
+          { ...state, phase: 'caucus', caucusEnabled: true },
+          {
+            type: 'caucusSynthesis',
+            speaker: e.turn.speaker,
+            commentary: e.turn.commentary,
+            summary: e.turn.proposal,
+            timestamp: e.turn.timestamp,
+          },
+        );
+      }
+      return reducer(
+        { ...state, phase: 'caucus', caucusEnabled: true },
+        {
+          type: 'caucusTurn',
+          timestamp: e.turn.timestamp,
+          turn: {
+            speaker: e.turn.speaker,
+            commentary: e.turn.commentary,
+            proposal: e.turn.proposal,
+          },
+        },
+      );
+    case 'caucus_synthesis':
+      return reducer(
+        { ...state, phase: 'caucus', caucusEnabled: true },
+        {
+          type: 'caucusSynthesis',
+          speaker: e.speaker,
+          commentary: e.commentary,
+          summary: e.summary,
+          timestamp: e.timestamp,
+        },
+      );
     case 'user_answer':
       return reducer(state, {
         type: 'userAnswer',

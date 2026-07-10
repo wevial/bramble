@@ -29,6 +29,7 @@ export type SetupSubmit = {
   models: ModelConfig;
   specialists: PersonaId[];
   moderator: boolean;
+  caucus: boolean;
 };
 
 export type SetupScreenProps = {
@@ -38,11 +39,13 @@ export type SetupScreenProps = {
   initialModels?: ModelConfig;
   initialSpecialists?: PersonaId[];
   initialModerator?: boolean;
+  initialCaucus?: boolean;
   onSubmit(result: SetupSubmit): void;
   onQuit(): void;
 };
 
-type FieldIndex = 0 | 1 | 2 | 3 | 4 | 5; // prompt, mode, models, specialists, moderator, start
+// prompt, mode, models, specialists, moderator, caucus, start
+type FieldIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
 const EMPTY_MODELS: ModelConfig = {
   claudeModel: null,
@@ -64,6 +67,7 @@ export function SetupScreen({
   initialModels,
   initialSpecialists,
   initialModerator,
+  initialCaucus,
   onSubmit,
   onQuit,
 }: SetupScreenProps) {
@@ -84,9 +88,10 @@ export function SetupScreen({
   );
   const [specialistRowFocus, setSpecialistRowFocus] = useState(0);
   const [moderator, setModerator] = useState<boolean>(initialModerator ?? false);
+  const [caucus, setCaucus] = useState<boolean>(initialCaucus ?? false);
 
   const advance = () =>
-    setFocus(f => (f < 5 ? ((f + 1) as FieldIndex) : f));
+    setFocus(f => (f < 6 ? ((f + 1) as FieldIndex) : f));
   const retreat = () =>
     setFocus(f => (f > 0 ? ((f - 1) as FieldIndex) : f));
 
@@ -104,6 +109,7 @@ export function SetupScreen({
         p => p.id,
       ),
       moderator,
+      caucus,
     });
   };
 
@@ -128,11 +134,11 @@ export function SetupScreen({
       }
       // Enter on prompt is handled inside the multiline InputBox.
       if ((key.name === 'return' || key.name === 'enter') && focus !== 0) {
-        if (focus === 5) {
+        if (focus === 6) {
           tryStart();
         } else {
-          // Enter on specialists (3) and moderator (4) advances; toggling
-          // is space-only there.
+          // Enter on specialists (3), moderator (4), and caucus (5)
+          // advances; toggling is space/arrow-only there.
           advance();
         }
         return;
@@ -185,6 +191,16 @@ export function SetupScreen({
           key.name === 'space'
         ) {
           setModerator(m => !m);
+        }
+        return;
+      }
+      if (focus === 5) {
+        if (
+          key.name === 'left' ||
+          key.name === 'right' ||
+          key.name === 'space'
+        ) {
+          setCaucus(c => !c);
         }
         return;
       }
@@ -380,10 +396,29 @@ export function SetupScreen({
         </box>
         <text> </text>
 
+        <box>
+          <text fg={focusColor(5)} attributes={(focus === 5) ? BOLD : 0}>
+            {focusMarker(5)}Caucus (optional)
+          </text>
+        </box>
+        <text><span attributes={DIM}>   agents draft private positions first, then debate from a synthesis</span></text>
+        <box flexDirection="row">
+          <text>
+            <span>   </span>
+            <ModeratorOption label="off" selected={!caucus} focused={focus === 5} />
+            <span>  </span>
+            <ModeratorOption label="on" selected={caucus} focused={focus === 5} />
+          </text>
+          {focus === 5 ? (
+            <text><span attributes={DIM}>    ←/→ or space toggles · enter advances</span></text>
+          ) : null}
+        </box>
+        <text> </text>
+
         <box justifyContent="center">
           <text
-            fg={focus === 5 ? 'brightGreen' : undefined}
-            attributes={focus === 5 ? BOLD_REVERSE : 0}
+            fg={focus === 6 ? 'brightGreen' : undefined}
+            attributes={focus === 6 ? BOLD_REVERSE : 0}
           >
             {'  Start  '}
           </text>

@@ -75,6 +75,7 @@ export type AppProps = {
   initialModelConfig?: ModelConfig;
   initialSpecialists?: PersonaId[];
   initialModerator?: boolean;
+  initialCaucus?: boolean;
   setupStorePath?: string;
 };
 
@@ -103,6 +104,9 @@ export function App(props: AppProps) {
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [paused, setPaused] = useState(false);
   const [mode, setMode] = useState<DebateMode>(props.mode ?? 'auto');
+  const [caucusEnabled, setCaucusEnabled] = useState<boolean>(
+    props.initialCaucus ?? false,
+  );
   const handleRef = useRef<RunHandle | null>(null);
   const writesRef = useRef<Promise<void>>(Promise.resolve());
   const renderer = useRenderer();
@@ -145,6 +149,7 @@ export function App(props: AppProps) {
       // per-turn for users who want explicit checkpoints.
       pauseEachRound: false,
       criteriaStep: true,
+      caucusStep: caucusEnabled,
       scoutStep: true,
       prompt,
       config: props.config,
@@ -279,9 +284,11 @@ export function App(props: AppProps) {
         }
         initialSpecialists={props.initialSpecialists}
         initialModerator={props.initialModerator}
-        onSubmit={({ prompt: p, mode: m, models, specialists, moderator }) => {
+        initialCaucus={props.initialCaucus}
+        onSubmit={({ prompt: p, mode: m, models, specialists, moderator, caucus }) => {
           setPrompt(p);
           setMode(m);
+          setCaucusEnabled(caucus);
           const chosenSpecialists = SPECIALIST_PERSONAS.filter(s =>
             specialists.includes(s.id),
           );
@@ -309,6 +316,7 @@ export function App(props: AppProps) {
                 codexEffort: models.codexEffort,
                 specialists,
                 moderator,
+                caucus,
               });
             } catch {
               /* best-effort */

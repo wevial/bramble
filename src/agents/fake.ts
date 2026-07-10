@@ -14,11 +14,25 @@ export type FakeDebateResponse = {
   verdict?: 'continue' | 'lgtm';
 };
 
+export type FakeCaucusResponse = {
+  kind: 'caucus';
+  commentary: string;
+  proposal: string;
+};
+
+export type FakeCaucusSynthesisResponse = {
+  kind: 'caucus_synthesis';
+  commentary: string;
+  summary: string;
+};
+
 /** Plain string responses are treated as raw output (commentary-only). */
 export type FakeResponse =
   | string
   | FakeInterviewResponse
-  | FakeDebateResponse;
+  | FakeDebateResponse
+  | FakeCaucusResponse
+  | FakeCaucusSynthesisResponse;
 
 export class FakeAgent implements Agent {
   readonly name: AgentName;
@@ -80,6 +94,14 @@ function renderFakeResponse(r: FakeResponse): {
       question: r.question ?? null,
       ready: r.ready ?? false,
     };
+    return { displayText: r.commentary, raw: JSON.stringify(body) };
+  }
+  if (r.kind === 'caucus') {
+    const body = { commentary: r.commentary, proposal: r.proposal };
+    return { displayText: r.commentary, raw: JSON.stringify(body) };
+  }
+  if (r.kind === 'caucus_synthesis') {
+    const body = { commentary: r.commentary, summary: r.summary };
     return { displayText: r.commentary, raw: JSON.stringify(body) };
   }
   // debate

@@ -39,6 +39,10 @@ export function statusLabel(state: State): string {
   if (state.phase === 'scout') return 'scout · scanning repo';
   if (state.phase === 'interview') return 'clarifying requirements';
   if (state.phase === 'criteria') return 'locking success criteria';
+  if (state.phase === 'caucus') {
+    const total = (state.activePersonas ?? ['claude', 'codex']).length;
+    return `caucus · ${Math.min((state.caucusTurns ?? []).length, total)}/${total} positions`;
+  }
   if (state.phase === 'debate') {
     const total = (state.activePersonas ?? ['claude', 'codex']).length;
     return `debate · round ${state.round || 1}/${state.config.maxRounds} · ${state.lgtmThisRound.length}/${total} LGTM`;
@@ -59,6 +63,15 @@ export function nextHint(state: State): string {
     if (state.speaker === 'claude') return 'Claude is proposing criteria…';
     if (state.speaker === 'codex') return 'Codex is proposing criteria…';
     return 'type to revise · /done to lock criteria';
+  }
+  if (state.phase === 'caucus') {
+    if (state.speaker !== 'idle' && state.speaker !== 'user') {
+      const synthesizing = state.caucusTurns.length >= (state.activePersonas ?? []).length;
+      return synthesizing
+        ? 'synthesizing a unified position…'
+        : 'agents are drafting private positions…';
+    }
+    return 'private caucus in progress';
   }
   if (state.phase === 'debate') {
     if (state.speaker === 'claude') return 'Claude is drafting…';

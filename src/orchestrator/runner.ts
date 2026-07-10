@@ -2,12 +2,20 @@ import type { Agent, TurnUsage } from '../agents/agent.js';
 import type { Persona, PersonaId } from '../personas/personas.js';
 import { defaultPersonas } from '../personas/personas.js';
 import {
+  parseCaucusMessage,
+  parseCaucusSynthesisMessage,
   parseCriteriaMessage,
   parseDebateMessage,
   parseInterviewMessage,
 } from '../protocol/messages.js';
 import { interviewPrompt, interviewDeltaPrompt } from '../prompts/interview.js';
 import { criteriaPrompt, criteriaDeltaPrompt } from '../prompts/criteria.js';
+import {
+  caucusPrompt,
+  caucusDeltaPrompt,
+  caucusSynthesisPrompt,
+  caucusSynthesisDeltaPrompt,
+} from '../prompts/caucus.js';
 import { debatePrompt, debateDeltaPrompt } from '../prompts/debate.js';
 import { probeRepoContext } from '../prompts/scout.js';
 import { reducer, type State, type DebateConfig, initialState } from './state.js';
@@ -48,6 +56,13 @@ export type RunOptions = {
    * tests leave it off to preserve the older fast-path behavior.
    */
   criteriaStep?: boolean;
+  /**
+   * When true, the transition into debate routes through a private 'caucus'
+   * phase: every active persona drafts an independent opening position
+   * (never seeing the others'), then the first primary synthesizes a
+   * unified starting point that seeds the public debate. Off by default.
+   */
+  caucusStep?: boolean;
   /**
    * When true (and no initialState provided), the runner starts in the
    * 'scout' phase: probes cwd for canonical project files (README, CLAUDE.md,
@@ -112,6 +127,9 @@ export function startDebate(opts: RunOptions): RunHandle {
   // whatever the prior session set.
   if (!opts.initialState && opts.criteriaStep) {
     state = { ...state, criteriaStepEnabled: true };
+  }
+  if (!opts.initialState && opts.caucusStep) {
+    state = { ...state, caucusEnabled: true };
   }
   if (!opts.initialState && opts.scoutStep) {
     state = { ...state, scoutEnabled: true, phase: 'scout' };
@@ -375,7 +393,20 @@ export function startDebate(opts: RunOptions): RunHandle {
             : state.phase === 'criteria'
               ? primariesActive.filter(p => !criteriaSpoken.has(p))
               : [];
-        if (neverSpoken.length > 0) {
+        // Caucus scheduling is deterministic — no moderator, no round-robin:
+        // every active persona proposes once (in list order), then the first
+        // primary closes the caucus with the synthesis turn.
+        const caucusProposed = new Set(
+          (state.caucusTurns ?? []).map(t => t.speaker),
+        );
+        const caucusSynthesisTurn =
+          state.phase === 'caucus' &&
+          activeIds.every(p => caucusProposed.has(p));
+        if (state.phase === 'caucus') {
+          speaker = caucusSynthesisTurn
+            ? primariesActive[0] ?? activeIds[0]!
+            : activeIds.find(p => !caucusProposed.has(p))!;
+        } else if (neverSpoken.length > 0) {
           speaker = neverSpoken[0]!;
           dispatch({
             type: 'moderatorPicked',
@@ -423,11 +454,21 @@ export function startDebate(opts: RunOptions): RunHandle {
                   prompt: criteriaPrompt({ state, speaker }),
                   deltaPrompt: criteriaDeltaPrompt({ state, speaker }),
                 }
-              : {
-                  phase: 'debate' as const,
-                  prompt: debatePrompt({ state, speaker }),
-                  deltaPrompt: debateDeltaPrompt({ state, speaker }),
-                };
+              : state.phase === 'caucus'
+                ? {
+                    phase: 'caucus' as const,
+                    prompt: caucusSynthesisTurn
+                      ? caucusSynthesisPrompt({ state, speaker })
+                      : caucusPrompt({ state, speaker }),
+                    deltaPrompt: caucusSynthesisTurn
+                      ? caucusSynthesisDeltaPrompt({ state, speaker })
+                      : caucusDeltaPrompt({ state, speaker }),
+                  }
+                : {
+                    phase: 'debate' as const,
+                    prompt: debatePrompt({ state, speaker }),
+                    deltaPrompt: debateDeltaPrompt({ state, speaker }),
+                  };
 
         let displayed = '';
         let rawTail: string | undefined;
@@ -549,6 +590,47 @@ export function startDebate(opts: RunOptions): RunHandle {
               { once: true },
             );
           });
+          continue;
+        }
+
+        if (state.phase === 'caucus') {
+          // Private convergence — turns run back-to-back with no user wait.
+          if (caucusSynthesisTurn) {
+            const parsed = parseCaucusSynthesisMessage(raw);
+            const payload = parsed.ok
+              ? parsed.value
+              : // Parse failure: salvage prose as the summary so the debate
+                // still opens with whatever position text is recoverable.
+                { commentary: '', summary: salvageCommentary(raw) };
+            dispatch({
+              type: 'caucusSynthesis',
+              speaker,
+              commentary: payload.commentary,
+              summary: payload.summary,
+              timestamp: ts,
+            });
+            queueAppend({
+              type: 'caucus_synthesis',
+              speaker,
+              commentary: payload.commentary,
+              summary: payload.summary,
+              timestamp: ts,
+            });
+          } else {
+            const parsed = parseCaucusMessage(raw);
+            const payload = parsed.ok
+              ? parsed.value
+              : { commentary: '', proposal: salvageCommentary(raw) };
+            dispatch({
+              type: 'caucusTurn',
+              timestamp: ts,
+              turn: { speaker, ...payload },
+            });
+            const caucusTurn = state.caucusTurns[state.caucusTurns.length - 1];
+            if (caucusTurn) {
+              queueAppend({ type: 'caucus_turn', turn: caucusTurn });
+            }
+          }
           continue;
         }
 

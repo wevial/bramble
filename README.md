@@ -50,6 +50,8 @@ bramble --list                       list sessions in ./.bramble
 
 --rounds N                           max round cap (default 8)
 --auto / --collab                    back-to-back turns vs. pause-between
+--caucus / --no-caucus               private independent positions + synthesis
+                                     before the public debate (default off)
 --real                               use real claude + codex CLIs
 --test                               --real with cheap/fast models pinned
 --claude-model <id>                  e.g. claude-fable-5

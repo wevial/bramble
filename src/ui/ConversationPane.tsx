@@ -24,6 +24,14 @@ type Entry =
       timestamp: string;
     }
   | {
+      kind: 'caucus';
+      speaker: PersonaId;
+      commentary: string;
+      proposal: string;
+      synthesis: boolean;
+      timestamp: string;
+    }
+  | {
       kind: 'debate';
       speaker: PersonaId;
       commentary: string;
@@ -75,6 +83,16 @@ export function buildConversation(state: State): Entry[] {
       timestamp: c.timestamp,
     });
   }
+  for (const c of state.caucusTurns ?? []) {
+    out.push({
+      kind: 'caucus',
+      speaker: c.speaker,
+      commentary: c.commentary,
+      proposal: c.proposal,
+      synthesis: c.synthesis === true,
+      timestamp: c.timestamp,
+    });
+  }
   for (const d of state.debate) {
     // Specialists with no commentary and no edits are silent here too.
     if (
@@ -107,6 +125,14 @@ export function buildConversation(state: State): Entry[] {
       kind: 'divider',
       label: 'Spec drafting',
       timestamp: out[firstDebateIdx]!.timestamp,
+    });
+  }
+  const firstCaucusIdx = out.findIndex(e => e.kind === 'caucus');
+  if (firstCaucusIdx >= 0) {
+    out.splice(firstCaucusIdx, 0, {
+      kind: 'divider',
+      label: 'Caucus (private positions)',
+      timestamp: out[firstCaucusIdx]!.timestamp,
     });
   }
   const firstCriteriaIdx = out.findIndex(e => e.kind === 'criteria');
@@ -281,6 +307,12 @@ function renderHeader(e: Exclude<Entry, { kind: 'divider' }>): React.ReactNode {
       {e.kind === 'agent' && e.ready ? (
         <span fg="green"> · ready</span>
       ) : null}
+      {e.kind === 'caucus' ? (
+        <span fg={e.synthesis ? 'green' : 'magenta'}>
+          {' '}
+          · {e.synthesis ? 'synthesis' : 'private position'}
+        </span>
+      ) : null}
       {e.kind === 'debate' ? (
         <span>
           <span attributes={DIM}> · r{e.round}</span>
@@ -317,6 +349,11 @@ function renderBody(e: Exclude<Entry, { kind: 'divider' }>): React.ReactNode {
       ) : null}
       {e.kind === 'agent' && e.question ? (
         <text><span fg="yellow">? {e.question}</span></text>
+      ) : null}
+      {e.kind === 'caucus' && e.proposal ? (
+        <text>
+          <InlineText text={e.proposal} />
+        </text>
       ) : null}
       {e.kind === 'criteria' && e.proposed.length > 0 ? (
         <box flexDirection="column" marginTop={0}>

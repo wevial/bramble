@@ -15,6 +15,14 @@ export type CriteriaMessage = {
   commentary: string;
   proposed: string[];
 };
+export type CaucusMessage = {
+  commentary: string;
+  proposal: string;
+};
+export type CaucusSynthesisMessage = {
+  commentary: string;
+  summary: string;
+};
 
 const EditSchema = z.object({
   find: z.string(),
@@ -47,6 +55,22 @@ const CriteriaMessageSchema = z.object({
     .transform(p => p ?? []),
 });
 
+const CaucusMessageSchema = z.object({
+  commentary: z
+    .string()
+    .nullish()
+    .transform(c => c ?? ''),
+  proposal: z.string(),
+});
+
+const CaucusSynthesisMessageSchema = z.object({
+  commentary: z
+    .string()
+    .nullish()
+    .transform(c => c ?? ''),
+  summary: z.string(),
+});
+
 export type ParseResult<T> =
   | { ok: true; value: T }
   | { ok: false; error: string };
@@ -63,6 +87,16 @@ export function parseDebateMessage(raw: string): ParseResult<DebateMessage> {
 
 export function parseCriteriaMessage(raw: string): ParseResult<CriteriaMessage> {
   return parseWithSchema(raw, CriteriaMessageSchema);
+}
+
+export function parseCaucusMessage(raw: string): ParseResult<CaucusMessage> {
+  return parseWithSchema(raw, CaucusMessageSchema);
+}
+
+export function parseCaucusSynthesisMessage(
+  raw: string,
+): ParseResult<CaucusSynthesisMessage> {
+  return parseWithSchema(raw, CaucusSynthesisMessageSchema);
 }
 
 function parseWithSchema<T extends z.ZodTypeAny>(

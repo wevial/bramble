@@ -64,6 +64,7 @@ let isolated = false;
 let outputFormat: OutputFormat = 'md';
 let autopilot = false;
 let autopilotAnswers = 3;
+let caucusFlag: boolean | undefined;
 let turnTimeoutMs: number | undefined;
 const cliSpecialists: string[] = [];
 const positional: string[] = [];
@@ -77,6 +78,10 @@ for (let i = 0; i < argv.length; i++) {
     i++;
   } else if (a === '--real') {
     real = true;
+  } else if (a === '--caucus') {
+    caucusFlag = true;
+  } else if (a === '--no-caucus') {
+    caucusFlag = false;
   } else if (a === '--test') {
     real = true;
     claudeModel = claudeModel ?? CHEAP_CLAUDE_MODEL;
@@ -185,6 +190,7 @@ const mode: 'auto' | 'collab' = cliMode ?? savedSetup.mode ?? 'auto';
 // Same CLI-overrides-saved precedence as models/mode above.
 const effectiveSpecialists: string[] =
   cliSpecialists.length > 0 ? cliSpecialists : savedSetup.specialists ?? [];
+const effectiveCaucus: boolean = caucusFlag ?? savedSetup.caucus ?? false;
 if (resumeName && cliSpecialists.length > 0) {
   console.error(
     '--specialist cannot be combined with --resume: personas are restored from the session transcript',
@@ -721,6 +727,7 @@ if (autopilot) {
     simulatedUser,
     maxAnswers: autopilotAnswers,
     maxRounds,
+    caucusStep: effectiveCaucus,
   });
 
   const { writeFile } = await import('node:fs/promises');
@@ -783,6 +790,7 @@ root.render(
     buildAgents={buildRealAgents ?? buildFakeAgents}
     buildModerator={buildModerator}
     initialModerator={savedSetup.moderator}
+    initialCaucus={effectiveCaucus}
     initialModelConfig={{
       claudeModel: claudeModel ?? null,
       claudeEffort: claudeEffort ?? null,
