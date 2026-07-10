@@ -181,6 +181,15 @@ const cwd = process.cwd();
 const savedSetupPath = defaultSetupPath();
 const savedSetup = loadSavedSetup(savedSetupPath) ?? {};
 const mode: 'auto' | 'collab' = cliMode ?? savedSetup.mode ?? 'auto';
+// Same CLI-overrides-saved precedence as models/mode above.
+const effectiveSpecialists: string[] =
+  cliSpecialists.length > 0 ? cliSpecialists : savedSetup.specialists ?? [];
+if (resumeName && cliSpecialists.length > 0) {
+  console.error(
+    '--specialist cannot be combined with --resume: personas are restored from the session transcript',
+  );
+  process.exit(1);
+}
 claudeModel = claudeModel ?? savedSetup.claudeModel ?? undefined;
 claudeEffort = claudeEffort ?? savedSetup.claudeEffort ?? undefined;
 codexModel = codexModel ?? savedSetup.codexModel ?? undefined;
@@ -664,7 +673,7 @@ if (autopilot) {
   const personas = [
     CLAUDE_PERSONA,
     CODEX_PERSONA,
-    ...SPECIALIST_PERSONAS.filter(p => cliSpecialists.includes(p.id)),
+    ...SPECIALIST_PERSONAS.filter(p => effectiveSpecialists.includes(p.id)),
   ];
   const modelConfig = {
     claudeModel: claudeModel ?? null,
@@ -775,9 +784,7 @@ root.render(
       codexEffort: codexEffort ?? null,
     }}
     setupStorePath={savedSetupPath}
-    initialSpecialists={
-      cliSpecialists.length > 0 ? cliSpecialists : savedSetup.specialists
-    }
+    initialSpecialists={effectiveSpecialists}
     onQuit={shutdown}
     onDone={() => {
       // Finalization happens; user can ctrl-c or we let App quit when ready.
