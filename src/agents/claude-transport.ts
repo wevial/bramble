@@ -1,4 +1,9 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import {
+  DEFAULT_IDLE_TIMEOUT_MS,
+  killWithGrace,
+  startIdleWatchdog,
+} from './idle-timeout.js';
 
 /**
  * A ClaudeTransport owns one long-lived `claude -p` subprocess per debate, so
@@ -48,6 +53,11 @@ export type ClaudeTransportOptions = {
    * to keep the CLI's default policy.
    */
   allowedTools?: string[];
+  /**
+   * Kill the child and fail the turn if it produces no stdout for this
+   * long during an in-flight turn. <= 0 disables. Default 5 minutes.
+   */
+  idleTimeoutMs?: number;
 };
 
 export function claudeTransportArgs(opts: ClaudeTransportOptions): string[] {
@@ -145,6 +155,7 @@ export function createClaudeTransport(
     let buffer = '';
     c.stdout.setEncoding('utf8');
     c.stdout.on('data', (chunk: string) => {
+      if (child !== c) return; // stale flush from a replaced child
       buffer += chunk;
       let nl = buffer.indexOf('\n');
       while (nl >= 0) {
@@ -159,6 +170,9 @@ export function createClaudeTransport(
       stderrBuf += chunk;
     });
     c.on('close', code => {
+      // A replaced child (kill → respawn before `close` fires) must not
+      // tear down the new one's state or poison its queue.
+      if (child !== c) return;
       if (buffer.length > 0) {
         queue.push({ kind: 'line', value: buffer });
         buffer = '';
@@ -181,6 +195,7 @@ export function createClaudeTransport(
       wake();
     });
     c.on('error', spawnErr => {
+      if (child !== c) return;
       queue.push({
         kind: 'end',
         error: new Error(`failed to spawn \`claude\`: ${(spawnErr as Error).message}`),
@@ -231,9 +246,23 @@ export function createClaudeTransport(
           return;
         }
 
+        // If the child goes quiet mid-turn, kill it — its close handler
+        // pushes an end item and wakes the loop, which then surfaces the
+        // watchdog's error instead of the generic exit-code one.
+        const watchdog = startIdleWatchdog({
+          timeoutMs: opts.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS,
+          what: '`claude` turn',
+          onTimeout: () => {
+            killWithGrace(active);
+            wake();
+          },
+        });
+
         try {
           while (true) {
             if (signal.aborted) return;
+            const timedOut = watchdog.firedError();
+            if (timedOut) throw timedOut;
             if (queue.length === 0) {
               await new Promise<void>(resolve => {
                 waiter = resolve;
@@ -241,6 +270,7 @@ export function createClaudeTransport(
               continue;
             }
             const next = queue.shift()!;
+            watchdog.pet();
             if (next.kind === 'end') {
               if (next.error && !signal.aborted) throw next.error;
               return;
@@ -249,6 +279,7 @@ export function createClaudeTransport(
             if (isTurnTerminatorLine(next.value)) return;
           }
         } finally {
+          watchdog.stop();
           signal.removeEventListener('abort', onAbort);
         }
       } finally {

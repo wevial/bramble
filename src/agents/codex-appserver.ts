@@ -1,5 +1,11 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import type { CodexTransport } from './codex.js';
+import {
+  DEFAULT_IDLE_TIMEOUT_MS,
+  killWithGrace,
+  startIdleWatchdog,
+  withTimeout,
+} from './idle-timeout.js';
 
 /**
  * Persistent `codex app-server` transport. One long-lived JSON-RPC (v2)
@@ -24,6 +30,12 @@ export type AppServerTransportOptions = {
   reasoningEffort?: string;
   cwd?: string;
   sandbox?: 'read-only' | 'workspace-write' | 'danger-full-access';
+  /**
+   * Kill the child and fail the turn if it emits no notifications for this
+   * long during an in-flight turn (also bounds the spawn handshake).
+   * <= 0 disables. Default 5 minutes.
+   */
+  idleTimeoutMs?: number;
 };
 
 type JsonRpcMessage = {
@@ -268,6 +280,11 @@ export function createAppServerTransport(
     child = c;
   };
 
+  const idleTimeoutMs = opts.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
+  // The handshake has no notification stream to watchdog — bound its two
+  // requests directly so a wedged `codex app-server` can't freeze a turn.
+  const handshakeTimeoutMs = idleTimeoutMs > 0 ? Math.min(idleTimeoutMs, 60_000) : 0;
+
   /** Spawn + handshake + thread/start if we don't have a live session. */
   const ensureSession = async () => {
     if (child && !child.killed && child.exitCode === null && threadId) return;
@@ -276,9 +293,13 @@ export function createAppServerTransport(
     if (child && !child.killed) child.kill('SIGTERM');
     spawnChild();
     try {
-      await request('initialize', {
-        clientInfo: { name: 'bramble', version: '0.1.0' },
-      });
+      await withTimeout(
+        request('initialize', {
+          clientInfo: { name: 'bramble', version: '0.1.0' },
+        }),
+        handshakeTimeoutMs,
+        'codex app-server initialize',
+      );
       send({ jsonrpc: '2.0', method: 'initialized' });
       const params: Record<string, unknown> = {
         cwd: opts.cwd ?? process.cwd(),
@@ -288,7 +309,11 @@ export function createAppServerTransport(
       };
       if (opts.model) params.model = opts.model;
       if (opts.sandbox) params.sandbox = opts.sandbox;
-      const res = await request('thread/start', params);
+      const res = await withTimeout(
+        request('thread/start', params),
+        handshakeTimeoutMs,
+        'codex app-server thread/start',
+      );
       const thread = res.thread as Record<string, unknown> | undefined;
       if (typeof thread?.id !== 'string') {
         throw new Error('codex app-server: thread/start returned no thread id');
@@ -353,10 +378,23 @@ export function createAppServerTransport(
           lastUsage: null as TokenUsageLast | null,
         };
 
+        // If the server goes quiet mid-turn, kill it — teardown pushes an
+        // end item and wakes the loop, which surfaces the watchdog's error.
+        const watchdog = startIdleWatchdog({
+          timeoutMs: idleTimeoutMs,
+          what: '`codex app-server` turn',
+          onTimeout: () => {
+            if (active && !active.killed) killWithGrace(active);
+            wake();
+          },
+        });
+
         try {
           while (true) {
             if (signal.aborted) return;
             if (turnError) throw turnError;
+            const timedOut = watchdog.firedError();
+            if (timedOut) throw timedOut;
             if (queue.length === 0) {
               await new Promise<void>(resolve => {
                 waiter = resolve;
@@ -364,6 +402,7 @@ export function createAppServerTransport(
               continue;
             }
             const next = queue.shift()!;
+            watchdog.pet();
             if (next.kind === 'end') {
               if (next.error && !signal.aborted) throw next.error;
               return;
@@ -374,6 +413,7 @@ export function createAppServerTransport(
             if (t.done) return;
           }
         } finally {
+          watchdog.stop();
           signal.removeEventListener('abort', onAbort);
           if (signal.aborted) {
             // Abort killed the child mid-turn; make session loss visible

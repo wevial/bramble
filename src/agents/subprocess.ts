@@ -1,4 +1,9 @@
 import { spawn } from 'node:child_process';
+import {
+  DEFAULT_IDLE_TIMEOUT_MS,
+  killWithGrace,
+  startIdleWatchdog,
+} from './idle-timeout.js';
 
 export type SpawnSpec = {
   cmd: string;
@@ -7,13 +12,22 @@ export type SpawnSpec = {
   cwd?: string;
 };
 
+export type StreamOptions = {
+  /** Kill the process if stdout goes quiet for this long; <= 0 disables. */
+  idleTimeoutMs?: number;
+  /** Subject for the timeout error message. Defaults to the command name. */
+  what?: string;
+};
+
 /**
  * Spawn a process and yield each line of stdout as it arrives. Respects
  * the given AbortSignal — aborting sends SIGTERM and closes the iterator.
+ * Kills the process and throws if stdout is silent past the idle timeout.
  */
 export async function* streamProcessLines(
   spec: SpawnSpec,
   signal: AbortSignal,
+  opts: StreamOptions = {},
 ): AsyncGenerator<string, void, void> {
   const child = spawn(spec.cmd, spec.args, {
     env: spec.env ?? process.env,
@@ -41,9 +55,22 @@ export async function* streamProcessLines(
   let exitCode: number | null = null;
   let spawnErrorMessage: string | null = null;
 
+  const watchdog = startIdleWatchdog({
+    timeoutMs: opts.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS,
+    what: opts.what ?? `\`${spec.cmd}\``,
+    // Wake the consumer loop directly rather than waiting for `close`: a
+    // killed shell can leave an orphaned grandchild holding the stdout pipe
+    // open, which would delay `close` past the grandchild's lifetime.
+    onTimeout: () => {
+      killWithGrace(child);
+      wake();
+    },
+  });
+
   let buffer = '';
   child.stdout.setEncoding('utf8');
   child.stdout.on('data', (chunk: string) => {
+    watchdog.pet();
     buffer += chunk;
     let nl = buffer.indexOf('\n');
     while (nl >= 0) {
@@ -72,6 +99,11 @@ export async function* streamProcessLines(
 
   try {
     while (true) {
+      const timedOut = watchdog.firedError();
+      if (timedOut) {
+        if (signal.aborted) break;
+        throw timedOut;
+      }
       if (queue.length === 0) {
         await new Promise<void>(resolve => {
           resolveWaiter = resolve;
@@ -96,6 +128,7 @@ export async function* streamProcessLines(
       );
     }
   } finally {
+    watchdog.stop();
     signal.removeEventListener('abort', onAbort);
     if (!child.killed) child.kill('SIGTERM');
   }

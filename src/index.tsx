@@ -63,6 +63,7 @@ let isolated = false;
 let outputFormat: OutputFormat = 'md';
 let autopilot = false;
 let autopilotAnswers = 3;
+let turnTimeoutMs: number | undefined;
 const positional: string[] = [];
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
@@ -129,6 +130,17 @@ for (let i = 0; i < argv.length; i++) {
       outputFormat = f;
     } else {
       console.error(`unknown --format value: ${f}  (expected md, xml, json, or html)`);
+      process.exit(1);
+    }
+    i++;
+  } else if (a === '--turn-timeout' && argv[i + 1]) {
+    const n = Number(argv[i + 1]);
+    if (Number.isInteger(n) && n >= 0) {
+      turnTimeoutMs = n * 1000;
+    } else {
+      console.error(
+        `unknown --turn-timeout value: ${argv[i + 1]}  (expected seconds as an integer >= 0; 0 disables)`,
+      );
       process.exit(1);
     }
     i++;
@@ -340,6 +352,7 @@ const buildRealAgents = real
             cwd: isoCwd,
             systemInstructions: sys,
             allowedTools: grantTools ? ['Read', 'Grep', 'Glob'] : undefined,
+            idleTimeoutMs: turnTimeoutMs,
           });
         } else {
           result[persona.id] = new CodexAgent({
@@ -349,6 +362,7 @@ const buildRealAgents = real
             systemInstructions: sys,
             sandbox: grantTools ? 'read-only' : undefined,
             transportKind: codexTransport,
+            idleTimeoutMs: turnTimeoutMs,
           });
         }
       }
@@ -360,12 +374,14 @@ if (real) {
     model: claudeModel,
     reasoningEffort: claudeEffort,
     cwd: isoCwd,
+    idleTimeoutMs: turnTimeoutMs,
   });
   codex = new CodexAgent({
     model: codexModel,
     reasoningEffort: codexEffort,
     cwd: isoCwd,
     transportKind: codexTransport,
+    idleTimeoutMs: turnTimeoutMs,
   });
 } else {
   const fClaude = new FakeAgent('claude');
@@ -604,6 +620,7 @@ function buildModerator(personas: Persona[]): Moderator {
       systemInstructions:
         'You are a debate moderator. Output one JSON object per request, nothing else.',
       transportKind: codexTransport,
+      idleTimeoutMs: turnTimeoutMs,
     });
     return new LLMModerator({ agent, personas });
   }
@@ -652,6 +669,7 @@ if (autopilot) {
           'questions. Reply in 1–2 concrete sentences with sensible defaults. ' +
           'Never ask questions back. Plain prose only.',
         transportKind: codexTransport,
+        idleTimeoutMs: turnTimeoutMs,
       })
     : {
         name: 'codex' as const,
