@@ -4,13 +4,12 @@
   "private": true,
   "type": "module",
   "bin": {
-    "bramble": "./dist/index.js"
+    "bramble": "./src/index.tsx"
   },
   "scripts": {
     "dev": "bun src/index.tsx",
-    "build": "tsc",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
