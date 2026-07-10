@@ -74,6 +74,9 @@ override any CLI-flag defaults.
 Sessions write to `./.bramble/<session-name>/`:
 
 - `spec.md` — accepted spec body.
+- `checkpoint.md` — curated end-of-session summary: outcome, decision
+  journey, per-voice highlights, deferred/open items. The doc to paste
+  into a PR or hand to an implementing agent.
 - `draft.md` — current in-flight draft (cleared on accept).
 - `debate.md` — every turn rendered as markdown.
 - `transcript.jsonl` — append-only structured log (source of truth for
