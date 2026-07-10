@@ -175,6 +175,54 @@ describe('Persistent transport (CodexTransport injection)', () => {
     expect(transport.prompts[1]).toContain('full-2');
   });
 
+  it('reports a notice on the turn that recovers from a lost session', async () => {
+    const transport = makeTransport();
+    const agent = new CodexAgent({ transport, systemInstructions: '<<SYS>>' });
+    const first = await drain(agent, { phase: 'debate', prompt: 'full-1', deltaPrompt: 'delta-1' });
+    expect(first?.notice).toBeUndefined();
+    // Healthy delta turn — the session demonstrably had continuity.
+    const second = await drain(agent, { phase: 'debate', prompt: 'full-2', deltaPrompt: 'delta-2' });
+    expect(second?.notice).toBeUndefined();
+
+    transport.gen++;
+    const third = await drain(agent, { phase: 'debate', prompt: 'full-3', deltaPrompt: 'delta-3' });
+    expect(third?.notice).toContain('session restarted');
+
+    // One-shot: once reseeded, healthy turns stay quiet.
+    const fourth = await drain(agent, { phase: 'debate', prompt: 'full-4', deltaPrompt: 'delta-4' });
+    expect(fourth?.notice).toBeUndefined();
+  });
+
+  // Greptile-identified false positive: a codex CLI that never emits
+  // thread.started can't resume — the exec transport warns and bumps the
+  // generation after EVERY turn. That's a compatibility fallback, not a
+  // restart, and must not produce a "session restarted" notice each turn.
+  it('does not report restart notices when the CLI never supports resume', async () => {
+    const spawnLines = () =>
+      (async function* () {
+        // No thread.started event — CLI without resume support.
+        yield JSON.stringify({
+          type: 'item.completed',
+          item: { id: 'i', type: 'agent_message', text: 'ok' },
+        });
+        yield JSON.stringify({ type: 'turn.completed', usage: {} });
+      })();
+    const transport = createPersistentCliTransport({ spawn: spawnLines });
+    const agent = new CodexAgent({ transport, systemInstructions: '<<SYS>>' });
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const first = await drain(agent, { phase: 'debate', prompt: 'full-1', deltaPrompt: 'delta-1' });
+      const second = await drain(agent, { phase: 'debate', prompt: 'full-2', deltaPrompt: 'delta-2' });
+      const third = await drain(agent, { phase: 'debate', prompt: 'full-3', deltaPrompt: 'delta-3' });
+      expect(first?.notice).toBeUndefined();
+      expect(second?.notice).toBeUndefined();
+      expect(third?.notice).toBeUndefined();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it('reports promptMode=delta and char counts on usage when using delta', async () => {
     const transport = makeTransport();
     const agent = new CodexAgent({ transport, systemInstructions: '<<SYS>>' });

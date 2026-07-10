@@ -92,6 +92,7 @@ export class ClaudeAgent implements Agent {
    * stored conversation history was lost and we must send a full prompt.
    */
   private seededGeneration = -1;
+  private everUsedDelta = false;
 
   constructor(opts: ClaudeAgentOptions = {}) {
     const systemInstructions = opts.systemInstructions ?? DEFAULT_PROTOCOL;
@@ -127,10 +128,15 @@ export class ClaudeAgent implements Agent {
     const generation = this.transport.sessionGeneration();
     const sessionStillAlive =
       this.hasSessionContext && generation === this.seededGeneration;
+    // We HAD a seeded session and lost it (child died / was killed between
+    // turns) — recovery is automatic via the full prompt, but the user
+    // should know the CLI's conversation context was rebuilt.
+    const contextWasReset = this.hasSessionContext && !sessionStillAlive;
     const useDelta =
       this.supportsDeltaPrompts && sessionStillAlive && !!ctx.deltaPrompt;
     const prompt = useDelta ? ctx.deltaPrompt! : ctx.prompt;
     const promptMode = useDelta ? 'delta' : 'full';
+    if (useDelta) this.everUsedDelta = true;
     let accumulated = '';
     let finalResult: string | null = null;
     let usage: TurnUsage | undefined;
@@ -167,16 +173,26 @@ export class ClaudeAgent implements Agent {
       };
     }
 
+    // Guarded on everUsedDelta: a transport that never achieved delta
+    // continuity (e.g. the legacy per-turn path, which bumps the generation
+    // every turn by design) was never a live session — "restarted" would be
+    // false there.
+    const notice =
+      contextWasReset && this.everUsedDelta
+        ? 'claude session restarted — context reseeded with a full prompt'
+        : undefined;
+
     if (subprocessError && !finalResult && accumulated.length === 0) {
       const errMsg = `⚠ claude subprocess failed: ${subprocessError}`;
       yield { text: errMsg };
       return {
         raw: JSON.stringify({ commentary: errMsg }),
         usage,
+        notice,
       };
     }
 
-    return { raw: finalResult ?? accumulated, usage };
+    return { raw: finalResult ?? accumulated, usage, notice };
   }
 
   dispose() {

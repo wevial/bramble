@@ -214,6 +214,7 @@ export class CodexAgent implements Agent {
   private readonly systemInstructions: string;
   private hasSessionContext = false;
   private seededGeneration = -1;
+  private everUsedDelta = false;
 
   constructor(opts: CodexAgentOptions = {}) {
     this.systemInstructions = opts.systemInstructions ?? DEFAULT_PROTOCOL;
@@ -257,6 +258,10 @@ export class CodexAgent implements Agent {
     const generation = this.transport.sessionGeneration();
     const sessionStillAlive =
       this.hasSessionContext && generation === this.seededGeneration;
+    // We HAD a seeded session and lost it (child died / was killed between
+    // turns) — recovery is automatic via the full prompt, but the user
+    // should know the CLI's conversation context was rebuilt.
+    const contextWasReset = this.hasSessionContext && !sessionStillAlive;
     const useDelta =
       this.supportsDeltaPrompts && sessionStillAlive && !!ctx.deltaPrompt;
 
@@ -267,6 +272,7 @@ export class CodexAgent implements Agent {
       ? rawPrompt
       : `${this.systemInstructions}\n\n---\n\n${rawPrompt}`;
     const promptMode = useDelta ? 'delta' : 'full';
+    if (useDelta) this.everUsedDelta = true;
 
     let fullText = '';
     let usage: TurnUsage | undefined;
@@ -301,15 +307,26 @@ export class CodexAgent implements Agent {
       };
     }
 
+    // Guarded on everUsedDelta: a transport that never achieved delta
+    // continuity (legacy per-turn transports, or a codex CLI that emits no
+    // thread.started and so bumps the generation after every turn) was never
+    // a live session — reporting "restarted" there would be false and, in
+    // the no-resume case, would repeat on every turn.
+    const notice =
+      contextWasReset && this.everUsedDelta
+        ? 'codex session restarted — context reseeded with a full prompt'
+        : undefined;
+
     if (subprocessError && fullText.length === 0) {
       const errMsg = `⚠ codex subprocess failed: ${subprocessError}`;
       yield { text: errMsg };
       return {
         raw: JSON.stringify({ commentary: errMsg }),
         usage,
+        notice,
       };
     }
-    return { raw: fullText, usage };
+    return { raw: fullText, usage, notice };
   }
 
   dispose() {

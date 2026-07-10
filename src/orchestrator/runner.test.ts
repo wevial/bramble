@@ -465,6 +465,42 @@ describe('startDebate — interview → debate → done', () => {
     expect(finalState.interview.filter(t => t.speaker === 'codex')).toHaveLength(0);
   });
 
+  it('forwards a StreamTail notice to onNotice', async () => {
+    // Minimal agent that reports a session-restart notice on its first turn.
+    const noticeAgent = {
+      name: 'claude' as const,
+      // eslint-disable-next-line require-yield
+      async *stream() {
+        return {
+          raw: JSON.stringify({
+            commentary: 'ok',
+            question: 'q?',
+            ready: false,
+          }),
+          notice: 'claude session restarted — context reseeded with a full prompt',
+        };
+      },
+    };
+    const codex = new FakeAgent('codex');
+    codex.setResponse({ kind: 'interview', commentary: '', question: 'q2', ready: false });
+
+    const notices: Array<[string, string]> = [];
+    const handle = startDebate({
+      agents: { claude: noticeAgent, codex },
+      prompt: 'design x',
+      ...paths(),
+      onNotice: (speaker, text) => notices.push([speaker, text]),
+    });
+
+    await tick(60);
+    handle.abort();
+    await handle.done;
+    expect(notices).toContainEqual([
+      'claude',
+      'claude session restarted — context reseeded with a full prompt',
+    ]);
+  });
+
 });
 
 afterEach(() => {
