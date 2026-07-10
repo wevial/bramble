@@ -18,6 +18,7 @@ export type SessionPaths = {
   debatePath: string;
   interviewPath: string;
   promptPath: string;
+  checkpointPath: string;
 };
 
 /**
@@ -39,6 +40,7 @@ export function sessionPaths(
     debatePath: join(dir, 'debate.md'),
     interviewPath: join(dir, 'interview.md'),
     promptPath: join(dir, 'prompt.txt'),
+    checkpointPath: join(dir, 'checkpoint.md'),
   };
 }
 

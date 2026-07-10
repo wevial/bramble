@@ -16,6 +16,7 @@ import { writeSpec } from '../docs/spec.js';
 import { type OutputFormat, convertSpec } from '../docs/format.js';
 import { writeInterviewMd } from '../docs/interview.js';
 import { writeDebateLedger } from '../docs/debate.js';
+import { writeCheckpoint } from '../docs/checkpoint.js';
 import { type State, type DebateConfig } from '../orchestrator/state.js';
 import { InputBox } from './InputBox.js';
 import { parseSlashCommand } from './commands.js';
@@ -50,6 +51,8 @@ export type AppProps = {
   outputFormat?: OutputFormat;
   debatePath: string;
   interviewPath: string;
+  /** When set, a curated checkpoint.md is written once the session ends. */
+  checkpointPath?: string;
   onDone?: () => void;
   onQuit?: () => void;
   skipPromptEntry?: boolean;
@@ -192,7 +195,19 @@ export function App(props: AppProps) {
     });
     handleRef.current = handle;
     handle.done
-      .then(() => writesRef.current)
+      .then(final =>
+        writesRef.current.then(() => {
+          // Session over — synthesize the curated checkpoint from final
+          // state. After the per-turn writes so it never races them.
+          if (props.checkpointPath) {
+            return writeCheckpoint(
+              props.checkpointPath,
+              final,
+              activePersonas,
+            ).catch(() => {});
+          }
+        }),
+      )
       .then(() => {
         setStatus('done');
         props.onDone?.();

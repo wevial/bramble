@@ -254,6 +254,7 @@ async function printSessionSummary(
 
   const files: { label: string; path: string }[] = [
     { label: basename(p.specPath), path: p.specPath },
+    { label: 'checkpoint.md', path: p.checkpointPath },
     { label: 'interview.md', path: p.interviewPath },
     { label: 'debate.md', path: p.debatePath },
     { label: 'transcript.jsonl', path: p.transcriptPath },
@@ -730,8 +731,11 @@ if (autopilot) {
     convertSpec(final.spec, outputFormat),
     'utf8',
   ).catch(() => {});
+  const { writeCheckpoint } = await import('./docs/checkpoint.js');
+  await writeCheckpoint(paths.checkpointPath, final, personas).catch(() => {});
   console.log(`\n=== FINAL (phase: ${final.phase}${final.endReason ? `, ${final.endReason}` : ''}) ===`);
   console.log(`spec: ${final.spec.length} chars → ${paths.specPath}`);
+  console.log(`checkpoint → ${paths.checkpointPath}`);
   console.log('\n' + (final.spec || '(empty spec)'));
   await printSessionSummary(paths, name);
   process.exit(0);
@@ -775,6 +779,7 @@ root.render(
     outputFormat={outputFormat}
     debatePath={paths.debatePath}
     interviewPath={paths.interviewPath}
+    checkpointPath={paths.checkpointPath}
     buildAgents={buildRealAgents ?? buildFakeAgents}
     buildModerator={buildModerator}
     initialModerator={savedSetup.moderator}
