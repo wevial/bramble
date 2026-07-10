@@ -257,6 +257,10 @@ export class CodexAgent implements Agent {
     const generation = this.transport.sessionGeneration();
     const sessionStillAlive =
       this.hasSessionContext && generation === this.seededGeneration;
+    // We HAD a seeded session and lost it (child died / was killed between
+    // turns) — recovery is automatic via the full prompt, but the user
+    // should know the CLI's conversation context was rebuilt.
+    const contextWasReset = this.hasSessionContext && !sessionStillAlive;
     const useDelta =
       this.supportsDeltaPrompts && sessionStillAlive && !!ctx.deltaPrompt;
 
@@ -301,15 +305,23 @@ export class CodexAgent implements Agent {
       };
     }
 
+    // Guarded on supportsDeltaPrompts: legacy per-turn transports bump the
+    // generation every turn by design — that's not a lost session.
+    const notice =
+      contextWasReset && this.supportsDeltaPrompts
+        ? 'codex session restarted — context reseeded with a full prompt'
+        : undefined;
+
     if (subprocessError && fullText.length === 0) {
       const errMsg = `⚠ codex subprocess failed: ${subprocessError}`;
       yield { text: errMsg };
       return {
         raw: JSON.stringify({ commentary: errMsg }),
         usage,
+        notice,
       };
     }
-    return { raw: fullText, usage };
+    return { raw: fullText, usage, notice };
   }
 
   dispose() {

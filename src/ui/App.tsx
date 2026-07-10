@@ -96,6 +96,8 @@ export function App(props: AppProps) {
   const [prompt, setPrompt] = useState(initialPrompt);
   const [state, setState] = useState<State | null>(props.initialState ?? null);
   const [status, setStatus] = useState('starting…');
+  const [notice, setNotice] = useState<string | null>(null);
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [paused, setPaused] = useState(false);
   const [mode, setMode] = useState<DebateMode>(props.mode ?? 'auto');
   const handleRef = useRef<RunHandle | null>(null);
@@ -147,6 +149,16 @@ export function App(props: AppProps) {
       transcriptPath: props.transcriptPath,
       initialState: props.initialState,
       onPauseChange: setPaused,
+      onNotice: (speaker, text) => {
+        setNotice(`${speaker}: ${text}`);
+        // Fade like saveStatus — long enough to read, gone before it's
+        // mistaken for a persistent problem (recovery already happened).
+        if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+        noticeTimerRef.current = setTimeout(() => {
+          setNotice(null);
+          noticeTimerRef.current = null;
+        }, 15_000);
+      },
       onState: next => {
         setState(next);
         // Chain rewrites through the prior promise so two state updates can't
@@ -334,6 +346,7 @@ export function App(props: AppProps) {
           <text><span attributes={DIM}>{truncate(titleText, dims.columns - 60)}</span></text>
         ) : null}
         <text>
+          {notice ? <span fg="yellow">⚠ {notice}  ·  </span> : null}
           <span attributes={DIM}>session: </span>
           <span fg="cyan">{props.sessionName}</span>
           <span attributes={DIM}>  ·  {status}</span>

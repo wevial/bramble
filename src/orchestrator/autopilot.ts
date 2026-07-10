@@ -83,6 +83,9 @@ export async function runAutopilot(opts: AutopilotOptions): Promise<State> {
       const tag = mode ? ` [${mode}]` : '';
       log(`  · ${label(speaker)} turn done${tag}`);
     },
+    onNotice: (speaker, text) => {
+      log(`  ⚠ ${label(speaker)}: ${text}`);
+    },
     onState: next => {
       if (next.phase !== lastPhase) {
         log(`\n=== phase: ${next.phase} ===`);

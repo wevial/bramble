@@ -175,6 +175,21 @@ describe('Persistent transport (CodexTransport injection)', () => {
     expect(transport.prompts[1]).toContain('full-2');
   });
 
+  it('reports a notice on the turn that recovers from a lost session', async () => {
+    const transport = makeTransport();
+    const agent = new CodexAgent({ transport, systemInstructions: '<<SYS>>' });
+    const first = await drain(agent, { phase: 'debate', prompt: 'full-1', deltaPrompt: 'delta-1' });
+    expect(first?.notice).toBeUndefined();
+
+    transport.gen++;
+    const second = await drain(agent, { phase: 'debate', prompt: 'full-2', deltaPrompt: 'delta-2' });
+    expect(second?.notice).toContain('session restarted');
+
+    // One-shot: once reseeded, healthy turns stay quiet.
+    const third = await drain(agent, { phase: 'debate', prompt: 'full-3', deltaPrompt: 'delta-3' });
+    expect(third?.notice).toBeUndefined();
+  });
+
   it('reports promptMode=delta and char counts on usage when using delta', async () => {
     const transport = makeTransport();
     const agent = new CodexAgent({ transport, systemInstructions: '<<SYS>>' });

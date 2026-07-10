@@ -41,9 +41,12 @@ export type TurnUsage = {
  * Optional tail returned by an agent's stream generator. `raw` is the full
  * wire-format content (e.g. the complete JSON patch) used for parsing and
  * transcript persistence — distinct from the display tokens yielded during
- * streaming, which may be a commentary-only subset.
+ * streaming, which may be a commentary-only subset. `notice` is a
+ * human-facing status the UI should surface (e.g. "session restarted —
+ * context reseeded"); it is never part of the debate content, which is why
+ * it can't ride the token stream.
  */
-export type StreamTail = { raw: string; usage?: TurnUsage };
+export type StreamTail = { raw: string; usage?: TurnUsage; notice?: string };
 
 export interface Agent {
   readonly name: AgentName;

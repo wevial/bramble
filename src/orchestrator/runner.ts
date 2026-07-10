@@ -73,6 +73,8 @@ export type RunOptions = {
   onToken?: (speaker: PersonaId, text: string) => void;
   onState?: (state: State) => void;
   onUsage?: (speaker: PersonaId, usage: TurnUsage) => void;
+  /** Human-facing agent status worth surfacing (e.g. "session restarted"). */
+  onNotice?: (speaker: PersonaId, notice: string) => void;
   onPauseChange?: (paused: boolean) => void;
   signal?: AbortSignal;
 };
@@ -430,6 +432,7 @@ export function startDebate(opts: RunOptions): RunHandle {
         let displayed = '';
         let rawTail: string | undefined;
         let usageTail: TurnUsage | undefined;
+        let noticeTail: string | undefined;
         const agent = opts.agents[speaker];
         if (!agent) {
           throw new Error(`startDebate: no agent registered for persona '${speaker}'`);
@@ -442,6 +445,7 @@ export function startDebate(opts: RunOptions): RunHandle {
               if (r.value) {
                 rawTail = r.value.raw;
                 usageTail = r.value.usage;
+                noticeTail = r.value.notice;
               }
               break;
             }
@@ -452,6 +456,7 @@ export function startDebate(opts: RunOptions): RunHandle {
           /* aborts may throw — fine */
         }
         if (usageTail) opts.onUsage?.(speaker, usageTail);
+        if (noticeTail) opts.onNotice?.(speaker, noticeTail);
         const raw = rawTail ?? displayed;
         const ts = new Date().toISOString();
 
