@@ -149,9 +149,19 @@ export function startDebate(opts: RunOptions): RunHandle {
   // fire-and-forget would let later events land on disk before the initial
   // 'session' entry, breaking rehydrateState().
   let transcriptWrites: Promise<void> = Promise.resolve();
+  let transcriptWriteFailed = false;
   const queueAppend = (entry: Parameters<typeof appendEntry>[1]): void => {
     transcriptWrites = transcriptWrites.then(() =>
-      appendEntry(opts.transcriptPath, entry).catch(() => {}),
+      appendEntry(opts.transcriptPath, entry).catch((err) => {
+        // Transcript is the source of truth for --resume; losing writes
+        // silently would break session recovery, so warn once.
+        if (!transcriptWriteFailed) {
+          transcriptWriteFailed = true;
+          console.error(
+            `[bramble] failed to write transcript ${opts.transcriptPath}: ${(err as Error).message}`,
+          );
+        }
+      }),
     );
   };
 

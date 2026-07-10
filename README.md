@@ -5,11 +5,12 @@ while you steer; the accepted draft lands in `spec.md`.
 
 ## Stack
 
-- Node + Ink + TypeScript, package manager: bun
+- Bun + @opentui/react + TypeScript (Bun is the runtime, not just the
+  package manager — @opentui requires it)
 - Agents are spawned as subprocesses of the `claude` and `codex` CLIs —
   bramble parses their streaming output. No API keys live in bramble itself;
   each CLI handles its own auth.
-- Vitest (TDD)
+- `bun test` (TDD)
 
 ## Prerequisites
 
@@ -28,14 +29,16 @@ Bramble will fail fast with an install hint if either binary is missing when
 
 ```sh
 bun install
-bun run dev -- "design an auth system"       # fake agents (no CLIs needed)
-bun run dev -- --real "design an auth system" # real claude + codex
+bun link                                      # puts `bramble` on your PATH
+bramble "design an auth system"               # fake agents (no CLIs needed)
+bramble --real "design an auth system"        # real claude + codex
 ```
 
-Or run without a goal and type it into the prompt-entry screen:
+Without linking, substitute `bun run dev --` for `bramble`. Run without a
+goal to type it into the prompt-entry screen:
 
 ```sh
-bun run dev -- --real
+bramble --real
 ```
 
 ## Flags
@@ -45,7 +48,7 @@ bramble [flags] <goal...>            start a new debate
 bramble --resume <name>              resume a prior session
 bramble --list                       list sessions in ./.bramble
 
---rounds N                           max round cap (default 3)
+--rounds N                           max round cap (default 8)
 --auto / --collab                    back-to-back turns vs. pause-between
 --real                               use real claude + codex CLIs
 --test                               --real with cheap/fast models pinned
