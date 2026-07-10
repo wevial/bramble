@@ -64,6 +64,7 @@ let outputFormat: OutputFormat = 'md';
 let autopilot = false;
 let autopilotAnswers = 3;
 let turnTimeoutMs: number | undefined;
+const cliSpecialists: string[] = [];
 const positional: string[] = [];
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
@@ -133,6 +134,19 @@ for (let i = 0; i < argv.length; i++) {
       process.exit(1);
     }
     i++;
+  } else if (a === '--specialist' && argv[i + 1]) {
+    // Repeatable, and accepts comma-separated lists: --specialist security,perf
+    const validIds = SPECIALIST_PERSONAS.map(p => p.id);
+    for (const id of argv[i + 1]!.split(',').map(s => s.trim()).filter(Boolean)) {
+      if (!validIds.includes(id)) {
+        console.error(
+          `unknown --specialist value: ${id}  (expected one of ${validIds.join(', ')})`,
+        );
+        process.exit(1);
+      }
+      if (!cliSpecialists.includes(id)) cliSpecialists.push(id);
+    }
+    i++;
   } else if (a === '--turn-timeout' && argv[i + 1]) {
     const n = Number(argv[i + 1]);
     if (Number.isInteger(n) && n >= 0) {
@@ -167,6 +181,15 @@ const cwd = process.cwd();
 const savedSetupPath = defaultSetupPath();
 const savedSetup = loadSavedSetup(savedSetupPath) ?? {};
 const mode: 'auto' | 'collab' = cliMode ?? savedSetup.mode ?? 'auto';
+// Same CLI-overrides-saved precedence as models/mode above.
+const effectiveSpecialists: string[] =
+  cliSpecialists.length > 0 ? cliSpecialists : savedSetup.specialists ?? [];
+if (resumeName && cliSpecialists.length > 0) {
+  console.error(
+    '--specialist cannot be combined with --resume: personas are restored from the session transcript',
+  );
+  process.exit(1);
+}
 claudeModel = claudeModel ?? savedSetup.claudeModel ?? undefined;
 claudeEffort = claudeEffort ?? savedSetup.claudeEffort ?? undefined;
 codexModel = codexModel ?? savedSetup.codexModel ?? undefined;
@@ -647,7 +670,11 @@ if (autopilot) {
     process.exit(1);
   }
   mkdirSync(paths.dir, { recursive: true });
-  const personas = [CLAUDE_PERSONA, CODEX_PERSONA];
+  const personas = [
+    CLAUDE_PERSONA,
+    CODEX_PERSONA,
+    ...SPECIALIST_PERSONAS.filter(p => effectiveSpecialists.includes(p.id)),
+  ];
   const modelConfig = {
     claudeModel: claudeModel ?? null,
     claudeEffort: claudeEffort ?? null,
@@ -757,7 +784,7 @@ root.render(
       codexEffort: codexEffort ?? null,
     }}
     setupStorePath={savedSetupPath}
-    initialSpecialists={savedSetup.specialists}
+    initialSpecialists={effectiveSpecialists}
     onQuit={shutdown}
     onDone={() => {
       // Finalization happens; user can ctrl-c or we let App quit when ready.

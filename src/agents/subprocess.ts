@@ -120,7 +120,7 @@ export async function* streamProcessLines(
       );
     }
     if (!signal.aborted && exitCode !== null && exitCode !== 0) {
-      const tail = stderr.trim().split('\n').slice(-3).join(' · ');
+      const tail = stderr.trim().split('\n').slice(-10).join(' · ');
       throw new Error(
         `\`${spec.cmd}\` exited with code ${exitCode}${
           tail ? `: ${tail}` : ''

@@ -183,7 +183,7 @@ export function createClaudeTransport(
           : new Error(
               `claude exited with code ${code}${
                 stderrBuf
-                  ? `: ${stderrBuf.trim().split('\n').slice(-3).join(' · ')}`
+                  ? `: ${stderrBuf.trim().split('\n').slice(-10).join(' · ')}`
                   : ''
               }`,
             );

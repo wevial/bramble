@@ -58,6 +58,10 @@ bramble --list                       list sessions in ./.bramble
 --codex-effort <low|medium|high>
 --isolated                           spawn agents in a tmpdir so repo
                                      CLAUDE.md / AGENTS.md don't leak in
+--specialist <id>                    add specialist critics (security, perf,
+                                     ux, naming, ops); repeatable or
+                                     comma-separated
+--turn-timeout <seconds>             kill a silent agent turn (default 300)
 --name <name> / --dir <path>         session name override / storage root
 ```
 
