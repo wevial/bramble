@@ -51,6 +51,10 @@ export function debatePrompt(input: DebatePromptInput): string {
     );
   }
 
+  if (state.caucusSummary) {
+    parts.push(renderCaucusSummary(state.caucusSummary));
+  }
+
   parts.push(`# Current spec.md\n\n${renderSpec(state.spec)}`);
 
   if (state.debate.length > 0) {
@@ -84,6 +88,16 @@ export function debateDeltaPrompt(input: DebatePromptInput): string {
   const { state, speaker } = input;
   const parts: string[] = [];
 
+  // The caucus summary was synthesized in ONE persona's private session —
+  // everyone else's persistent context has never seen it. Send it with each
+  // persona's first debate turn; after that it's in their history.
+  if (
+    state.caucusSummary &&
+    !state.debate.some(t => t.speaker === speaker)
+  ) {
+    parts.push(renderCaucusSummary(state.caucusSummary));
+  }
+
   parts.push(`# Current spec.md\n\n${renderSpec(state.spec)}`);
 
   if (state.debate.length > 0) {
@@ -102,6 +116,10 @@ export function debateDeltaPrompt(input: DebatePromptInput): string {
 
   parts.push(buildDebateInstruction(state, speaker));
   return parts.join('\n\n');
+}
+
+function renderCaucusSummary(summary: string): string {
+  return `# Caucus outcome (unified starting position — treat consensus as settled, argue only the flagged disagreements)\n\n${summary}`;
 }
 
 function renderSpec(body: string): string {

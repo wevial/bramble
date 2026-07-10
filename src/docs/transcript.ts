@@ -2,6 +2,7 @@ import { appendFile, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import type { PersonaId } from '../personas/personas.js';
 import type {
+  CaucusTurn,
   CriteriaTurn,
   DebateConfig,
   DebateTurn,
@@ -17,10 +18,32 @@ import type { RepoContext } from '../prompts/scout.js';
  * the reducer in order.
  */
 export type TranscriptEntry =
-  | { type: 'session'; prompt: string; config: DebateConfig; timestamp: string }
+  | {
+      type: 'session';
+      prompt: string;
+      config: DebateConfig;
+      /**
+       * Phase toggles chosen at session start. Persisted so --resume can
+       * restore them BEFORE the phase they gate is reached — replay can
+       * only infer a toggle from its turns once those turns exist, which
+       * is too late for a session resumed mid-interview. Absent in older
+       * transcripts (same as false).
+       */
+      criteriaStep?: boolean;
+      caucusStep?: boolean;
+      timestamp: string;
+    }
   | { type: 'scout_complete'; context: RepoContext; timestamp: string }
   | { type: 'interview_turn'; turn: InterviewTurn }
   | { type: 'criteria_turn'; turn: CriteriaTurn }
+  | { type: 'caucus_turn'; turn: CaucusTurn }
+  | {
+      type: 'caucus_synthesis';
+      speaker: PersonaId;
+      commentary: string;
+      summary: string;
+      timestamp: string;
+    }
   | { type: 'user_answer'; content: string; timestamp: string }
   | { type: 'phase_change'; phase: Phase; timestamp: string }
   | { type: 'debate_turn'; turn: DebateTurn }

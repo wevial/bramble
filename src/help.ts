@@ -10,6 +10,11 @@ Debate:
   --rounds <n>                          max round cap (default 8)
   --auto                                agents run back-to-back (default)
   --collab                              pause between turns for user review
+  --caucus / --no-caucus                before the public debate, each agent
+                                        drafts a private position independently
+                                        and a synthesis seeds the debate;
+                                        also toggleable on the setup screen
+                                        (sticky — saved with your setup)
 
 Agents:
   --real                                use real claude + codex CLIs (default: fakes)

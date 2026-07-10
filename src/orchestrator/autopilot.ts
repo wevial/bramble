@@ -20,6 +20,8 @@ export type AutopilotOptions = {
   timeoutMs?: number;
   /** Route interview→debate through the criteria phase. Default true. */
   criteriaStep?: boolean;
+  /** Run the private caucus stage before the debate. Default false. */
+  caucusStep?: boolean;
   /** Probe the cwd for repo context before the interview. Default true. */
   scoutStep?: boolean;
   /** Progress sink; defaults to console.log. */
@@ -72,6 +74,7 @@ export async function runAutopilot(opts: AutopilotOptions): Promise<State> {
     moderator: opts.moderator,
     pauseEachRound: false,
     criteriaStep: opts.criteriaStep ?? true,
+    caucusStep: opts.caucusStep ?? false,
     scoutStep: opts.scoutStep ?? true,
     prompt: opts.prompt,
     config: opts.maxRounds != null ? { maxRounds: opts.maxRounds } : undefined,

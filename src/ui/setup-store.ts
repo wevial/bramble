@@ -13,6 +13,8 @@ export type SavedSetup = {
   specialists?: string[];
   /** Whether the LLM moderator was enabled last session. */
   moderator?: boolean;
+  /** Whether the private caucus stage was enabled last session. */
+  caucus?: boolean;
 };
 
 /** Default location: ~/.bramble/setup.json — user-global, not per-project. */
@@ -47,6 +49,7 @@ export function loadSavedSetup(path: string): SavedSetup | null {
     if (ids.length > 0) out.specialists = ids;
   }
   if (typeof src.moderator === 'boolean') out.moderator = src.moderator;
+  if (typeof src.caucus === 'boolean') out.caucus = src.caucus;
   return out;
 }
 

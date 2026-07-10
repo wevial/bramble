@@ -6,7 +6,13 @@ import type { RepoContext } from '../prompts/scout.js';
 import { checkTermination, type EndReason } from './termination.js';
 export type { EndReason } from './termination.js';
 
-export type Phase = 'scout' | 'interview' | 'criteria' | 'debate' | 'done';
+export type Phase =
+  | 'scout'
+  | 'interview'
+  | 'criteria'
+  | 'caucus'
+  | 'debate'
+  | 'done';
 
 export type Speaker = PersonaId | 'user';
 
@@ -33,6 +39,21 @@ export type CriteriaTurn = {
    * Order is the agent's choice; the user owns final approval.
    */
   proposed: string[];
+  timestamp: string;
+};
+
+export type CaucusTurn = {
+  speaker: PersonaId;
+  /** The persona's reasoning, shown in the conversation feed. */
+  commentary: string;
+  /**
+   * For proposal turns: the persona's independent opening position, drafted
+   * WITHOUT seeing the other proposals. For the synthesis turn: the unified
+   * recommendation (consensus + explicitly flagged disagreements).
+   */
+  proposal: string;
+  /** True on the closing synthesis turn that merges all proposals. */
+  synthesis?: boolean;
   timestamp: string;
 };
 
@@ -105,6 +126,26 @@ export type State = {
    */
   criteriaStepEnabled?: boolean;
   /**
+   * Whether the private-caucus stage is enabled. When true, the transition
+   * into 'debate' (from interview or criteria) routes through a 'caucus'
+   * phase first: every active persona drafts an independent opening
+   * position without seeing the others', then one primary synthesizes a
+   * unified starting point. Off by default — public debate starts cold as
+   * before. Set at session start; not changed afterwards.
+   */
+  caucusEnabled?: boolean;
+  /**
+   * Per-turn caucus log: one independent proposal per active persona,
+   * closed by a synthesis turn. Empty unless caucusEnabled.
+   */
+  caucusTurns: CaucusTurn[];
+  /**
+   * The synthesis turn's unified recommendation. Set when the caucus
+   * closes; injected into debate prompts as the agreed starting position
+   * so round 1 drafts from consensus instead of cold.
+   */
+  caucusSummary?: string;
+  /**
    * Whether the scout phase ran for this session. When true, state.phase
    * starts as 'scout' and the runner does an initial repo probe before
    * the interview begins. When undefined/false, phase starts at 'interview'
@@ -162,6 +203,7 @@ export function initialState(
     userAnswers: [],
     criteriaTurns: [],
     criteria: [],
+    caucusTurns: [],
     readyAgents: [],
     debate: [],
     spec: '',
@@ -180,6 +222,18 @@ export type Action =
   | { type: 'userDone' }
   | { type: 'criteriaTurn'; turn: Omit<CriteriaTurn, 'timestamp'>; timestamp: string }
   | { type: 'criteriaApproved'; criteria: string[] }
+  | {
+      type: 'caucusTurn';
+      turn: Omit<CaucusTurn, 'timestamp' | 'synthesis'>;
+      timestamp: string;
+    }
+  | {
+      type: 'caucusSynthesis';
+      speaker: PersonaId;
+      commentary: string;
+      summary: string;
+      timestamp: string;
+    }
   | {
       type: 'debateTurn';
       speaker: PersonaId;
@@ -226,12 +280,13 @@ export function reducer(state: State, action: Action): State {
         interview,
         readyAgents,
         // Sessions that enabled the success-criteria step route through the
-        // 'criteria' phase first. Sessions without it (off-by-default for
-        // legacy callers / tests) go straight to debate as before.
+        // 'criteria' phase first; caucus (when enabled) slots in after
+        // criteria / before debate. Sessions with neither go straight to
+        // debate as before.
         phase: allReady
           ? state.criteriaStepEnabled
             ? 'criteria'
-            : 'debate'
+            : postCriteriaPhase(state)
           : 'interview',
       };
     }
@@ -256,21 +311,26 @@ export function reducer(state: State, action: Action): State {
     }
 
     case 'userDone':
-      // /done from interview jumps straight past criteria into debate
-      // (treated as "skip the rest of clarification AND the criteria step").
+      // /done from interview jumps straight past criteria (treated as
+      // "skip the rest of clarification AND the criteria step"). The
+      // caucus, when enabled, still runs — it needs no user input.
       if (state.phase === 'interview') {
-        return { ...state, phase: 'debate' };
+        return { ...state, phase: postCriteriaPhase(state) };
       }
       // /done from criteria locks in whatever the latest agent proposed
-      // (or an empty list if nothing has been proposed yet) and advances
-      // to debate.
+      // (or an empty list if nothing has been proposed yet) and advances.
       if (state.phase === 'criteria') {
         const last = state.criteriaTurns[state.criteriaTurns.length - 1];
         return {
           ...state,
-          phase: 'debate',
+          phase: postCriteriaPhase(state),
           criteria: last?.proposed ?? [],
         };
+      }
+      // /done from caucus skips the rest of the private convergence and
+      // opens the public debate with whatever summary exists (often none).
+      if (state.phase === 'caucus') {
+        return { ...state, phase: 'debate' };
       }
       if (state.awaitingSignoff) {
         return {
@@ -299,8 +359,39 @@ export function reducer(state: State, action: Action): State {
       if (state.phase !== 'criteria') return state;
       return {
         ...state,
-        phase: 'debate',
+        phase: postCriteriaPhase(state),
         criteria: action.criteria,
+      };
+    }
+
+    case 'caucusTurn': {
+      if (state.phase !== 'caucus') return state;
+      const turn: CaucusTurn = { ...action.turn, timestamp: action.timestamp };
+      return {
+        ...state,
+        speaker: 'idle',
+        caucusTurns: [...(state.caucusTurns ?? []), turn],
+      };
+    }
+
+    case 'caucusSynthesis': {
+      // Closes the caucus: record the synthesis as a turn (so the feed and
+      // transcript keep one ordered log) and open the public debate with
+      // the unified summary pinned into state.
+      if (state.phase !== 'caucus') return state;
+      const turn: CaucusTurn = {
+        speaker: action.speaker,
+        commentary: action.commentary,
+        proposal: action.summary,
+        synthesis: true,
+        timestamp: action.timestamp,
+      };
+      return {
+        ...state,
+        speaker: 'idle',
+        caucusTurns: [...(state.caucusTurns ?? []), turn],
+        caucusSummary: action.summary,
+        phase: 'debate',
       };
     }
 
@@ -428,6 +519,11 @@ function setReady(
   if (ready && !has) return [...current, speaker];
   if (!ready && has) return current.filter(a => a !== speaker);
   return current;
+}
+
+/** Where the flow lands after criteria (or an interview that skips it). */
+function postCriteriaPhase(state: State): Phase {
+  return state.caucusEnabled ? 'caucus' : 'debate';
 }
 
 function primariesOf(ids: PersonaId[]): PersonaId[] {

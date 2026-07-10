@@ -62,6 +62,9 @@ describe('SetupScreen', () => {
     expect(frame()).toContain('▸ Moderator');
     input.pressTab();
     await update();
+    expect(frame()).toContain('▸ Caucus');
+    input.pressTab();
+    await update();
     expect(frame()).toMatch(/Start/);
     // Already on Start — tab shouldn't wrap.
     input.pressTab();
@@ -108,6 +111,7 @@ describe('SetupScreen', () => {
     input.pressTab(); // → models
     input.pressTab(); // → specialists
     input.pressTab(); // → moderator
+    input.pressTab(); // → caucus
     input.pressTab(); // → start
     input.pressEnter();
     await update();
@@ -118,6 +122,7 @@ describe('SetupScreen', () => {
       models: EMPTY,
       specialists: [],
       moderator: false,
+      caucus: false,
     });
     unmount();
   });
@@ -128,6 +133,7 @@ describe('SetupScreen', () => {
     input.pressTab(); // models
     input.pressTab(); // specialists
     input.pressTab(); // moderator
+    input.pressTab(); // caucus
     input.pressTab(); // start
     input.pressEnter();
     await update();
@@ -200,6 +206,7 @@ describe('SetupScreen', () => {
     // Tab to Start and submit.
     input.pressTab(); // → specialists
     input.pressTab(); // → moderator
+    input.pressTab(); // → caucus
     input.pressTab(); // → start
     input.pressEnter();
     await update();
@@ -224,6 +231,7 @@ describe('SetupScreen', () => {
     input.pressEnter(); // confirm custom id
     input.pressTab(); // → specialists
     input.pressTab(); // → moderator
+    input.pressTab(); // → caucus
     input.pressTab(); // → start
     input.pressEnter(); // launch
     await update();

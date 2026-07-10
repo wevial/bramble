@@ -53,6 +53,9 @@ export function flowStep(state: State): FlowStep {
   if (state.phase === 'scout') return 1;
   if (state.phase === 'interview') return 2;
   if (state.phase === 'criteria') return 3;
+  // Caucus collapses onto Draft Spec (4): agents are drafting their opening
+  // positions; the public refine loop hasn't started yet.
+  if (state.phase === 'caucus') return 4;
   // debate phase
   const anyLgtm =
     state.lgtmThisRound.length > 0 ||

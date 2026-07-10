@@ -70,6 +70,25 @@ export function generateCheckpoint(state: State, personas: Persona[]): string {
     );
   }
 
+  // ── Caucus ─────────────────────────────────────────────────────────
+  if (state.caucusSummary || (state.caucusTurns ?? []).length > 0) {
+    lines.push('## Caucus', '');
+    const proposals = (state.caucusTurns ?? []).filter(t => !t.synthesis);
+    if (proposals.length > 0) {
+      lines.push(
+        `${proposals.length} independent position${proposals.length === 1 ? '' : 's'} drafted privately:`,
+        '',
+        ...proposals.map(
+          t => `- **${label(t.speaker)}:** ${excerpt(t.commentary || t.proposal, 160)}`,
+        ),
+        '',
+      );
+    }
+    if (state.caucusSummary) {
+      lines.push('Unified starting position:', '', state.caucusSummary, '');
+    }
+  }
+
   // ── Decision journey ───────────────────────────────────────────────
   if (state.debate.length > 0) {
     lines.push('## Decision journey', '');
