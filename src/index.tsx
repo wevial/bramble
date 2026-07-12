@@ -49,7 +49,7 @@ if (argv.includes('--version') || argv.includes('-v')) {
 }
 
 let maxRounds = 8;
-let real = false;
+let real = true;
 let claudeModel: string | undefined;
 let claudeEffort: string | undefined;
 let codexModel: string | undefined;
@@ -76,7 +76,10 @@ for (let i = 0; i < argv.length; i++) {
     const n = Number(argv[i + 1]);
     if (Number.isInteger(n) && n >= 1) maxRounds = n;
     i++;
+  } else if (a === '--mock') {
+    real = false;
   } else if (a === '--real') {
+    // Real is the default since v0.2; kept as a no-op for old scripts.
     real = true;
   } else if (a === '--caucus') {
     caucusFlag = true;
@@ -346,7 +349,7 @@ if (real) {
   if (!binaryExists('codex')) missing.push('codex');
   if (missing.length > 0) {
     console.error(
-      `bramble --real needs these CLIs on PATH: ${missing.join(', ')}`,
+      `bramble needs these CLIs on PATH: ${missing.join(', ')} (or pass --mock to run with fake agents)`,
     );
     process.exit(1);
   }
@@ -420,7 +423,7 @@ if (real) {
   const fCodex = new FakeAgent('codex');
   // Demo fixtures for an "auth system" goal — interview goes ~4 questions
   // per agent before signaling ready, then a multi-round debate evolves the
-  // spec rather than rubber-stamping. Real runs use --real with live agents.
+  // spec rather than rubber-stamping. Real runs (the default) use live agents.
   fClaude.setResponses([
     {
       kind: 'interview',

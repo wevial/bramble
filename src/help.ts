@@ -17,8 +17,10 @@ Debate:
                                         (sticky — saved with your setup)
 
 Agents:
-  --real                                use real claude + codex CLIs (default: fakes)
-  --test                                --real pinned to cheap/fast models
+  --mock                                scripted fake agents — demo/dev, no
+                                        CLIs needed (real claude + codex is
+                                        the default)
+  --test                                real agents pinned to cheap/fast models
   --claude-model <id>                   e.g. claude-fable-5
   --claude-effort <low|medium|high|xhigh|max>
                                         claude reasoning effort

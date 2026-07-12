@@ -58,30 +58,30 @@ sticky across sessions (`~/.bramble/setup.json`).
 ## Prerequisites
 
 Both CLIs must be installed on your PATH and logged in to their respective
-accounts before you run `bramble --real`:
+accounts:
 
 - **`claude`** — install via [claude.ai/code](https://claude.ai/code), then
   `claude /login`. Requires an Anthropic account.
 - **`codex`** — install via [openai.com/codex](https://openai.com/codex),
   then `codex login`. Requires an OpenAI account.
 
-Bramble will fail fast with an install hint if either binary is missing when
-`--real` is set.
+Bramble fails fast with an install hint if either binary is missing. To try
+the TUI without either CLI, pass `--mock` for scripted fake agents.
 
 ## Quickstart
 
 ```sh
 bun install
 bun link                                      # puts `bramble` on your PATH
-bramble "design an auth system"               # fake agents (no CLIs needed)
-bramble --real "design an auth system"        # real claude + codex
+bramble "design an auth system"               # real claude + codex (default)
+bramble --mock "design an auth system"        # scripted fakes, no CLIs needed
 ```
 
 Without linking, substitute `bun run dev --` for `bramble`. Run without a
 goal to type it into the prompt-entry screen:
 
 ```sh
-bramble --real
+bramble
 ```
 
 ## Flags
@@ -98,8 +98,9 @@ Debate:
                                      before the public debate (default off)
 
 Agents:
---real                               use real claude + codex CLIs
---test                               --real with cheap/fast models pinned
+--mock                               scripted fake agents — demo/dev, no
+                                     CLIs needed (real is the default)
+--test                               real agents pinned to cheap/fast models
                                      (low effort on both sides)
 --claude-model <id>                  e.g. claude-fable-5
 --claude-effort <low|medium|high|xhigh|max>

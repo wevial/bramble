@@ -14,7 +14,7 @@ describe('helpText', () => {
       '--rounds',
       '--auto',
       '--collab',
-      '--real',
+      '--mock',
       '--test',
       '--claude-model',
       '--claude-effort',
