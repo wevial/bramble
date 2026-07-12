@@ -85,6 +85,7 @@ for (let i = 0; i < argv.length; i++) {
   } else if (a === '--test') {
     real = true;
     claudeModel = claudeModel ?? CHEAP_CLAUDE_MODEL;
+    claudeEffort = claudeEffort ?? 'low';
     codexModel = codexModel ?? CHEAP_CODEX_MODEL;
     codexEffort = codexEffort ?? 'low';
   } else if (a === '--claude-model' && argv[i + 1]) {
