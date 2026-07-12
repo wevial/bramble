@@ -825,18 +825,47 @@ async function loadResumePick(pick: string): Promise<ResumeMount> {
 // summary prints the right dir after an in-TUI resume pick.
 let activeSession = { paths, name };
 
+/**
+ * Agents for a resumed session. Setup submit rebuilds agents via buildAgents,
+ * but resume skips setup — a session that ran specialists would hit the
+ * runner's "no agent registered" throw on the specialist's first turn.
+ * Rebuild the full persona→agent map from the restored state instead.
+ */
+function agentsForResume(st?: State): Record<string, Agent> {
+  const specialistIds = (st?.activePersonas ?? []).filter(
+    id => id !== 'claude' && id !== 'codex',
+  );
+  if (specialistIds.length === 0) return { claude, codex };
+  const personas = [
+    CLAUDE_PERSONA,
+    CODEX_PERSONA,
+    ...SPECIALIST_PERSONAS.filter(p => specialistIds.includes(p.id)),
+  ];
+  const build = buildRealAgents ?? buildFakeAgents!;
+  return build(
+    {
+      claudeModel: claudeModel ?? null,
+      claudeEffort: claudeEffort ?? null,
+      codexModel: codexModel ?? null,
+      codexEffort: codexEffort ?? null,
+    },
+    personas,
+  );
+}
+
 function mount(resume?: ResumeMount): void {
   if (resume) activeSession = { paths: resume.paths, name: resume.name };
   const mPaths = resume?.paths ?? paths;
+  const mState = resume ? resume.state : resumedState ?? undefined;
   root.render(
     <App
       key={activeSession.name}
-      agents={{ claude, codex }}
+      agents={agentsForResume(mState)}
       prompt={resume ? resume.prompt : prompt || resumedPrompt}
       sessionName={activeSession.name}
       config={{ maxRounds }}
       mode={mode}
-      initialState={resume ? resume.state : resumedState ?? undefined}
+      initialState={mState}
       promptSidecarPath={mPaths.promptPath}
       transcriptPath={mPaths.transcriptPath}
       specPath={mPaths.specPath}
@@ -863,8 +892,15 @@ function mount(resume?: ResumeMount): void {
           : pick => {
               loadResumePick(pick)
                 .then(r => mount(r))
-                .catch(() => {
-                  // Unreadable session — stay on the setup screen.
+                .catch((err: unknown) => {
+                  // A session we listed but can't load (corrupt transcript,
+                  // permissions) — same failure CLI --resume hits. Die loudly
+                  // rather than leaving Enter a silent no-op.
+                  shutdown();
+                  console.error(
+                    `failed to resume ${pick}: ${err instanceof Error ? err.message : String(err)}`,
+                  );
+                  process.exit(1);
                 });
             }
       }
