@@ -322,6 +322,9 @@ export function App(props: AppProps) {
       });
     return () => {
       autoAbortRef.current.abort();
+      // Fresh controller so a hypothetical later run of this effect doesn't
+      // inherit an already-aborted signal and silently stop auto-answering.
+      autoAbortRef.current = new AbortController();
       props.simulatedUser?.dispose?.();
       handle.abort();
     };
