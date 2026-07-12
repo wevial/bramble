@@ -2,6 +2,10 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { DebateMode } from '../orchestrator/runner.js';
+import {
+  isInterviewIntensity,
+  type InterviewIntensity,
+} from '../orchestrator/state.js';
 
 export type SavedSetup = {
   mode?: DebateMode;
@@ -15,6 +19,8 @@ export type SavedSetup = {
   moderator?: boolean;
   /** Whether the private caucus stage was enabled last session. */
   caucus?: boolean;
+  /** Interview grilling level chosen last session. */
+  interview?: InterviewIntensity;
 };
 
 /** Default location: ~/.bramble/setup.json — user-global, not per-project. */
@@ -50,6 +56,7 @@ export function loadSavedSetup(path: string): SavedSetup | null {
   }
   if (typeof src.moderator === 'boolean') out.moderator = src.moderator;
   if (typeof src.caucus === 'boolean') out.caucus = src.caucus;
+  if (isInterviewIntensity(src.interview)) out.interview = src.interview;
   return out;
 }
 

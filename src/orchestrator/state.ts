@@ -16,6 +16,28 @@ export type Phase =
 
 export type Speaker = PersonaId | 'user';
 
+/**
+ * How much the interview phase grills the user. 'none' skips it, 'auto'
+ * lets a cheap LLM answer in the user's place, low/medium/high tune the
+ * question budget and probing depth. 'medium' is the default.
+ */
+export type InterviewIntensity = 'none' | 'auto' | 'low' | 'medium' | 'high';
+
+export const INTERVIEW_INTENSITIES: InterviewIntensity[] = [
+  'none',
+  'auto',
+  'low',
+  'medium',
+  'high',
+];
+
+export function isInterviewIntensity(v: unknown): v is InterviewIntensity {
+  return (
+    typeof v === 'string' &&
+    (INTERVIEW_INTENSITIES as string[]).includes(v)
+  );
+}
+
 export type InterviewTurn = {
   speaker: PersonaId;
   commentary: string;
@@ -125,6 +147,14 @@ export type State = {
    * doesn't opt in). Set at session start; not changed afterwards.
    */
   criteriaStepEnabled?: boolean;
+  /**
+   * How hard the agents grill the user before the debate. 'none' skips the
+   * interview phase entirely; 'auto' runs it but a cheap LLM answers in the
+   * user's place; 'low'/'high' tune the question budget and probing depth in
+   * the interview prompts. Absent = 'medium' (today's behavior). Set at
+   * session start; not changed afterwards.
+   */
+  interviewIntensity?: InterviewIntensity;
   /**
    * Whether the private-caucus stage is enabled. When true, the transition
    * into 'debate' (from interview or criteria) routes through a 'caucus'
@@ -253,13 +283,14 @@ export function reducer(state: State, action: Action): State {
 
     case 'scoutComplete': {
       // Scout is the entry phase when scoutEnabled is set; populating
-      // repoContext advances the session into the interview.
+      // repoContext advances the session into the interview (or straight
+      // past it when interview intensity is 'none').
       if (state.phase !== 'scout') return state;
       return {
         ...state,
         speaker: 'idle',
         repoContext: action.context,
-        phase: 'interview',
+        phase: postScoutPhase(state),
       };
     }
 
@@ -524,6 +555,17 @@ function setReady(
 /** Where the flow lands after criteria (or an interview that skips it). */
 function postCriteriaPhase(state: State): Phase {
   return state.caucusEnabled ? 'caucus' : 'debate';
+}
+
+/**
+ * Where the session goes once scout (or session start) hands off. Intensity
+ * 'none' skips the interview entirely; everything else enters it.
+ */
+export function postScoutPhase(state: State): Phase {
+  if (state.interviewIntensity === 'none') {
+    return state.criteriaStepEnabled ? 'criteria' : postCriteriaPhase(state);
+  }
+  return 'interview';
 }
 
 function primariesOf(ids: PersonaId[]): PersonaId[] {

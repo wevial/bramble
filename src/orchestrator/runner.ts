@@ -18,7 +18,14 @@ import {
 } from '../prompts/caucus.js';
 import { debatePrompt, debateDeltaPrompt } from '../prompts/debate.js';
 import { probeRepoContext } from '../prompts/scout.js';
-import { reducer, type State, type DebateConfig, initialState } from './state.js';
+import {
+  reducer,
+  type State,
+  type DebateConfig,
+  type InterviewIntensity,
+  initialState,
+  postScoutPhase,
+} from './state.js';
 import { nextSpeaker } from './scheduler.js';
 import { appendEntry, type SessionModels } from '../docs/transcript.js';
 import type { Moderator } from '../moderator/moderator.js';
@@ -80,6 +87,13 @@ export type RunOptions = {
    * informational — the runner never reads it back.
    */
   models?: SessionModels;
+  /**
+   * Interview grilling level. 'none' skips the interview phase; 'auto' is
+   * handled by the host (a simulated user answers — the runner just runs a
+   * normal interview); low/medium/high tune the interview prompts. Absent =
+   * 'medium'.
+   */
+  interviewIntensity?: InterviewIntensity;
   prompt: string;
   /**
    * Override the default debate config (rounds cap, decay threshold/window).
@@ -136,8 +150,14 @@ export function startDebate(opts: RunOptions): RunHandle {
   if (!opts.initialState && opts.caucusStep) {
     state = { ...state, caucusEnabled: true };
   }
+  if (!opts.initialState && opts.interviewIntensity) {
+    state = { ...state, interviewIntensity: opts.interviewIntensity };
+  }
   if (!opts.initialState && opts.scoutStep) {
     state = { ...state, scoutEnabled: true, phase: 'scout' };
+  } else if (!opts.initialState && state.interviewIntensity === 'none') {
+    // No scout to hand off from — enter the post-interview pipeline directly.
+    state = { ...state, phase: postScoutPhase(state) };
   }
   const mode: DebateMode = opts.mode ?? 'auto';
   const outer = new AbortController();
@@ -199,6 +219,7 @@ export function startDebate(opts: RunOptions): RunHandle {
       // still routes through it (JSON.stringify drops undefined keys).
       criteriaStep: state.criteriaStepEnabled || undefined,
       caucusStep: state.caucusEnabled || undefined,
+      interviewIntensity: state.interviewIntensity,
       models: opts.models,
       timestamp: new Date().toISOString(),
     });

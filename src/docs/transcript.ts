@@ -7,6 +7,7 @@ import type {
   DebateConfig,
   DebateTurn,
   EndReason,
+  InterviewIntensity,
   InterviewTurn,
   Phase,
 } from '../orchestrator/state.js';
@@ -43,6 +44,8 @@ export type TranscriptEntry =
        */
       criteriaStep?: boolean;
       caucusStep?: boolean;
+      /** Interview grilling level; absent in older transcripts (= medium). */
+      interviewIntensity?: InterviewIntensity;
       /** Model provenance; absent in older transcripts and fake runs. */
       models?: SessionModels;
       timestamp: string;

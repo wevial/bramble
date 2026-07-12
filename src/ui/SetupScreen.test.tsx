@@ -65,8 +65,11 @@ describe('SetupScreen', () => {
     expect(frame()).toContain('▸ Caucus');
     input.pressTab();
     await update();
+    expect(frame()).toContain('▸ Interview');
+    input.pressTab();
+    await update();
     expect(frame()).toMatch(/Start/);
-    // Already on Start — tab shouldn't wrap.
+    // Already on Start (no sessions → no resume row) — tab shouldn't wrap.
     input.pressTab();
     await update();
     expect(frame()).toMatch(/Start/);
@@ -112,6 +115,7 @@ describe('SetupScreen', () => {
     input.pressTab(); // → specialists
     input.pressTab(); // → moderator
     input.pressTab(); // → caucus
+    input.pressTab(); // → interview
     input.pressTab(); // → start
     input.pressEnter();
     await update();
@@ -123,6 +127,7 @@ describe('SetupScreen', () => {
       specialists: [],
       moderator: false,
       caucus: false,
+      interview: 'medium',
     });
     unmount();
   });
@@ -134,6 +139,7 @@ describe('SetupScreen', () => {
     input.pressTab(); // specialists
     input.pressTab(); // moderator
     input.pressTab(); // caucus
+    input.pressTab(); // interview
     input.pressTab(); // start
     input.pressEnter();
     await update();
@@ -207,12 +213,41 @@ describe('SetupScreen', () => {
     input.pressTab(); // → specialists
     input.pressTab(); // → moderator
     input.pressTab(); // → caucus
+    input.pressTab(); // → interview
     input.pressTab(); // → start
     input.pressEnter();
     await update();
     expect(submissions).toHaveLength(1);
     expect(submissions[0]!.models.claudeModel).toBe('claude-fable-5');
     expect(submissions[0]!.models.claudeEffort).toBe('low');
+    unmount();
+  });
+
+  it('cycles interview intensity with ←/→ and submits the chosen level', async () => {
+    const { input, frame, submissions, update, unmount } = await mount();
+    await input.typeText('design x');
+    input.pressTab(); // mode
+    input.pressTab(); // models
+    input.pressTab(); // specialists
+    input.pressTab(); // moderator
+    input.pressTab(); // caucus
+    input.pressTab(); // interview
+    await update();
+    expect(frame()).toContain('▸ Interview');
+    expect(frame()).toContain('[● medium]');
+    input.pressArrow('right'); // medium → high
+    await update();
+    expect(frame()).toContain('[● high]');
+    input.pressArrow('right'); // high → wraps to none
+    await update();
+    expect(frame()).toContain('[● none]');
+    input.pressArrow('left'); // back to high
+    await update();
+    input.pressTab(); // start
+    input.pressEnter();
+    await update();
+    expect(submissions).toHaveLength(1);
+    expect(submissions[0]!.interview).toBe('high');
     unmount();
   });
 
@@ -250,7 +285,7 @@ describe('SetupScreen', () => {
     expect(frame()).toContain('cosmic-ferret');
     expect(frame()).toContain('design tic-tac-toe');
     // Tab past prompt→mode→models→specialists→moderator→caucus→start→resume.
-    for (let i = 0; i < 7; i++) input.pressTab();
+    for (let i = 0; i < 8; i++) input.pressTab();
     await update();
     expect(frame()).toContain('▸ Resume a session');
     input.pressArrow('down'); // select keen-orca
@@ -278,6 +313,7 @@ describe('SetupScreen', () => {
     input.pressTab(); // → specialists
     input.pressTab(); // → moderator
     input.pressTab(); // → caucus
+    input.pressTab(); // → interview
     input.pressTab(); // → start
     input.pressEnter(); // launch
     await update();

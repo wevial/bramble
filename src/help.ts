@@ -20,6 +20,13 @@ Debate:
                                         default deterministic rotation; also
                                         toggleable on the setup screen
                                         (sticky — saved with your setup)
+  --interview <none|auto|low|medium|high>
+                                        how hard the agents grill you before
+                                        drafting (default medium). none skips
+                                        the interview; auto has a cheap LLM
+                                        answer in your place while you watch;
+                                        low/high tune the question depth.
+                                        Sticky — saved with your setup
 
 Agents:
   --mock                                scripted fake agents — demo/dev, no
