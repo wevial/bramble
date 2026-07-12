@@ -89,7 +89,6 @@ export function App(props: AppProps) {
     showSetup ? 'setup' : 'running',
   );
   const [activeAgents, setActiveAgents] = useState(props.agents);
-  const [activeModerator, setActiveModerator] = useState<Moderator | null>(null);
   const [activePersonas, setActivePersonas] = useState<Persona[]>(() => {
     const ids = props.initialState?.activePersonas ?? ['claude', 'codex'];
     const known = new Map<PersonaId, Persona>(
@@ -97,6 +96,15 @@ export function App(props: AppProps) {
     );
     return ids.map(id => known.get(id) ?? CLAUDE_PERSONA);
   });
+  // When the setup screen is skipped (--resume, or a prompt-entry skip), the
+  // submit handler below never runs, so honor the moderator preference here —
+  // otherwise --resume --moderator would silently fall back to rotation.
+  const [activeModerator, setActiveModerator] = useState<Moderator | null>(
+    () =>
+      !showSetup && props.initialModerator && props.buildModerator
+        ? props.buildModerator(activePersonas)
+        : null,
+  );
   const [prompt, setPrompt] = useState(initialPrompt);
   const [state, setState] = useState<State | null>(props.initialState ?? null);
   const [status, setStatus] = useState('starting…');
