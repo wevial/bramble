@@ -77,6 +77,9 @@ goal to type it into the prompt-entry screen:
 bramble
 ```
 
+The setup screen also lists your recent sessions — arrow onto one and press
+enter to resume it (same as `bramble --resume <name>`).
+
 ## Flags
 
 ```

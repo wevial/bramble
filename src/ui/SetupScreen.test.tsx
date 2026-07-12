@@ -216,6 +216,52 @@ describe('SetupScreen', () => {
     unmount();
   });
 
+  it('hides the resume section when no sessions are passed', async () => {
+    const { frame, unmount } = await mount();
+    expect(frame()).not.toContain('Resume a session');
+    unmount();
+  });
+
+  it('lists recent sessions and resumes the selected one on Enter', async () => {
+    const resumed: string[] = [];
+    const sessions = [
+      {
+        name: 'cosmic-ferret',
+        turns: 16,
+        goal: 'design an auth system',
+        accepted: true,
+        created: new Date('2026-07-04T10:00:00Z'),
+        updated: new Date('2026-07-04T23:10:12Z'),
+      },
+      {
+        name: 'keen-orca',
+        turns: 27,
+        goal: 'design tic-tac-toe',
+        accepted: false,
+        created: new Date('2026-05-15T10:00:00Z'),
+        updated: new Date('2026-05-15T18:43:33Z'),
+      },
+    ];
+    const { input, frame, submissions, update, unmount } = await mount({
+      sessions,
+      onResume: name => resumed.push(name),
+    });
+    expect(frame()).toContain('Resume a session');
+    expect(frame()).toContain('cosmic-ferret');
+    expect(frame()).toContain('design tic-tac-toe');
+    // Tab past prompt→mode→models→specialists→moderator→caucus→start→resume.
+    for (let i = 0; i < 7; i++) input.pressTab();
+    await update();
+    expect(frame()).toContain('▸ Resume a session');
+    input.pressArrow('down'); // select keen-orca
+    input.pressEnter();
+    await update();
+    expect(resumed).toEqual(['keen-orca']);
+    // Resuming must not require (or trigger) a normal submit.
+    expect(submissions).toHaveLength(0);
+    unmount();
+  });
+
   it("opens custom-id editing with 'e' and saves on Enter", async () => {
     const { input, submissions, update, unmount } = await mount();
     await input.typeText('design x');
