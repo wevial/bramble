@@ -9,6 +9,10 @@ import {
   type RowState,
 } from './model-rows.js';
 import type { DebateMode } from '../orchestrator/runner.js';
+import {
+  INTERVIEW_INTENSITIES,
+  type InterviewIntensity,
+} from '../orchestrator/state.js';
 import type { SessionRow } from '../sessions/list.js';
 import {
   SPECIALIST_PERSONAS,
@@ -31,6 +35,7 @@ export type SetupSubmit = {
   specialists: PersonaId[];
   moderator: boolean;
   caucus: boolean;
+  interview: InterviewIntensity;
 };
 
 export type SetupScreenProps = {
@@ -41,6 +46,7 @@ export type SetupScreenProps = {
   initialSpecialists?: PersonaId[];
   initialModerator?: boolean;
   initialCaucus?: boolean;
+  initialInterview?: InterviewIntensity;
   onSubmit(result: SetupSubmit): void;
   onQuit(): void;
   /** Recent sessions offered for resume; section hidden when empty. */
@@ -48,8 +54,8 @@ export type SetupScreenProps = {
   onResume?(name: string): void;
 };
 
-// prompt, mode, models, specialists, moderator, caucus, start, resume
-type FieldIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+// prompt, mode, models, specialists, moderator, caucus, interview, start, resume
+type FieldIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
 const EMPTY_MODELS: ModelConfig = {
   claudeModel: null,
@@ -72,6 +78,7 @@ export function SetupScreen({
   initialSpecialists,
   initialModerator,
   initialCaucus,
+  initialInterview,
   onSubmit,
   onQuit,
   sessions,
@@ -95,10 +102,13 @@ export function SetupScreen({
   const [specialistRowFocus, setSpecialistRowFocus] = useState(0);
   const [moderator, setModerator] = useState<boolean>(initialModerator ?? false);
   const [caucus, setCaucus] = useState<boolean>(initialCaucus ?? false);
+  const [interview, setInterview] = useState<InterviewIntensity>(
+    initialInterview ?? 'medium',
+  );
   const [resumeRowFocus, setResumeRowFocus] = useState(0);
 
   const resumable = onResume && sessions && sessions.length > 0 ? sessions : [];
-  const maxFocus: FieldIndex = resumable.length > 0 ? 7 : 6;
+  const maxFocus: FieldIndex = resumable.length > 0 ? 8 : 7;
 
   const advance = () =>
     setFocus(f => (f < maxFocus ? ((f + 1) as FieldIndex) : f));
@@ -120,6 +130,7 @@ export function SetupScreen({
       ),
       moderator,
       caucus,
+      interview,
     });
   };
 
@@ -144,10 +155,10 @@ export function SetupScreen({
       }
       // Enter on prompt is handled inside the multiline InputBox.
       if ((key.name === 'return' || key.name === 'enter') && focus !== 0) {
-        if (focus === 7) {
+        if (focus === 8) {
           const picked = resumable[resumeRowFocus];
           if (picked) onResume?.(picked.name);
-        } else if (focus === 6) {
+        } else if (focus === 7) {
           tryStart();
         } else {
           // Enter on specialists (3), moderator (4), and caucus (5)
@@ -217,7 +228,18 @@ export function SetupScreen({
         }
         return;
       }
-      if (focus === 7) {
+      if (focus === 6) {
+        if (key.name === 'left' || key.name === 'right') {
+          const delta = key.name === 'left' ? -1 : 1;
+          setInterview(cur => {
+            const i = INTERVIEW_INTENSITIES.indexOf(cur);
+            const n = INTERVIEW_INTENSITIES.length;
+            return INTERVIEW_INTENSITIES[(i + delta + n) % n]!;
+          });
+        }
+        return;
+      }
+      if (focus === 8) {
         if (key.name === 'up') {
           setResumeRowFocus(i => (i - 1 + resumable.length) % resumable.length);
         } else if (key.name === 'down') {
@@ -436,10 +458,36 @@ export function SetupScreen({
         </box>
         <text> </text>
 
+        <box>
+          <text fg={focusColor(6)} attributes={(focus === 6) ? BOLD : 0}>
+            {focusMarker(6)}Interview
+          </text>
+        </box>
+        <text><span attributes={DIM}>   how hard the agents grill you first — none skips it, auto answers for you</span></text>
+        <box flexDirection="row">
+          <text>
+            <span>   </span>
+            {INTERVIEW_INTENSITIES.map((level, i) => (
+              <span key={level}>
+                {i === 0 ? '' : '  '}
+                <IntensityOption
+                  label={level}
+                  selected={interview === level}
+                  focused={focus === 6}
+                />
+              </span>
+            ))}
+          </text>
+          {focus === 6 ? (
+            <text><span attributes={DIM}>    ←/→ to switch</span></text>
+          ) : null}
+        </box>
+        <text> </text>
+
         <box justifyContent="center">
           <text
-            fg={focus === 6 ? 'brightGreen' : undefined}
-            attributes={focus === 6 ? BOLD_REVERSE : 0}
+            fg={focus === 7 ? 'brightGreen' : undefined}
+            attributes={focus === 7 ? BOLD_REVERSE : 0}
           >
             {'  Start  '}
           </text>
@@ -448,15 +496,15 @@ export function SetupScreen({
         {resumable.length > 0 ? (
           <>
             <box>
-              <text fg={focusColor(7)} attributes={(focus === 7) ? BOLD : 0}>
-                {focusMarker(7)}Resume a session
+              <text fg={focusColor(8)} attributes={(focus === 8) ? BOLD : 0}>
+                {focusMarker(8)}Resume a session
               </text>
             </box>
-            {focus === 7 ? (
+            {focus === 8 ? (
               <text><span attributes={DIM}>   ↑↓ select · enter resumes</span></text>
             ) : null}
             {resumable.map((s, i) => {
-              const rowFocused = focus === 7 && resumeRowFocus === i;
+              const rowFocused = focus === 8 && resumeRowFocus === i;
               const goal = s.goal.length > 34 ? s.goal.slice(0, 31) + '…' : s.goal;
               return (
                 <box key={s.name} flexDirection="row">
@@ -499,6 +547,25 @@ export function relativeTime(d: Date, now: Date = new Date()): string {
 }
 
 function ModeOption({
+  label,
+  selected,
+  focused,
+}: {
+  label: string;
+  selected: boolean;
+  focused: boolean;
+}) {
+  if (selected) {
+    return (
+      <span fg={focused ? 'brightGreen' : 'green'} attributes={BOLD}>
+        [● {label}]
+      </span>
+    );
+  }
+  return <span attributes={DIM}>[  {label}]</span>;
+}
+
+function IntensityOption({
   label,
   selected,
   focused,

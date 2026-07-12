@@ -1,4 +1,4 @@
-import { initialState, reducer, type State } from './state.js';
+import { initialState, postScoutPhase, reducer, type State } from './state.js';
 import type { TranscriptEntry } from '../docs/transcript.js';
 
 /**
@@ -18,6 +18,16 @@ export function rehydrateState(entries: TranscriptEntry[]): State | null {
   // don't exist yet). Older transcripts lack the fields → unchanged.
   if (first.criteriaStep) state = { ...state, criteriaStepEnabled: true };
   if (first.caucusStep) state = { ...state, caucusEnabled: true };
+  if (first.interviewIntensity) {
+    state = { ...state, interviewIntensity: first.interviewIntensity };
+    // 'none' sessions never enter the interview — without this, a no-scout
+    // 'none' transcript would replay its criteria turns against phase
+    // 'interview' and the reducer would drop them. Scouted sessions get the
+    // same routing via scoutComplete.
+    if (first.interviewIntensity === 'none') {
+      state = { ...state, phase: postScoutPhase(state) };
+    }
+  }
   for (let i = 1; i < entries.length; i++) {
     const e = entries[i]!;
     state = applyEntry(state, e);

@@ -17,7 +17,12 @@ import { type OutputFormat, convertSpec } from '../docs/format.js';
 import { writeInterviewMd } from '../docs/interview.js';
 import { writeDebateLedger } from '../docs/debate.js';
 import { writeCheckpoint } from '../docs/checkpoint.js';
-import { type State, type DebateConfig } from '../orchestrator/state.js';
+import {
+  type State,
+  type DebateConfig,
+  type InterviewIntensity,
+} from '../orchestrator/state.js';
+import { answerQuestion } from '../orchestrator/autopilot.js';
 import type { SessionRow } from '../sessions/list.js';
 import { InputBox } from './InputBox.js';
 import { parseSlashCommand } from './commands.js';
@@ -38,6 +43,10 @@ import {
 
 const BOLD = createTextAttributes({ bold: true });
 const DIM = createTextAttributes({ dim: true });
+
+// 'auto' interview intensity stops answering after this many turns so a
+// question-happy agent pair can't burn LLM calls unattended forever.
+const AUTO_ANSWER_CAP = 10;
 
 export type AppProps = {
   agents: Record<PersonaId, Agent>;
@@ -77,6 +86,12 @@ export type AppProps = {
   initialSpecialists?: PersonaId[];
   initialModerator?: boolean;
   initialCaucus?: boolean;
+  initialInterview?: InterviewIntensity;
+  /**
+   * Cheap agent that answers interview questions when intensity is 'auto'.
+   * Unused (and never spawned — construction is lazy) at other levels.
+   */
+  simulatedUser?: Agent;
   setupStorePath?: string;
   /** Recent sessions shown on the setup screen's resume list. */
   sessions?: SessionRow[];
@@ -120,6 +135,21 @@ export function App(props: AppProps) {
   const [caucusEnabled, setCaucusEnabled] = useState<boolean>(
     props.initialCaucus ?? false,
   );
+  const [interviewIntensity, setInterviewIntensity] =
+    useState<InterviewIntensity>(props.initialInterview ?? 'medium');
+  // Interview turns already auto-answered (by index) when intensity is
+  // 'auto', so a repeated onState for the same turn doesn't double-answer.
+  // Seeded with every restored turn on resume: those were answered (or
+  // abandoned) in the prior run, and the very first onState fires with the
+  // restored state — answering its last turn again would double-answer.
+  const autoAnsweredRef = useRef(
+    new Set<number>((props.initialState?.interview ?? []).map((_, i) => i)),
+  );
+  const autoAbortRef = useRef(new AbortController());
+  // Live mirror of the latest runner state, for async auto-answer callbacks
+  // that must check the world hasn't moved on (phase change, manual answer)
+  // between firing the simulated user and its reply arriving.
+  const stateRef = useRef<State | null>(props.initialState ?? null);
   // Provenance for the transcript's session entry — which models back the
   // transports. Setup submit overwrites with the picker's choices.
   const [activeModels, setActiveModels] = useState<ModelConfig | null>(
@@ -169,6 +199,7 @@ export function App(props: AppProps) {
       criteriaStep: true,
       caucusStep: caucusEnabled,
       scoutStep: true,
+      interviewIntensity,
       models: activeModels ?? undefined,
       prompt,
       config: props.config,
@@ -187,7 +218,60 @@ export function App(props: AppProps) {
         }, 15_000);
       },
       onState: next => {
+        stateRef.current = next;
         setState(next);
+        // 'auto' intensity: a cheap simulated user answers interview
+        // questions in the user's place (same loop autopilot runs, but the
+        // user is watching and can interject or /done at any time). Uses
+        // handleRef because early onState fires happen synchronously inside
+        // startDebate, before `handle` is assigned — interview turns always
+        // arrive later, from agent streams.
+        if (
+          interviewIntensity === 'auto' &&
+          props.simulatedUser &&
+          next.phase === 'interview'
+        ) {
+          const idx = next.interview.length - 1;
+          const turn = idx >= 0 ? next.interview[idx] : undefined;
+          if (turn && !turn.ready && !autoAnsweredRef.current.has(idx)) {
+            autoAnsweredRef.current.add(idx);
+            if (autoAnsweredRef.current.size > AUTO_ANSWER_CAP) {
+              setNotice(
+                `auto-interview answered ${AUTO_ANSWER_CAP} turns — take over, or /done to move on`,
+              );
+            } else if (!turn.question) {
+              handleRef.current?.interject('Please proceed with sensible defaults.');
+            } else {
+              // Snapshot the answer count: if it moved while the simulated
+              // user was thinking, the human answered first — drop ours so
+              // it can't land as a bogus answer to a later question (or, if
+              // /done advanced the phase, as a debate constraint).
+              const answersAtFire = next.userAnswers.length;
+              const stillWanted = () => {
+                const cur = stateRef.current;
+                return (
+                  !autoAbortRef.current.signal.aborted &&
+                  cur?.phase === 'interview' &&
+                  cur.userAnswers.length === answersAtFire
+                );
+              };
+              void answerQuestion(
+                props.simulatedUser,
+                next.prompt,
+                turn.question,
+                autoAbortRef.current.signal,
+              )
+                .then(a => {
+                  if (stillWanted()) handleRef.current?.interject(a);
+                })
+                .catch(() => {
+                  if (stillWanted()) {
+                    handleRef.current?.interject('Use sensible defaults and proceed.');
+                  }
+                });
+            }
+          }
+        }
         // Chain rewrites through the prior promise so two state updates can't
         // race and leave a stale older write as the final on-disk content.
         // Snapshot the values now so the writer always uses this state's view.
@@ -237,6 +321,11 @@ export function App(props: AppProps) {
         props.onDone?.();
       });
     return () => {
+      autoAbortRef.current.abort();
+      // Fresh controller so a hypothetical later run of this effect doesn't
+      // inherit an already-aborted signal and silently stop auto-answering.
+      autoAbortRef.current = new AbortController();
+      props.simulatedUser?.dispose?.();
       handle.abort();
     };
   }, [phase]);
@@ -304,12 +393,14 @@ export function App(props: AppProps) {
         initialSpecialists={props.initialSpecialists}
         initialModerator={props.initialModerator}
         initialCaucus={props.initialCaucus}
+        initialInterview={props.initialInterview}
         sessions={props.sessions}
         onResume={props.onResume}
-        onSubmit={({ prompt: p, mode: m, models, specialists, moderator, caucus }) => {
+        onSubmit={({ prompt: p, mode: m, models, specialists, moderator, caucus, interview }) => {
           setPrompt(p);
           setMode(m);
           setCaucusEnabled(caucus);
+          setInterviewIntensity(interview);
           setActiveModels(models);
           const chosenSpecialists = SPECIALIST_PERSONAS.filter(s =>
             specialists.includes(s.id),
@@ -339,6 +430,7 @@ export function App(props: AppProps) {
                 specialists,
                 moderator,
                 caucus,
+                interview,
               });
             } catch {
               /* best-effort */

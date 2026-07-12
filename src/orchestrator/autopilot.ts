@@ -2,7 +2,7 @@ import type { Agent } from '../agents/agent.js';
 import type { Persona, PersonaId } from '../personas/personas.js';
 import type { Moderator } from '../moderator/moderator.js';
 import { startDebate } from './runner.js';
-import type { State } from './state.js';
+import type { InterviewIntensity, State } from './state.js';
 import type { SessionModels } from '../docs/transcript.js';
 
 export type AutopilotOptions = {
@@ -27,6 +27,8 @@ export type AutopilotOptions = {
   scoutStep?: boolean;
   /** Model provenance stamped into the session transcript entry. */
   models?: SessionModels;
+  /** Interview grilling level; 'none' skips the interview phase. */
+  interviewIntensity?: InterviewIntensity;
   /** Progress sink; defaults to console.log. */
   log?: (line: string) => void;
 };
@@ -80,6 +82,7 @@ export async function runAutopilot(opts: AutopilotOptions): Promise<State> {
     caucusStep: opts.caucusStep ?? false,
     scoutStep: opts.scoutStep ?? true,
     models: opts.models,
+    interviewIntensity: opts.interviewIntensity,
     prompt: opts.prompt,
     config: opts.maxRounds != null ? { maxRounds: opts.maxRounds } : undefined,
     mode: 'auto',
@@ -193,8 +196,12 @@ export async function runAutopilot(opts: AutopilotOptions): Promise<State> {
   }
 }
 
-/** Ask the simulated-user agent to answer one interview question tersely. */
-async function answerQuestion(
+/**
+ * Ask the simulated-user agent to answer one interview question tersely.
+ * Exported for the TUI's 'auto' interview intensity, which runs the same
+ * answer loop interactively.
+ */
+export async function answerQuestion(
   user: Agent,
   goal: string,
   question: string,

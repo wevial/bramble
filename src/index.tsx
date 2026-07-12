@@ -11,7 +11,12 @@ import { App } from './ui/App.js';
 import { generateSessionName } from './util/name.js';
 import { readTranscript } from './docs/transcript.js';
 import { rehydrateState } from './orchestrator/replay.js';
-import type { State } from './orchestrator/state.js';
+import {
+  INTERVIEW_INTENSITIES,
+  isInterviewIntensity,
+  type InterviewIntensity,
+  type State,
+} from './orchestrator/state.js';
 import { listSessions, sessionPaths, detectSessionFormat } from './sessions/list.js';
 import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -67,6 +72,7 @@ let autopilot = false;
 let autopilotAnswers = 3;
 let caucusFlag: boolean | undefined;
 let moderatorFlag: boolean | undefined;
+let interviewFlag: InterviewIntensity | undefined;
 let turnTimeoutMs: number | undefined;
 const cliSpecialists: string[] = [];
 const positional: string[] = [];
@@ -91,6 +97,17 @@ for (let i = 0; i < argv.length; i++) {
     moderatorFlag = true;
   } else if (a === '--no-moderator') {
     moderatorFlag = false;
+  } else if (a === '--interview' && argv[i + 1]) {
+    const v = argv[i + 1]!;
+    if (isInterviewIntensity(v)) {
+      interviewFlag = v;
+    } else {
+      console.error(
+        `unknown --interview value: ${v}  (expected ${INTERVIEW_INTENSITIES.join(', ')})`,
+      );
+      process.exit(1);
+    }
+    i++;
   } else if (a === '--test') {
     real = true;
     claudeModel = claudeModel ?? CHEAP_CLAUDE_MODEL;
@@ -203,6 +220,8 @@ const effectiveSpecialists: string[] =
 const effectiveCaucus: boolean = caucusFlag ?? savedSetup.caucus ?? false;
 const effectiveModerator: boolean =
   moderatorFlag ?? savedSetup.moderator ?? false;
+const effectiveInterview: InterviewIntensity =
+  interviewFlag ?? savedSetup.interview ?? 'medium';
 if (resumeName && cliSpecialists.length > 0) {
   console.error(
     '--specialist cannot be combined with --resume: personas are restored from the session transcript',
@@ -682,6 +701,34 @@ function buildModerator(personas: Persona[]): Moderator {
   };
 }
 
+/**
+ * Simulated user: cheap Codex in real mode (runs in the trusted repo cwd,
+ * NOT the isolated tmpdir, so it doesn't trip codex's trusted-dir check);
+ * a canned responder in fake mode so no CLI is needed. Construction is lazy
+ * (no process until first stream) — used by --autopilot and by the TUI's
+ * 'auto' interview intensity.
+ */
+function buildSimulatedUser(): Agent {
+  return real
+    ? new CodexAgent({
+        model: CHEAP_CODEX_MODEL,
+        reasoningEffort: 'low',
+        systemInstructions:
+          'You role-play a product owner answering a builder\'s clarifying ' +
+          'questions. Reply in 1–2 concrete sentences with sensible defaults. ' +
+          'Never ask questions back. Plain prose only.',
+        transportKind: codexTransport,
+        idleTimeoutMs: turnTimeoutMs,
+      })
+    : {
+        name: 'codex' as const,
+        // eslint-disable-next-line require-yield
+        async *stream() {
+          return { raw: 'Use sensible defaults and proceed.' };
+        },
+      };
+}
+
 // Autopilot: run headless (no TUI). A cheap simulated user answers the
 // interview so a full interview→criteria→debate run completes with zero
 // prompts — for smoke-testing the loop and watching delta prompts engage.
@@ -707,27 +754,7 @@ if (autopilot) {
   // Same opt-in as the TUI: without --moderator the runner's deterministic
   // rotation picks speakers and we skip the per-turn moderator LLM call.
   const moderator = effectiveModerator ? buildModerator(personas) : undefined;
-  // Simulated user: cheap Codex in real mode (runs in the trusted repo cwd,
-  // NOT the isolated tmpdir, so it doesn't trip codex's trusted-dir check);
-  // a canned responder in fake mode so no CLI is needed.
-  const simulatedUser: Agent = real
-    ? new CodexAgent({
-        model: CHEAP_CODEX_MODEL,
-        reasoningEffort: 'low',
-        systemInstructions:
-          'You role-play a product owner answering a builder\'s clarifying ' +
-          'questions. Reply in 1–2 concrete sentences with sensible defaults. ' +
-          'Never ask questions back. Plain prose only.',
-        transportKind: codexTransport,
-        idleTimeoutMs: turnTimeoutMs,
-      })
-    : {
-        name: 'codex' as const,
-        // eslint-disable-next-line require-yield
-        async *stream() {
-          return { raw: 'Use sensible defaults and proceed.' };
-        },
-      };
+  const simulatedUser: Agent = buildSimulatedUser();
 
   console.log(`✦ bramble autopilot — "${prompt}"`);
   console.log(`  agents: ${real ? `claude=${claudeModel ?? 'default'}, codex=${codexModel ?? 'default'}` : 'fakes'} · answers: ${autopilotAnswers} · rounds: ${maxRounds}`);
@@ -744,6 +771,7 @@ if (autopilot) {
     maxRounds,
     caucusStep: effectiveCaucus,
     models: real ? modelConfig : undefined,
+    interviewIntensity: effectiveInterview,
   });
 
   const { writeFile } = await import('node:fs/promises');
@@ -877,6 +905,12 @@ function mount(resume?: ResumeMount): void {
       buildModerator={buildModerator}
       initialModerator={effectiveModerator}
       initialCaucus={effectiveCaucus}
+      // A resumed session keeps the intensity it was started with — the
+      // transcript's value wins over the current flag/saved setting, else an
+      // 'auto' session resumed under 'medium' would wait forever for answers
+      // (and the inverse would silently auto-answer a manual session).
+      initialInterview={mState?.interviewIntensity ?? effectiveInterview}
+      simulatedUser={buildSimulatedUser()}
       initialModelConfig={{
         claudeModel: claudeModel ?? null,
         claudeEffort: claudeEffort ?? null,

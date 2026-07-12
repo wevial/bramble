@@ -17,6 +17,7 @@ describe('helpText', () => {
       '--mock',
       '--moderator',
       '--no-moderator',
+      '--interview',
       '--test',
       '--claude-model',
       '--claude-effort',

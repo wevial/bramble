@@ -22,7 +22,9 @@ flowchart LR
 1. **Scout** — a deterministic filesystem probe (no LLM) gathers repo context
    (README, CLAUDE.md, package manifest, tree) to ground the agents.
 2. **Interview** — the agents interview *you* about the goal until they have
-   enough to work with (`/done` to cut it short).
+   enough to work with (`/done` to cut it short). `--interview` tunes the
+   grilling: `none` skips the phase, `auto` has a cheap LLM answer in your
+   place while you watch, `low`/`high` adjust question depth.
 3. **Criteria** — the agents propose success criteria; you revise and lock them.
 4. **Caucus** (optional, `--caucus`) — each agent drafts a position privately,
    never seeing the others' drafts, then one synthesis — consensus settled,
@@ -95,6 +97,10 @@ Debate:
 --moderator / --no-moderator         a cheap LLM picks the next speaker
                                      instead of deterministic rotation
                                      (default off)
+--interview <none|auto|low|medium|high>
+                                     interview grilling level (default
+                                     medium); none skips it, auto answers
+                                     for you via a cheap LLM
 
 Agents:
 --mock                               scripted fake agents — demo/dev, no

@@ -135,7 +135,35 @@ function buildInterviewInstruction(state: State, speaker: PersonaId): string {
   } else {
     hint = `Don't ask filler questions — only ask if the answer would meaningfully change the spec.`;
   }
-  return `# Your turn\n\nAsk ONE clarifying question or signal ready. ${hint} Respond as a single JSON object: {"commentary": "...", "question": "..." | null, "ready": true | false}.`;
+  const intensity = intensityHint(state);
+  return `# Your turn\n\nAsk ONE clarifying question or signal ready. ${hint}${intensity} Respond as a single JSON object: {"commentary": "...", "question": "..." | null, "ready": true | false}.`;
+}
+
+/**
+ * Extra grilling guidance woven into the turn instruction for 'low' and
+ * 'high' intensity. 'medium' (and 'auto', which runs a normal interview
+ * answered by a simulated user) add nothing — today's behavior.
+ */
+function intensityHint(state: State): string {
+  if (state.interviewIntensity === 'low') {
+    return (
+      ' Interview intensity is LOW: the user wants minimal grilling. Ask only' +
+      ' what you cannot proceed without — at most ~2 questions from you across' +
+      ' the whole interview — and prefer stating a sensible default in your' +
+      ' commentary over asking. Signal ready as soon as plausible defaults' +
+      ' cover the gaps.'
+    );
+  }
+  if (state.interviewIntensity === 'high') {
+    return (
+      ' Interview intensity is HIGH: probe hard before signaling ready —' +
+      ' assumptions, edge cases, non-goals, failure modes, scale, and' +
+      ' constraints. If an earlier answer was vague, follow up on it rather' +
+      ' than moving on. Do not signal ready while any load-bearing ambiguity' +
+      ' remains.'
+    );
+  }
+  return '';
 }
 
 function personaLabel(id: PersonaId): string {
