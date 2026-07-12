@@ -905,7 +905,11 @@ function mount(resume?: ResumeMount): void {
       buildModerator={buildModerator}
       initialModerator={effectiveModerator}
       initialCaucus={effectiveCaucus}
-      initialInterview={effectiveInterview}
+      // A resumed session keeps the intensity it was started with — the
+      // transcript's value wins over the current flag/saved setting, else an
+      // 'auto' session resumed under 'medium' would wait forever for answers
+      // (and the inverse would silently auto-answer a manual session).
+      initialInterview={mState?.interviewIntensity ?? effectiveInterview}
       simulatedUser={buildSimulatedUser()}
       initialModelConfig={{
         claudeModel: claudeModel ?? null,

@@ -139,8 +139,17 @@ export function App(props: AppProps) {
     useState<InterviewIntensity>(props.initialInterview ?? 'medium');
   // Interview turns already auto-answered (by index) when intensity is
   // 'auto', so a repeated onState for the same turn doesn't double-answer.
-  const autoAnsweredRef = useRef(new Set<number>());
+  // Seeded with every restored turn on resume: those were answered (or
+  // abandoned) in the prior run, and the very first onState fires with the
+  // restored state — answering its last turn again would double-answer.
+  const autoAnsweredRef = useRef(
+    new Set<number>((props.initialState?.interview ?? []).map((_, i) => i)),
+  );
   const autoAbortRef = useRef(new AbortController());
+  // Live mirror of the latest runner state, for async auto-answer callbacks
+  // that must check the world hasn't moved on (phase change, manual answer)
+  // between firing the simulated user and its reply arriving.
+  const stateRef = useRef<State | null>(props.initialState ?? null);
   // Provenance for the transcript's session entry — which models back the
   // transports. Setup submit overwrites with the picker's choices.
   const [activeModels, setActiveModels] = useState<ModelConfig | null>(
@@ -209,6 +218,7 @@ export function App(props: AppProps) {
         }, 15_000);
       },
       onState: next => {
+        stateRef.current = next;
         setState(next);
         // 'auto' intensity: a cheap simulated user answers interview
         // questions in the user's place (same loop autopilot runs, but the
@@ -232,15 +242,30 @@ export function App(props: AppProps) {
             } else if (!turn.question) {
               handleRef.current?.interject('Please proceed with sensible defaults.');
             } else {
+              // Snapshot the answer count: if it moved while the simulated
+              // user was thinking, the human answered first — drop ours so
+              // it can't land as a bogus answer to a later question (or, if
+              // /done advanced the phase, as a debate constraint).
+              const answersAtFire = next.userAnswers.length;
+              const stillWanted = () => {
+                const cur = stateRef.current;
+                return (
+                  !autoAbortRef.current.signal.aborted &&
+                  cur?.phase === 'interview' &&
+                  cur.userAnswers.length === answersAtFire
+                );
+              };
               void answerQuestion(
                 props.simulatedUser,
                 next.prompt,
                 turn.question,
                 autoAbortRef.current.signal,
               )
-                .then(a => handleRef.current?.interject(a))
+                .then(a => {
+                  if (stillWanted()) handleRef.current?.interject(a);
+                })
                 .catch(() => {
-                  if (!autoAbortRef.current.signal.aborted) {
+                  if (stillWanted()) {
                     handleRef.current?.interject('Use sensible defaults and proceed.');
                   }
                 });

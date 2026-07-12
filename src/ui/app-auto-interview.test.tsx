@@ -84,6 +84,63 @@ describe('App auto interview', () => {
     unmount();
   });
 
+  it('does not re-answer interview turns restored from a resumed session', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bramble-auto-resume-'));
+    const claude = new FakeAgent('claude');
+    const codex = new FakeAgent('codex');
+    // Both immediately ready so the restored session moves on quickly.
+    claude.setResponse({ kind: 'interview', commentary: 'enough', ready: true });
+    codex.setResponse({ kind: 'interview', commentary: 'enough', ready: true });
+
+    const answered: string[] = [];
+    const simulatedUser: Agent = {
+      name: 'codex',
+      // eslint-disable-next-line require-yield
+      async *stream(ctx) {
+        answered.push(ctx.prompt);
+        return { raw: 'duplicate!' };
+      },
+    };
+
+    // Resumed state: Q1 was already asked AND answered in the prior run.
+    const initialState = {
+      ...(await import('../orchestrator/state.js')).initialState('design x'),
+      interviewIntensity: 'auto' as const,
+      interview: [
+        {
+          speaker: 'claude' as const,
+          commentary: '',
+          question: 'Already answered?',
+          ready: false,
+          timestamp: '2026-07-12T00:00:00.000Z',
+        },
+      ],
+      userAnswers: [
+        { content: 'yes, previously', timestamp: '2026-07-12T00:00:01.000Z' },
+      ],
+    };
+
+    const { unmount } = await renderSetup(
+      <App
+        agents={{ claude, codex }}
+        prompt="design x"
+        sessionName="auto-resume-test"
+        initialState={initialState}
+        initialInterview="auto"
+        simulatedUser={simulatedUser}
+        transcriptPath={join(dir, 'transcript.jsonl')}
+        specPath={join(dir, 'spec.md')}
+        debatePath={join(dir, 'debate.md')}
+        interviewPath={join(dir, 'interview.md')}
+      />,
+    );
+
+    await new Promise(r => setTimeout(r, 250));
+    // The restored turn must not be re-answered.
+    expect(answered).toHaveLength(0);
+    unmount();
+  });
+
   it('does not auto-answer at medium intensity', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'bramble-auto-off-'));
     const claude = new FakeAgent('claude');
