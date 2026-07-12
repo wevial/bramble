@@ -1,7 +1,50 @@
-# bramble
+```text
+    ▄▄▄                            ▄▄
+   ██▀▀█▄                     █▄    ██
+   ██ ▄█▀ ▄          ▄        ██    ██
+   ██▀▀█▄ ████▄▄▀▀█▄ ███▄███▄ ████▄ ██ ▄█▀█▄
+ ▄ ██  ▄█ ██   ▄█▀██ ██ ██ ██ ██ ██ ██ ██▄█▀
+ ▀██████▀▄█▀  ▄▀█▄██▄██ ██ ▀█▄████▀▄██▄▀█▄▄▄
+```
 
-Three-way spec debate TUI. Claude and Codex debate (propose → critique → revise)
-while you steer; the accepted draft lands in `spec.md`.
+Multi-agent spec debate TUI. Claude and Codex debate (propose → critique →
+revise) while you steer; the accepted draft lands in `spec.md`.
+
+## How it works
+
+Each session moves through a fixed pipeline:
+
+```mermaid
+flowchart LR
+    S[scout] --> I[interview] --> C[criteria] --> K[caucus*] --> D[debate] --> done
+```
+
+1. **Scout** — a deterministic filesystem probe (no LLM) gathers repo context
+   (README, CLAUDE.md, package manifest, tree) to ground the agents.
+2. **Interview** — the agents interview *you* about the goal until they have
+   enough to work with (`/done` to cut it short).
+3. **Criteria** — the agents propose success criteria; you revise and lock them.
+4. **Caucus** (optional, `--caucus`) — each agent drafts a position privately,
+   never seeing the others' drafts, then one synthesis — consensus settled,
+   disagreements flagged — seeds the debate. Counters anchoring on whoever
+   speaks first.
+5. **Debate** — propose → critique → revise rounds until mutual LGTM, the
+   round cap, or your `/done`.
+
+### Roles and the models behind them
+
+| Role | Transport | Model |
+|---|---|---|
+| Claude (primary) | `claude` CLI | your `--claude-model` pick (default: CLI default) |
+| Codex (primary) | `codex` CLI | your `--codex-model` pick (default: CLI default) |
+| Specialists (security, perf, ux, naming, ops) | `claude` or `codex`, per persona | same model as that transport's primary — a specialist is a system prompt, not a separate model |
+| Moderator (optional; picks the next speaker) | `codex` | pinned to the cheap model (`gpt-5.6-luna`) — it only outputs a speaker id |
+| Scout | none | deterministic, no LLM |
+| Autopilot's simulated user | `codex` | pinned to the cheap model |
+
+Without the moderator toggle, turn order is a deterministic rotation.
+Moderator, specialists, and caucus are all toggleable on the setup screen and
+sticky across sessions (`~/.bramble/setup.json`).
 
 ## Stack
 
@@ -48,22 +91,40 @@ bramble [flags] <goal...>            start a new debate
 bramble --resume <name>              resume a prior session
 bramble --list                       list sessions in ./.bramble
 
+Debate:
 --rounds N                           max round cap (default 8)
 --auto / --collab                    back-to-back turns vs. pause-between
 --caucus / --no-caucus               private independent positions + synthesis
                                      before the public debate (default off)
+
+Agents:
 --real                               use real claude + codex CLIs
 --test                               --real with cheap/fast models pinned
+                                     (low effort on both sides)
 --claude-model <id>                  e.g. claude-fable-5
 --claude-effort <low|medium|high|xhigh|max>
 --codex-model <id>                   e.g. gpt-5.6-sol
 --codex-effort <low|medium|high>
+--codex-transport <app-server|exec>  one persistent codex process (default)
+                                     vs. legacy per-turn codex exec
 --isolated                           spawn agents in a tmpdir so repo
                                      CLAUDE.md / AGENTS.md don't leak in
 --specialist <id>                    add specialist critics (security, perf,
                                      ux, naming, ops); repeatable or
                                      comma-separated
 --turn-timeout <seconds>             kill a silent agent turn (default 300)
+
+Output:
+--format <md|xml|json|html>          spec output format (default md)
+
+Autopilot (headless — no TUI):
+--autopilot                          run to completion with a cheap LLM
+                                     answering the interview; prints the
+                                     spec and exits. Pairs with --test.
+--autopilot-answers <n>              interview questions to answer before
+                                     forcing the debate (default 3)
+
+Session:
 --name <name> / --dir <path>         session name override / storage root
 ```
 

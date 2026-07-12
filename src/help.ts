@@ -1,5 +1,5 @@
 export function helpText(): string {
-  return `bramble — two agents debate to produce a spec
+  return `bramble — agents debate to produce a spec
 
 Usage:
   bramble [flags] <goal...>            start a new debate
