@@ -46,24 +46,17 @@ Without `--moderator`, turn order is a deterministic rotation. Moderator,
 specialists, and caucus are all also toggleable on the setup screen and
 sticky across sessions (`~/.bramble/setup.json`).
 
-## Stack
-
-- Bun + @opentui/react + TypeScript (Bun is the runtime, not just the
-  package manager — @opentui requires it)
-- Agents are spawned as subprocesses of the `claude` and `codex` CLIs —
-  bramble parses their streaming output. No API keys live in bramble itself;
-  each CLI handles its own auth.
-- `bun test` (TDD)
-
 ## Prerequisites
 
-Both CLIs must be installed on your PATH and logged in to their respective
-accounts:
-
+- **`bun`** — install via [bun.com](https://bun.com). Bramble runs on the
+  Bun runtime (not Node).
 - **`claude`** — install via [claude.ai/code](https://claude.ai/code), then
   `claude /login`. Requires an Anthropic account.
 - **`codex`** — install via [openai.com/codex](https://openai.com/codex),
   then `codex login`. Requires an OpenAI account.
+
+Both agent CLIs must be on your PATH and logged in to their respective
+accounts.
 
 Bramble fails fast with an install hint if either binary is missing. To try
 the TUI without either CLI, pass `--mock` for scripted fake agents.
@@ -160,11 +153,10 @@ Sessions write to `./.bramble/<session-name>/`:
 - `/copy` — copy accepted spec to system clipboard.
 - `/quit` or `Ctrl-D` — exit.
 
-## Tests
+## Developing
 
-```sh
-bun run test
-```
+Working on bramble itself — stack, repo layout, dev loops, tests, CI,
+architecture notes — is covered in [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## License
 
