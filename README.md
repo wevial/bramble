@@ -171,6 +171,20 @@ the caller is the human's channel. Sessions still write the usual artifacts
 `./.bramble`). Sessions from a prior server process are discoverable read-only
 (`detached`).
 
+### Claude Code plugin
+
+This repo doubles as a plugin marketplace bundling the MCP server plus a
+`/bramble:bramble` skill that teaches Claude Code the flow (and the
+relay-to-your-human contract):
+
+```sh
+/plugin marketplace add wevial/bramble
+/plugin install bramble@bramble
+```
+
+The plugin runs `bramble mcp` from your PATH, so `bun link` this repo first
+(see Quickstart).
+
 ## Runtime artifacts
 
 Sessions write to `./.bramble/<session-name>/`:
