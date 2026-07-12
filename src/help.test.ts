@@ -5,7 +5,7 @@ describe('helpText', () => {
   const text = helpText();
 
   it('starts with the one-liner and usage block', () => {
-    expect(text).toMatch(/^bramble — two agents debate to produce a spec/);
+    expect(text).toMatch(/^bramble — agents debate to produce a spec/);
     expect(text).toContain('Usage:');
   });
 
