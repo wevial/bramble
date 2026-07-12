@@ -5,6 +5,7 @@ Usage:
   bramble [flags] <goal...>            start a new debate
   bramble --resume <name> [flags]      resume a prior session
   bramble --list [--dir <path>]        list sessions in ./.bramble
+  bramble mcp [flags]                  run as an MCP server over stdio
 
 Debate:
   --rounds <n>                          max round cap (default 8)
@@ -60,6 +61,17 @@ Autopilot (headless — no TUI, no prompts):
                                         the spec and exits. Pairs with --test.
   --autopilot-answers <n>               interview questions to answer before
                                         forcing the debate (default 3)
+
+MCP server (bramble mcp — headless, stdio JSON-RPC, no TUI):
+  --dir <path>                          storage root (default ./.bramble)
+  --mock                                scripted fake agents (no CLIs needed)
+  --format <md|xml|json|html>           default spec output format
+  --claude-model / --claude-effort      default claude model / effort
+  --codex-model / --codex-effort        default codex model / effort
+                                        Tools: bramble_start, bramble_status,
+                                        bramble_answer, bramble_done,
+                                        bramble_get_spec, bramble_list.
+                                        Register: claude mcp add bramble -- bramble mcp
 
 Session:
   --name <name>                         override the generated session name
