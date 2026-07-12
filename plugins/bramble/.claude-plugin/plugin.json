@@ -1,0 +1,8 @@
+{
+  "name": "bramble",
+  "description": "Multi-agent spec debates: claude + codex interview the human, argue a design through structured rounds, and land a consensus spec.md. Wraps the bramble MCP server.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Ko Vial"
+  }
+}

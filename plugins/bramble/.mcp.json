@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "bramble": {
+      "command": "bramble",
+      "args": ["mcp"],
+      "cwd": "${CLAUDE_PROJECT_DIR}"
+    }
+  }
+}

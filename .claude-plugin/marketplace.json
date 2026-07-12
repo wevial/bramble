@@ -1,0 +1,14 @@
+{
+  "name": "bramble",
+  "description": "Multi-agent spec debates for Claude Code — claude + codex argue a design to consensus while the human answers the interview",
+  "owner": {
+    "name": "Ko Vial"
+  },
+  "plugins": [
+    {
+      "name": "bramble",
+      "source": "./plugins/bramble",
+      "description": "Run bramble spec debates (claude + codex argue a design to consensus) from inside Claude Code, with the human answering the interview"
+    }
+  ]
+}
