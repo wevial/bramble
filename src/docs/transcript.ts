@@ -13,6 +13,18 @@ import type {
 import type { RepoContext } from '../prompts/scout.js';
 
 /**
+ * Which model/effort backed each transport for a session. Provenance only —
+ * replay never reads it; it answers "what did I run this with?" after the
+ * fact. `null` means the CLI's own default.
+ */
+export type SessionModels = {
+  claudeModel: string | null;
+  claudeEffort: string | null;
+  codexModel: string | null;
+  codexEffort: string | null;
+};
+
+/**
  * Append-only typed log of every event the orchestrator ever observed. One
  * line of JSON per event — replay rebuilds State by feeding these back into
  * the reducer in order.
@@ -31,6 +43,8 @@ export type TranscriptEntry =
        */
       criteriaStep?: boolean;
       caucusStep?: boolean;
+      /** Model provenance; absent in older transcripts and fake runs. */
+      models?: SessionModels;
       timestamp: string;
     }
   | { type: 'scout_complete'; context: RepoContext; timestamp: string }

@@ -45,6 +45,34 @@ describe('listSessions', () => {
     expect(rows[0]!.accepted).toBe(true);
   });
 
+  it('derives created/updated from transcript entry timestamps, not mtime', async () => {
+    const root = mk();
+    const dir = seed(root, 'dated', {
+      'transcript.jsonl':
+        '{"type":"session","prompt":"x","config":{},"timestamp":"2026-07-01T10:00:00.000Z"}\n' +
+        // Turn entries nest their timestamp under turn.*
+        '{"type":"interview_turn","turn":{"speaker":"claude","commentary":"","question":"?","ready":false,"timestamp":"2026-07-02T11:30:00.000Z"}}\n',
+    });
+    // Clobber mtime the way cp/rsync/checkout would — derived dates must win.
+    utimesSync(join(dir, 'transcript.jsonl'), new Date('2020-01-01'), new Date('2020-01-01'));
+
+    const rows = await listSessions(root);
+    expect(rows[0]!.created?.toISOString()).toBe('2026-07-01T10:00:00.000Z');
+    expect(rows[0]!.updated.toISOString()).toBe('2026-07-02T11:30:00.000Z');
+  });
+
+  it('falls back to mtime for updated (and null created) on unparseable lines', async () => {
+    const root = mk();
+    const dir = seed(root, 'legacy', {
+      'transcript.jsonl': 'not json at all\n',
+    });
+    utimesSync(join(dir, 'transcript.jsonl'), new Date('2021-06-01'), new Date('2021-06-01'));
+
+    const rows = await listSessions(root);
+    expect(rows[0]!.created).toBeNull();
+    expect(rows[0]!.updated.toISOString().slice(0, 10)).toBe('2021-06-01');
+  });
+
   it('sorts by transcript mtime, newest first', async () => {
     const root = mk();
     const a = seed(root, 'a', { 'transcript.jsonl': '' });

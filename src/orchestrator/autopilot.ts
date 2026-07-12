@@ -3,6 +3,7 @@ import type { Persona, PersonaId } from '../personas/personas.js';
 import type { Moderator } from '../moderator/moderator.js';
 import { startDebate } from './runner.js';
 import type { State } from './state.js';
+import type { SessionModels } from '../docs/transcript.js';
 
 export type AutopilotOptions = {
   agents: Record<PersonaId, Agent>;
@@ -24,6 +25,8 @@ export type AutopilotOptions = {
   caucusStep?: boolean;
   /** Probe the cwd for repo context before the interview. Default true. */
   scoutStep?: boolean;
+  /** Model provenance stamped into the session transcript entry. */
+  models?: SessionModels;
   /** Progress sink; defaults to console.log. */
   log?: (line: string) => void;
 };
@@ -76,6 +79,7 @@ export async function runAutopilot(opts: AutopilotOptions): Promise<State> {
     criteriaStep: opts.criteriaStep ?? true,
     caucusStep: opts.caucusStep ?? false,
     scoutStep: opts.scoutStep ?? true,
+    models: opts.models,
     prompt: opts.prompt,
     config: opts.maxRounds != null ? { maxRounds: opts.maxRounds } : undefined,
     mode: 'auto',

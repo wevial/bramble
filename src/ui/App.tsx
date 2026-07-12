@@ -115,6 +115,11 @@ export function App(props: AppProps) {
   const [caucusEnabled, setCaucusEnabled] = useState<boolean>(
     props.initialCaucus ?? false,
   );
+  // Provenance for the transcript's session entry — which models back the
+  // transports. Setup submit overwrites with the picker's choices.
+  const [activeModels, setActiveModels] = useState<ModelConfig | null>(
+    props.initialModelConfig ?? null,
+  );
   const handleRef = useRef<RunHandle | null>(null);
   const writesRef = useRef<Promise<void>>(Promise.resolve());
   const renderer = useRenderer();
@@ -159,6 +164,7 @@ export function App(props: AppProps) {
       criteriaStep: true,
       caucusStep: caucusEnabled,
       scoutStep: true,
+      models: activeModels ?? undefined,
       prompt,
       config: props.config,
       mode,
@@ -297,6 +303,7 @@ export function App(props: AppProps) {
           setPrompt(p);
           setMode(m);
           setCaucusEnabled(caucus);
+          setActiveModels(models);
           const chosenSpecialists = SPECIALIST_PERSONAS.filter(s =>
             specialists.includes(s.id),
           );

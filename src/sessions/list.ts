@@ -7,7 +7,16 @@ export type SessionRow = {
   turns: number;
   goal: string;
   accepted: boolean;
-  mtime: Date;
+  /**
+   * First transcript entry's timestamp — when the session actually started.
+   * Null for empty transcripts or legacy lines without a parseable timestamp.
+   */
+  created: Date | null;
+  /**
+   * Last transcript entry's timestamp — the last real event, immune to
+   * cp/rsync/checkout clobbering. Falls back to fs mtime when unparseable.
+   */
+  updated: Date;
 };
 
 export type SessionPaths = {
@@ -62,23 +71,42 @@ export async function listSessions(root: string): Promise<SessionRow[]> {
     const p = sessionPaths(root, name);
     if (!(await exists(p.transcriptPath))) continue;
 
-    const [turns, goal, accepted, mtime] = await Promise.all([
-      countLines(p.transcriptPath),
+    const [transcript, goal, accepted, mtime] = await Promise.all([
+      readFileSafe(p.transcriptPath),
       readFileSafe(p.promptPath).then(t => t.trim()),
       hasAnySpec(p.dir),
       stat(p.transcriptPath).then(s => s.mtime).catch(() => new Date(0)),
     ]);
 
-    rows.push({ name, turns, goal, accepted, mtime });
+    const lines = transcript.split('\n').filter(l => l.length > 0);
+    const created = lines.length > 0 ? entryTimestamp(lines[0]!) : null;
+    const updated =
+      (lines.length > 0 ? entryTimestamp(lines[lines.length - 1]!) : null) ??
+      mtime;
+
+    rows.push({ name, turns: lines.length, goal, accepted, created, updated });
   }
-  rows.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+  rows.sort((a, b) => b.updated.getTime() - a.updated.getTime());
   return rows;
 }
 
-async function countLines(path: string): Promise<number> {
-  const raw = await readFileSafe(path);
-  if (raw.length === 0) return 0;
-  return raw.split('\n').filter(l => l.length > 0).length;
+/**
+ * Pull the timestamp out of one transcript line. Most entries carry a
+ * top-level `timestamp`; turn entries nest it under `turn.timestamp`.
+ */
+function entryTimestamp(line: string): Date | null {
+  try {
+    const obj = JSON.parse(line) as {
+      timestamp?: unknown;
+      turn?: { timestamp?: unknown };
+    };
+    const ts = obj.timestamp ?? obj.turn?.timestamp;
+    if (typeof ts !== 'string') return null;
+    const d = new Date(ts);
+    return Number.isNaN(d.getTime()) ? null : d;
+  } catch {
+    return null;
+  }
 }
 
 async function readFileSafe(path: string): Promise<string> {

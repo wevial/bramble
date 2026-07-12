@@ -20,7 +20,7 @@ import { debatePrompt, debateDeltaPrompt } from '../prompts/debate.js';
 import { probeRepoContext } from '../prompts/scout.js';
 import { reducer, type State, type DebateConfig, initialState } from './state.js';
 import { nextSpeaker } from './scheduler.js';
-import { appendEntry } from '../docs/transcript.js';
+import { appendEntry, type SessionModels } from '../docs/transcript.js';
 import type { Moderator } from '../moderator/moderator.js';
 
 export type DebateMode = 'auto' | 'collab';
@@ -75,6 +75,11 @@ export type RunOptions = {
    * pass a fixture directory; production code passes the user's invocation cwd.
    */
   cwd?: string;
+  /**
+   * Model provenance stamped into the 'session' transcript entry. Purely
+   * informational — the runner never reads it back.
+   */
+  models?: SessionModels;
   prompt: string;
   /**
    * Override the default debate config (rounds cap, decay threshold/window).
@@ -194,6 +199,7 @@ export function startDebate(opts: RunOptions): RunHandle {
       // still routes through it (JSON.stringify drops undefined keys).
       criteriaStep: state.criteriaStepEnabled || undefined,
       caucusStep: state.caucusEnabled || undefined,
+      models: opts.models,
       timestamp: new Date().toISOString(),
     });
   }

@@ -223,14 +223,15 @@ if (listMode) {
     process.exit(0);
   }
   const nameW = Math.max(4, ...rows.map(r => r.name.length));
-  const header = `${pad('name', nameW)}  ${pad('turns', 5)}  ${pad('spec', 4)}  mtime                  goal`;
+  const header = `${pad('name', nameW)}  ${pad('turns', 5)}  ${pad('spec', 4)}  ${pad('created', 10)}  ${pad('updated', 19)}  goal`;
   console.log(header);
   console.log('-'.repeat(header.length));
   for (const r of rows) {
-    const when = r.mtime.toISOString().replace('T', ' ').slice(0, 19);
+    const created = r.created ? r.created.toISOString().slice(0, 10) : '—';
+    const updated = r.updated.toISOString().replace('T', ' ').slice(0, 19);
     const goal = r.goal.length > 60 ? r.goal.slice(0, 57) + '…' : r.goal;
     console.log(
-      `${pad(r.name, nameW)}  ${pad(String(r.turns), 5)}  ${pad(r.accepted ? '✓' : '·', 4)}  ${when}    ${goal}`,
+      `${pad(r.name, nameW)}  ${pad(String(r.turns), 5)}  ${pad(r.accepted ? '✓' : '·', 4)}  ${pad(created, 10)}  ${updated}  ${goal}`,
     );
   }
   console.log('\nresume with: bramble --resume <name>');
@@ -741,6 +742,7 @@ if (autopilot) {
     maxAnswers: autopilotAnswers,
     maxRounds,
     caucusStep: effectiveCaucus,
+    models: real ? modelConfig : undefined,
   });
 
   const { writeFile } = await import('node:fs/promises');

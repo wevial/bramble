@@ -171,6 +171,12 @@ describe('startDebate — interview → debate → done', () => {
     const handle = startDebate({
       agents: { claude, codex },
       prompt: 'tiny goal',
+      models: {
+        claudeModel: 'claude-fable-5',
+        claudeEffort: null,
+        codexModel: 'gpt-5.6-sol',
+        codexEffort: 'high',
+      },
       ...paths(),
     });
     await handle.done;
@@ -180,6 +186,14 @@ describe('startDebate — interview → debate → done', () => {
     expect(first.type).toBe('session');
     expect(first.prompt).toBe('tiny goal');
     expect(first.config.maxRounds).toBe(8);
+    expect(first.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    // Model provenance rides the session entry.
+    expect(first.models).toEqual({
+      claudeModel: 'claude-fable-5',
+      claudeEffort: null,
+      codexModel: 'gpt-5.6-sol',
+      codexEffort: 'high',
+    });
   });
 
   it('updateConfig is reflected in state immediately', async () => {
