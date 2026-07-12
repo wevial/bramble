@@ -41,6 +41,49 @@ import {
 
 const argv = process.argv.slice(2);
 
+// `bramble mcp [flags]` — headless MCP server over stdio. Handled before the
+// TUI/flag machinery so it never boots OpenTUI (mirrors the autopilot early
+// path). stdout belongs to JSON-RPC; all logging goes to stderr.
+if (argv[0] === 'mcp') {
+  const rest = argv.slice(1);
+  let mcpMock = false;
+  let mcpDir: string | undefined;
+  let mcpFormat: OutputFormat = 'md';
+  let mcpClaudeModel: string | undefined;
+  let mcpClaudeEffort: string | undefined;
+  let mcpCodexModel: string | undefined;
+  let mcpCodexEffort: string | undefined;
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    if (a === '--mock') mcpMock = true;
+    else if (a === '--dir' && rest[i + 1]) { mcpDir = rest[++i]; }
+    else if (a === '--format' && rest[i + 1]) {
+      const f = rest[++i]!;
+      if (isOutputFormat(f)) mcpFormat = f;
+      else { console.error(`unknown --format value: ${f}  (expected md, xml, json, or html)`); process.exit(1); }
+    } else if (a === '--claude-model' && rest[i + 1]) { mcpClaudeModel = rest[++i]; }
+    else if (a === '--claude-effort' && rest[i + 1]) { mcpClaudeEffort = rest[++i]; }
+    else if (a === '--codex-model' && rest[i + 1]) { mcpCodexModel = rest[++i]; }
+    else if (a === '--codex-effort' && rest[i + 1]) { mcpCodexEffort = rest[++i]; }
+  }
+  const mcpCwd = process.cwd();
+  const mcpRoot = mcpDir
+    ? (mcpDir.startsWith('/') ? mcpDir : join(mcpCwd, mcpDir))
+    : join(mcpCwd, '.bramble');
+  const { runMcpServer } = await import('./mcp/server.js');
+  await runMcpServer({
+    root: mcpRoot,
+    cwd: mcpCwd,
+    mock: mcpMock,
+    format: mcpFormat,
+    claudeModel: mcpClaudeModel,
+    claudeEffort: mcpClaudeEffort,
+    codexModel: mcpCodexModel,
+    codexEffort: mcpCodexEffort,
+  });
+  process.exit(0);
+}
+
 if (argv.includes('--help') || argv.includes('-h')) {
   console.log(helpText());
   process.exit(0);

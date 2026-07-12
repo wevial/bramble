@@ -38,6 +38,13 @@ describe('helpText', () => {
     }
   });
 
+  it('documents the mcp subcommand and its tools', () => {
+    expect(text).toContain('bramble mcp');
+    expect(text).toContain('bramble_start');
+    expect(text).toContain('bramble_get_spec');
+    expect(text).toContain('claude mcp add bramble');
+  });
+
   it('mentions the key TUI shortcuts a new user needs', () => {
     expect(text).toMatch(/Tab/);
     expect(text).toMatch(/Ctrl-o/);

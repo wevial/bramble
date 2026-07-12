@@ -56,6 +56,7 @@ main and every PR, on bun 1.3.14 with a frozen lockfile.
 | `src/ui/` | React TUI: `App.tsx` (wiring), setup screen, panes, model presets (`models.ts`), sticky setup store |
 | `src/docs/` | on-disk artifacts: transcript.jsonl append/read, spec/debate/interview renderers, `checkpoint.ts` (curated end-of-session doc) |
 | `src/sessions/` | session dir discovery for `--list` / `--resume` |
+| `src/mcp/` | MCP server (`bramble mcp`): `sessions.ts` (session registry + `waitingOf` derivation + mock agents), `server.ts` (six tools over stdio / InMemoryTransport) |
 
 ## Architecture notes
 

@@ -138,6 +138,39 @@ In real mode, after entering a goal you'll see a model picker (↑↓/Tab to
 move rows, ←→ to cycle options, `e` on "custom…" to pin any id). Selections
 override any CLI-flag defaults.
 
+## MCP server
+
+Bramble can run as an [MCP](https://modelcontextprotocol.io) server so another
+agent (e.g. Claude Code) can drive a spec debate on behalf of its human. It
+speaks JSON-RPC over stdio — no TUI:
+
+```sh
+claude mcp add bramble -- bramble mcp          # real claude + codex
+claude mcp add bramble -- bramble mcp --mock   # scripted fakes, no CLIs
+```
+
+The calling agent is the wire between bramble and the human, not the answerer:
+it relays interview questions, criteria proposals, and the sign-off spec to its
+human user verbatim and passes their replies back. Each tool result carries an
+`instruction` field spelling this out when a human answer is needed.
+
+Six tools, all keyed by session name:
+
+| tool | what it does |
+|---|---|
+| `bramble_start` | start a debate as a background job; returns immediately with a session name |
+| `bramble_status` | poll a session; `waiting.kind` (`thinking`/`interview`/`criteria`/`signoff`/`done`) says whether the human is needed |
+| `bramble_answer` | deliver the human's reply (answers an interview question, requests a criteria/spec revision) |
+| `bramble_done` | advance/finalize on the human's instruction (skip clarifying, lock criteria, accept the spec) |
+| `bramble_get_spec` | fetch the in-flight draft or the accepted final spec (any output format) |
+| `bramble_list` | list live and on-disk sessions under the storage root |
+
+`interview auto` is rejected in MCP mode — there is no automatic answerer when
+the caller is the human's channel. Sessions still write the usual artifacts
+(`spec.<ext>`, `checkpoint.md`, `transcript.jsonl`) under `--dir` (default
+`./.bramble`). Sessions from a prior server process are discoverable read-only
+(`detached`).
+
 ## Runtime artifacts
 
 Sessions write to `./.bramble/<session-name>/`:
