@@ -28,9 +28,11 @@ produces a spec for a goal nobody has.
    public debate — good against anchoring), `interview` (`low`/`medium`/
    `high` grilling; `none` skips it; `auto` is rejected here — you are the
    answer channel), `rounds`, model/effort overrides.
-2. Poll `bramble_status` every 20–30 seconds. Three waiting states, each
-   with relay instructions embedded: an **interview question** (relay,
-   collect, `bramble_answer`), a **criteria proposal** (show the list, pass
+2. Poll `bramble_status` every 20–30 seconds. `waiting.kind: "thinking"`
+   means the agents are mid-turn — nothing to do, keep polling (turns can
+   take a minute or more). Three states need the human, each with relay
+   instructions embedded: an **interview question** (relay, collect,
+   `bramble_answer`), a **criteria proposal** (show the list, pass
    revisions via `bramble_answer`, or `bramble_done` when the user approves),
    and **signoff** after mutual LGTM (`bramble_answer` to request revisions,
    `bramble_done` to finalize).
