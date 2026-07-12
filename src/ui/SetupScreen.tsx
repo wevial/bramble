@@ -9,6 +9,7 @@ import {
   type RowState,
 } from './model-rows.js';
 import type { DebateMode } from '../orchestrator/runner.js';
+import type { SessionRow } from '../sessions/list.js';
 import {
   SPECIALIST_PERSONAS,
   type PersonaId,
@@ -42,10 +43,13 @@ export type SetupScreenProps = {
   initialCaucus?: boolean;
   onSubmit(result: SetupSubmit): void;
   onQuit(): void;
+  /** Recent sessions offered for resume; section hidden when empty. */
+  sessions?: SessionRow[];
+  onResume?(name: string): void;
 };
 
-// prompt, mode, models, specialists, moderator, caucus, start
-type FieldIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+// prompt, mode, models, specialists, moderator, caucus, start, resume
+type FieldIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 const EMPTY_MODELS: ModelConfig = {
   claudeModel: null,
@@ -70,6 +74,8 @@ export function SetupScreen({
   initialCaucus,
   onSubmit,
   onQuit,
+  sessions,
+  onResume,
 }: SetupScreenProps) {
   const { width } = useTerminalDimensions();
   const cols = width ?? 80;
@@ -89,9 +95,13 @@ export function SetupScreen({
   const [specialistRowFocus, setSpecialistRowFocus] = useState(0);
   const [moderator, setModerator] = useState<boolean>(initialModerator ?? false);
   const [caucus, setCaucus] = useState<boolean>(initialCaucus ?? false);
+  const [resumeRowFocus, setResumeRowFocus] = useState(0);
+
+  const resumable = onResume && sessions && sessions.length > 0 ? sessions : [];
+  const maxFocus: FieldIndex = resumable.length > 0 ? 7 : 6;
 
   const advance = () =>
-    setFocus(f => (f < 6 ? ((f + 1) as FieldIndex) : f));
+    setFocus(f => (f < maxFocus ? ((f + 1) as FieldIndex) : f));
   const retreat = () =>
     setFocus(f => (f > 0 ? ((f - 1) as FieldIndex) : f));
 
@@ -134,7 +144,10 @@ export function SetupScreen({
       }
       // Enter on prompt is handled inside the multiline InputBox.
       if ((key.name === 'return' || key.name === 'enter') && focus !== 0) {
-        if (focus === 6) {
+        if (focus === 7) {
+          const picked = resumable[resumeRowFocus];
+          if (picked) onResume?.(picked.name);
+        } else if (focus === 6) {
           tryStart();
         } else {
           // Enter on specialists (3), moderator (4), and caucus (5)
@@ -201,6 +214,14 @@ export function SetupScreen({
           key.name === 'space'
         ) {
           setCaucus(c => !c);
+        }
+        return;
+      }
+      if (focus === 7) {
+        if (key.name === 'up') {
+          setResumeRowFocus(i => (i - 1 + resumable.length) % resumable.length);
+        } else if (key.name === 'down') {
+          setResumeRowFocus(i => (i + 1) % resumable.length);
         }
         return;
       }
@@ -424,6 +445,37 @@ export function SetupScreen({
           </text>
         </box>
         <text> </text>
+        {resumable.length > 0 ? (
+          <>
+            <box>
+              <text fg={focusColor(7)} attributes={(focus === 7) ? BOLD : 0}>
+                {focusMarker(7)}Resume a session
+              </text>
+            </box>
+            {focus === 7 ? (
+              <text><span attributes={DIM}>   ↑↓ select · enter resumes</span></text>
+            ) : null}
+            {resumable.map((s, i) => {
+              const rowFocused = focus === 7 && resumeRowFocus === i;
+              const goal = s.goal.length > 34 ? s.goal.slice(0, 31) + '…' : s.goal;
+              return (
+                <box key={s.name} flexDirection="row">
+                  <text fg={rowFocused ? 'brightCyan' : undefined}>
+                    {rowFocused ? '   › ' : '     '}
+                    <span fg={s.accepted ? 'green' : undefined}>
+                      {s.accepted ? '✓ ' : '· '}
+                    </span>
+                    <span attributes={rowFocused ? BOLD : 0}>{s.name}</span>
+                    <span attributes={DIM}>
+                      {`  ${relativeTime(s.updated)} · ${s.turns} turns${goal ? ` · ${goal}` : ''}`}
+                    </span>
+                  </text>
+                </box>
+              );
+            })}
+            <text> </text>
+          </>
+        ) : null}
         <box justifyContent="center">
           <text><span attributes={DIM}>
             tab/enter forward · shift-tab back · ctrl+c to exit
@@ -432,6 +484,18 @@ export function SetupScreen({
       </box>
     </box>
   );
+}
+
+/** Compact "how long ago" for the resume list; absolute date past two weeks. */
+export function relativeTime(d: Date, now: Date = new Date()): string {
+  const mins = Math.floor((now.getTime() - d.getTime()) / 60_000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 14) return `${days}d ago`;
+  return d.toISOString().slice(0, 10);
 }
 
 function ModeOption({

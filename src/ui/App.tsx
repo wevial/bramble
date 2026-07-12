@@ -18,6 +18,7 @@ import { writeInterviewMd } from '../docs/interview.js';
 import { writeDebateLedger } from '../docs/debate.js';
 import { writeCheckpoint } from '../docs/checkpoint.js';
 import { type State, type DebateConfig } from '../orchestrator/state.js';
+import type { SessionRow } from '../sessions/list.js';
 import { InputBox } from './InputBox.js';
 import { parseSlashCommand } from './commands.js';
 import type { ModelConfig } from './models.js';
@@ -77,6 +78,10 @@ export type AppProps = {
   initialModerator?: boolean;
   initialCaucus?: boolean;
   setupStorePath?: string;
+  /** Recent sessions shown on the setup screen's resume list. */
+  sessions?: SessionRow[];
+  /** Called with the picked session name; the host remounts in resume mode. */
+  onResume?: (name: string) => void;
 };
 
 export function App(props: AppProps) {
@@ -299,6 +304,8 @@ export function App(props: AppProps) {
         initialSpecialists={props.initialSpecialists}
         initialModerator={props.initialModerator}
         initialCaucus={props.initialCaucus}
+        sessions={props.sessions}
+        onResume={props.onResume}
         onSubmit={({ prompt: p, mode: m, models, specialists, moderator, caucus }) => {
           setPrompt(p);
           setMode(m);

@@ -11,6 +11,7 @@ import { App } from './ui/App.js';
 import { generateSessionName } from './util/name.js';
 import { readTranscript } from './docs/transcript.js';
 import { rehydrateState } from './orchestrator/replay.js';
+import type { State } from './orchestrator/state.js';
 import { listSessions, sessionPaths, detectSessionFormat } from './sessions/list.js';
 import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -787,42 +788,97 @@ process.on('SIGTERM', () => {
   process.exit(143);
 });
 
-root.render(
-  <App
-    agents={{ claude, codex }}
-    prompt={prompt || resumedPrompt}
-    sessionName={name}
-    config={{ maxRounds }}
-    mode={mode}
-    initialState={resumedState ?? undefined}
-    promptSidecarPath={paths.promptPath}
-    transcriptPath={paths.transcriptPath}
-    specPath={paths.specPath}
-    outputFormat={outputFormat}
-    debatePath={paths.debatePath}
-    interviewPath={paths.interviewPath}
-    checkpointPath={paths.checkpointPath}
-    buildAgents={buildRealAgents ?? buildFakeAgents}
-    buildModerator={buildModerator}
-    initialModerator={effectiveModerator}
-    initialCaucus={effectiveCaucus}
-    initialModelConfig={{
-      claudeModel: claudeModel ?? null,
-      claudeEffort: claudeEffort ?? null,
-      codexModel: codexModel ?? null,
-      codexEffort: codexEffort ?? null,
-    }}
-    setupStorePath={savedSetupPath}
-    initialSpecialists={effectiveSpecialists}
-    onQuit={shutdown}
-    onDone={() => {
-      // Finalization happens; user can ctrl-c or we let App quit when ready.
-    }}
-  />,
-);
+// Recent sessions offered on the setup screen's resume list. Skipped when
+// already resuming (setup screen won't show) to avoid a pointless scan.
+const recentSessions = resumeName ? [] : (await listSessions(storeRoot)).slice(0, 6);
+
+type ResumeMount = {
+  name: string;
+  paths: ReturnType<typeof sessionPaths>;
+  state?: State;
+  prompt?: string;
+  format: OutputFormat;
+};
+
+/** Load everything --resume <name> would have loaded, for an in-TUI pick. */
+async function loadResumePick(pick: string): Promise<ResumeMount> {
+  let fmt = outputFormat;
+  if (!userExplicitFormat) {
+    const detected = await detectSessionFormat(join(storeRoot, pick));
+    if (detected) fmt = detected;
+  }
+  const p = sessionPaths(storeRoot, pick, fmt);
+  const entries = await readTranscript(p.transcriptPath);
+  const st =
+    (entries.length > 0 ? rehydrateState(entries) : undefined) ?? undefined;
+  let goal: string | undefined;
+  try {
+    const { readFile } = await import('node:fs/promises');
+    goal = (await readFile(p.promptPath, 'utf8')).trim();
+  } catch {
+    goal = undefined;
+  }
+  return { name: pick, paths: p, state: st, prompt: goal, format: fmt };
+}
+
+// Tracks whichever session the mounted App is running, so the post-exit
+// summary prints the right dir after an in-TUI resume pick.
+let activeSession = { paths, name };
+
+function mount(resume?: ResumeMount): void {
+  if (resume) activeSession = { paths: resume.paths, name: resume.name };
+  const mPaths = resume?.paths ?? paths;
+  root.render(
+    <App
+      key={activeSession.name}
+      agents={{ claude, codex }}
+      prompt={resume ? resume.prompt : prompt || resumedPrompt}
+      sessionName={activeSession.name}
+      config={{ maxRounds }}
+      mode={mode}
+      initialState={resume ? resume.state : resumedState ?? undefined}
+      promptSidecarPath={mPaths.promptPath}
+      transcriptPath={mPaths.transcriptPath}
+      specPath={mPaths.specPath}
+      outputFormat={resume?.format ?? outputFormat}
+      debatePath={mPaths.debatePath}
+      interviewPath={mPaths.interviewPath}
+      checkpointPath={mPaths.checkpointPath}
+      buildAgents={buildRealAgents ?? buildFakeAgents}
+      buildModerator={buildModerator}
+      initialModerator={effectiveModerator}
+      initialCaucus={effectiveCaucus}
+      initialModelConfig={{
+        claudeModel: claudeModel ?? null,
+        claudeEffort: claudeEffort ?? null,
+        codexModel: codexModel ?? null,
+        codexEffort: codexEffort ?? null,
+      }}
+      setupStorePath={savedSetupPath}
+      initialSpecialists={effectiveSpecialists}
+      sessions={resume ? undefined : recentSessions}
+      onResume={
+        resume
+          ? undefined
+          : pick => {
+              loadResumePick(pick)
+                .then(r => mount(r))
+                .catch(() => {
+                  // Unreadable session — stay on the setup screen.
+                });
+            }
+      }
+      onQuit={shutdown}
+      onDone={() => {
+        // Finalization happens; user can ctrl-c or we let App quit when ready.
+      }}
+    />,
+  );
+}
+mount();
 
 renderer.start();
 await new Promise<void>(resolve => {
   renderer.once('destroy', () => resolve());
 });
-await printSessionSummary(paths, name);
+await printSessionSummary(activeSession.paths, activeSession.name);
