@@ -38,12 +38,12 @@ flowchart LR
 | Claude (primary) | `claude` CLI | your `--claude-model` pick (default: CLI default) |
 | Codex (primary) | `codex` CLI | your `--codex-model` pick (default: CLI default) |
 | Specialists (security, perf, ux, naming, ops) | `claude` or `codex`, per persona | same model as that transport's primary — a specialist is a system prompt, not a separate model |
-| Moderator (optional; picks the next speaker) | `codex` | pinned to the cheap model (`gpt-5.6-luna`) — it only outputs a speaker id |
+| Moderator (optional, `--moderator`; picks the next speaker) | `codex` | pinned to the cheap model (`gpt-5.6-luna`) — it only outputs a speaker id |
 | Scout | none | deterministic, no LLM |
 | Autopilot's simulated user | `codex` | pinned to the cheap model |
 
-Without the moderator toggle, turn order is a deterministic rotation.
-Moderator, specialists, and caucus are all toggleable on the setup screen and
+Without `--moderator`, turn order is a deterministic rotation. Moderator,
+specialists, and caucus are all also toggleable on the setup screen and
 sticky across sessions (`~/.bramble/setup.json`).
 
 ## Stack
@@ -96,6 +96,9 @@ Debate:
 --auto / --collab                    back-to-back turns vs. pause-between
 --caucus / --no-caucus               private independent positions + synthesis
                                      before the public debate (default off)
+--moderator / --no-moderator         a cheap LLM picks the next speaker
+                                     instead of deterministic rotation
+                                     (default off)
 
 Agents:
 --mock                               scripted fake agents — demo/dev, no

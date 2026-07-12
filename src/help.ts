@@ -15,6 +15,11 @@ Debate:
                                         and a synthesis seeds the debate;
                                         also toggleable on the setup screen
                                         (sticky — saved with your setup)
+  --moderator / --no-moderator          a cheap LLM picks the next speaker
+                                        (with a stated reason) instead of the
+                                        default deterministic rotation; also
+                                        toggleable on the setup screen
+                                        (sticky — saved with your setup)
 
 Agents:
   --mock                                scripted fake agents — demo/dev, no
