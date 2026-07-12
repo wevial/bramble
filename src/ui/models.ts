@@ -28,7 +28,6 @@ export const CLAUDE_MODELS: ModelOption[] = [
   { label: 'fable 5', value: 'claude-fable-5' },
   { label: 'opus 4.8', value: 'claude-opus-4-8' },
   { label: 'sonnet 5', value: 'claude-sonnet-5' },
-  { label: 'haiku 4.5', value: 'claude-haiku-4-5' },
   { label: 'custom…', value: 'custom' },
 ];
 
@@ -48,8 +47,14 @@ export const CODEX_MODELS: ModelOption[] = [
  */
 export const CHEAP_CODEX_MODEL = 'gpt-5.6-luna';
 
-/** Cheapest current claude model — used by --test defaults. */
-export const CHEAP_CLAUDE_MODEL = 'claude-haiku-4-5';
+/**
+ * Cheap claude-transport fallback — used by --test defaults (paired with
+ * low effort). Sonnet, not haiku: haiku 4.5 predates the current small-model
+ * tier and isn't up to unsupervised turns. The codex transport uses
+ * CHEAP_CODEX_MODEL wherever a cheap turn is needed; this only covers the
+ * spots that must run on the claude CLI.
+ */
+export const CHEAP_CLAUDE_MODEL = 'claude-sonnet-5';
 
 export const CLAUDE_EFFORTS: EffortOption[] = [
   { label: 'default', value: null },
