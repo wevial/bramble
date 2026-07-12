@@ -65,6 +65,7 @@ let outputFormat: OutputFormat = 'md';
 let autopilot = false;
 let autopilotAnswers = 3;
 let caucusFlag: boolean | undefined;
+let moderatorFlag: boolean | undefined;
 let turnTimeoutMs: number | undefined;
 const cliSpecialists: string[] = [];
 const positional: string[] = [];
@@ -85,6 +86,10 @@ for (let i = 0; i < argv.length; i++) {
     caucusFlag = true;
   } else if (a === '--no-caucus') {
     caucusFlag = false;
+  } else if (a === '--moderator') {
+    moderatorFlag = true;
+  } else if (a === '--no-moderator') {
+    moderatorFlag = false;
   } else if (a === '--test') {
     real = true;
     claudeModel = claudeModel ?? CHEAP_CLAUDE_MODEL;
@@ -195,6 +200,8 @@ const mode: 'auto' | 'collab' = cliMode ?? savedSetup.mode ?? 'auto';
 const effectiveSpecialists: string[] =
   cliSpecialists.length > 0 ? cliSpecialists : savedSetup.specialists ?? [];
 const effectiveCaucus: boolean = caucusFlag ?? savedSetup.caucus ?? false;
+const effectiveModerator: boolean =
+  moderatorFlag ?? savedSetup.moderator ?? false;
 if (resumeName && cliSpecialists.length > 0) {
   console.error(
     '--specialist cannot be combined with --resume: personas are restored from the session transcript',
@@ -695,7 +702,9 @@ if (autopilot) {
   };
   const buildAgents = real ? buildRealAgents! : buildFakeAgents!;
   const agents = buildAgents(modelConfig, personas);
-  const moderator = buildModerator(personas);
+  // Same opt-in as the TUI: without --moderator the runner's deterministic
+  // rotation picks speakers and we skip the per-turn moderator LLM call.
+  const moderator = effectiveModerator ? buildModerator(personas) : undefined;
   // Simulated user: cheap Codex in real mode (runs in the trusted repo cwd,
   // NOT the isolated tmpdir, so it doesn't trip codex's trusted-dir check);
   // a canned responder in fake mode so no CLI is needed.
@@ -793,7 +802,7 @@ root.render(
     checkpointPath={paths.checkpointPath}
     buildAgents={buildRealAgents ?? buildFakeAgents}
     buildModerator={buildModerator}
-    initialModerator={savedSetup.moderator}
+    initialModerator={effectiveModerator}
     initialCaucus={effectiveCaucus}
     initialModelConfig={{
       claudeModel: claudeModel ?? null,
