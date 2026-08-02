@@ -6,6 +6,10 @@
   "bin": {
     "bramble": "./src/index.tsx"
   },
+  "exports": {
+    ".": "./src/lib.ts",
+    "./package.json": "./package.json"
+  },
   "scripts": {
     "dev": "bun src/index.tsx",
     "test": "bun test",
