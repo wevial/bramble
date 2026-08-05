@@ -7,8 +7,8 @@
  * `McpSessionManager.start()` launches a debate in the background and
  * returns a live `McpSession`; poll `sessionWaiting(session)` and release
  * waits with `manager.answer()` / `manager.finish()` exactly as the MCP
- * tools do. `session.finalize` resolves once the spec and checkpoint are
- * on disk.
+ * tools do. `session.finalize` settles after the debate and artifact write
+ * attempts complete; check `session.error` before relying on the artifacts.
  *
  * ```ts
  * import { McpSessionManager, sessionWaiting } from 'bramble';
@@ -20,6 +20,7 @@
  * // poll sessionWaiting(session); mgr.answer(session, text) at
  * // interview/criteria waits, mgr.finish(session) to advance/accept.
  * await session.finalize;
+ * if (session.error) throw new Error(session.error);
  * ```
  *
  * Bun-only, like the rest of bramble. Keep this surface in sync with the

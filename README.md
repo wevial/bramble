@@ -153,7 +153,9 @@ const mgr = new McpSessionManager({
 const session = mgr.start({ goal: 'design an auth system' });
 // poll sessionWaiting(session); answer waits with mgr.answer(session, text),
 // advance/accept with mgr.finish(session).
-await session.finalize; // spec + checkpoint are on disk
+await session.finalize;
+if (session.error) throw new Error(session.error);
+// spec + checkpoint are now on disk
 ```
 
 Bun-only (the package runs from source). See `src/lib.ts` for the full

@@ -141,9 +141,9 @@ export type McpSession = {
   /** Watermark: criteriaTurns.length when the last criteria answer landed. */
   releasedCriteriaLen: number;
   /**
-   * Resolves once handle.done has resolved AND the final spec/checkpoint have
-   * been written to disk. bramble_done awaits this on the finalize path so it
-   * never reports "Spec finalized" before the artifacts actually exist.
+   * Settles after handle.done and the final spec/checkpoint write attempts.
+   * Run and write failures are recorded in error rather than rejecting this
+   * promise, so callers must check error before relying on the artifacts.
    */
   finalize: Promise<void>;
 };
