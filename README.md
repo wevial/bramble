@@ -48,6 +48,22 @@ Without `--moderator`, turn order is a deterministic rotation. Moderator,
 specialists, and caucus are all also toggleable on the setup screen and
 sticky across sessions (`~/.bramble/setup.json`).
 
+### Why two different models and a human arbiter
+
+Multi-agent debate is not automatically better than one strong model — the
+skeptical literature shows homogeneous panels converging sycophantically,
+with correct agents flipping under peer pressure
+([Talk Isn't Always Cheap](https://arxiv.org/abs/2509.05396),
+[The Cost of Consensus](https://arxiv.org/abs/2605.00914)). The
+configurations that hold up are **heterogeneous models**
+([2606.19826](https://arxiv.org/abs/2606.19826)) with **structured,
+asymmetric roles** and small, sparse panels
+([2406.11776](https://arxiv.org/abs/2406.11776)). Bramble is built as that
+configuration on purpose: two different frontier models from different
+labs, fixed propose/critique/revise roles, optional specialists as extra
+lenses rather than extra voters, and a human — not a vote — as the
+termination condition.
+
 ## Prerequisites
 
 - **`bun`** — install via [bun.com](https://bun.com). Bramble runs on the
@@ -184,6 +200,38 @@ relay-to-your-human contract):
 
 The plugin runs `bramble mcp` from your PATH, so `bun link` this repo first
 (see Quickstart).
+
+### Codex as the client
+
+The MCP server is plain stdio, so Codex can drive debates too. Register it in
+`~/.codex/config.toml`:
+
+```toml
+[mcp_servers.bramble]
+command = "bramble"
+args = ["mcp"]
+```
+
+The relay contract is client-agnostic — every tool result that needs a human
+carries an `instruction` telling the calling agent to present it through its
+own ask-the-user channel. To make Codex internalize the flow up front (Codex
+has no skill system), add a short note to your `AGENTS.md`:
+
+```markdown
+## bramble (MCP)
+
+The `bramble` MCP tools run a Claude-vs-Codex spec debate in the background.
+You are the wire between bramble and me, never the answerer: when a tool
+result's `instruction` starts with "ACTION REQUIRED — RELAY TO YOUR HUMAN",
+show me the question/proposal verbatim and wait for my real answer. Follow the
+instruction's release path: use `bramble_answer` for text feedback, and use
+`bramble_done` when I choose to lock criteria or accept the final spec. Poll
+`bramble_status` every 20–30s while `waiting.kind` is "thinking". Finish with
+`bramble_get_spec` when done.
+```
+
+Yes, that means Codex arbitrating a debate in which another Codex is a
+debater. The sessions are separate processes; it works fine.
 
 ## Runtime artifacts
 
