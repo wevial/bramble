@@ -138,6 +138,29 @@ In real mode, after entering a goal you'll see a model picker (↑↓/Tab to
 move rows, ←→ to cycle options, `e` on "custom…" to pin any id). Selections
 override any CLI-flag defaults.
 
+## Library
+
+The MCP server's session engine is also importable, for driving debates
+in-process from another Bun program (a workflow script, an agent harness,
+a test rig) — same lifecycle, no subprocess:
+
+```ts
+import { McpSessionManager, sessionWaiting } from 'bramble';
+
+const mgr = new McpSessionManager({
+  root: './.bramble', cwd: process.cwd(), mock: false, format: 'md',
+});
+const session = mgr.start({ goal: 'design an auth system' });
+// poll sessionWaiting(session); answer waits with mgr.answer(session, text),
+// advance/accept with mgr.finish(session).
+await session.finalize;
+if (session.error) throw new Error(session.error);
+// spec + checkpoint are now on disk
+```
+
+Bun-only (the package runs from source). See `src/lib.ts` for the full
+surface.
+
 ## MCP server
 
 Bramble can run as an [MCP](https://modelcontextprotocol.io) server so another
