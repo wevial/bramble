@@ -223,9 +223,11 @@ has no skill system), add a short note to your `AGENTS.md`:
 The `bramble` MCP tools run a Claude-vs-Codex spec debate in the background.
 You are the wire between bramble and me, never the answerer: when a tool
 result's `instruction` starts with "ACTION REQUIRED — RELAY TO YOUR HUMAN",
-show me the question/proposal verbatim, wait for my real answer, and pass it
-back with `bramble_answer`. Poll `bramble_status` every 20–30s while
-`waiting.kind` is "thinking". Finish with `bramble_get_spec` when done.
+show me the question/proposal verbatim and wait for my real answer. Follow the
+instruction's release path: use `bramble_answer` for text feedback, and use
+`bramble_done` when I choose to lock criteria or accept the final spec. Poll
+`bramble_status` every 20–30s while `waiting.kind` is "thinking". Finish with
+`bramble_get_spec` when done.
 ```
 
 Yes, that means Codex arbitrating a debate in which another Codex is a
